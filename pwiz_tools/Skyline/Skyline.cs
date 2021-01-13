@@ -5672,6 +5672,12 @@ namespace pwiz.Skyline
                 modeUIHandler.AddHandledComponent(entry.Key, entry.Value);
             }
         }
+
+        private void dataFileToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var fullScanGrid = new FullScanGrid();
+            fullScanGrid.Show(this);
+        }
     }
 }
 

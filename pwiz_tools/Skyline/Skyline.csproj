@@ -351,6 +351,12 @@
     <Compile Include="Controls\AuditLog\AuditLogExtraInfoForm.Designer.cs">
       <DependentUpon>AuditLogExtraInfoForm.cs</DependentUpon>
     </Compile>
+    <Compile Include="Controls\FullScanGrid.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Controls\FullScanGrid.Designer.cs">
+      <DependentUpon>FullScanGrid.cs</DependentUpon>
+    </Compile>
     <Compile Include="Controls\Graphs\ExportMethodScheduleGraph.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -576,6 +582,9 @@
     <Compile Include="Model\Serialization\Pre372CustomIonTransitionGroupHandler.cs" />
     <Compile Include="Model\Serialization\XmlReadAhead.cs" />
     <Compile Include="Model\SkypFile.cs" />
+    <Compile Include="Model\Spectra\SpectraViewContext.cs" />
+    <Compile Include="Model\Spectra\Spectrum.cs" />
+    <Compile Include="Model\Spectra\SpectrumRowSource.cs" />
     <Compile Include="Model\TargetMap.cs" />
     <Compile Include="Controls\Databinding\ChooseFormatDlg.cs">
       <SubType>Form</SubType>
@@ -2105,6 +2114,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\DocumentChangeLogEntryDlg.zh-CHS.resx">
       <DependentUpon>DocumentChangeLogEntryDlg.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\FullScanGrid.resx">
+      <DependentUpon>FullScanGrid.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Controls\Graphs\AreaCVToolbar.ja.resx">
       <DependentUpon>AreaCVToolbar.cs</DependentUpon>

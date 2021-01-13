@@ -2976,6 +2976,12 @@
   <data name="auditLogMenuItem.Text" xml:space="preserve">
     <value>&amp;Audit Log</value>
   </data>
+  <data name="dataFileToolStripMenuItem.Size" type="System.Drawing.Size, System.Drawing">
+    <value>180, 22</value>
+  </data>
+  <data name="dataFileToolStripMenuItem.Text" xml:space="preserve">
+    <value>DataFile</value>
+  </data>
   <data name="otherGridsMenuItem.Size" type="System.Drawing.Size, System.Drawing">
     <value>191, 22</value>
   </data>
@@ -3532,7 +3538,7 @@
     <value>modeUIHandler</value>
   </data>
   <data name="&gt;&gt;modeUIHandler.Type" xml:space="preserve">
-    <value>pwiz.Skyline.Util.Helpers+ModeUIExtender, Skyline-daily, Version=20.2.1.346, Culture=neutral, PublicKeyToken=null</value>
+    <value>pwiz.Skyline.Util.Helpers+ModeUIExtender, Skyline-daily, Version=20.2.1.355, Culture=neutral, PublicKeyToken=null</value>
   </data>
   <data name="&gt;&gt;cutContextMenuItem.Name" xml:space="preserve">
     <value>cutContextMenuItem</value>
@@ -6588,10 +6594,16 @@
   <data name="&gt;&gt;detectionsToolStripSeparator3.Type" xml:space="preserve">
     <value>System.Windows.Forms.ToolStripSeparator, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
+  <data name="&gt;&gt;dataFileToolStripMenuItem.Name" xml:space="preserve">
+    <value>dataFileToolStripMenuItem</value>
+  </data>
+  <data name="&gt;&gt;dataFileToolStripMenuItem.Type" xml:space="preserve">
+    <value>System.Windows.Forms.ToolStripMenuItem, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">
     <value>SkylineWindow</value>
   </data>
   <data name="&gt;&gt;$this.Type" xml:space="preserve">
-    <value>pwiz.Skyline.Util.FormEx, Skyline-daily, Version=20.2.1.346, Culture=neutral, PublicKeyToken=null</value>
+    <value>pwiz.Skyline.Util.FormEx, Skyline-daily, Version=20.2.1.355, Culture=neutral, PublicKeyToken=null</value>
   </data>
 </root>

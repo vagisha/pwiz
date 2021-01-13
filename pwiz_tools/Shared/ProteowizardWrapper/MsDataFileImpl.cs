@@ -852,6 +852,13 @@ namespace pwiz.ProteowizardWrapper
             return index;
         }
 
+        public IList<Model.Spectrum> GetSpectrumList(Model.DetailLevel detailLevel)
+        {
+            return ReadOnlyList.Create(SpectrumCount, i =>
+                new Model.Spectrum(SpectrumList.spectrum(i, detailLevel.PwizDetailLevel))
+            );
+        }
+
         public void GetSpectrum(int spectrumIndex, out double[] mzArray, out double[] intensityArray)
         {
             var spectrum = GetSpectrum(spectrumIndex);
@@ -1174,7 +1181,7 @@ namespace pwiz.ProteowizardWrapper
             return spectrum.hasCVParam(CVID.MS_centroid_spectrum);
         }
 
-        private static bool NegativePolarity(Spectrum spectrum)
+        internal static bool NegativePolarity(Spectrum spectrum)
         {
             var param = spectrum.cvParamChild(CVID.MS_scan_polarity);
             if (param.empty())
@@ -1213,7 +1220,7 @@ namespace pwiz.ProteowizardWrapper
             return (int) GetMetaDataValue(scanIndex, GetMsLevel, v => v.HasValue, v => v ?? 0, ref _detailMsLevel);
         }
 
-        private static int? GetMsLevel(Spectrum spectrum)
+        internal static int? GetMsLevel(Spectrum spectrum)
         {
             CVParam param = spectrum.cvParam(CVID.MS_ms_level);
             if (param.empty())
@@ -1226,7 +1233,7 @@ namespace pwiz.ProteowizardWrapper
             return GetMetaDataValue(scanIndex, GetScanDescription, v => v.IsNullOrEmpty(), v => v, ref _detailScanDescription, DetailLevel.FastMetadata);
         }
 
-        private static string GetScanDescription(Spectrum spectrum)
+        internal static string GetScanDescription(Spectrum spectrum)
         {
             const string USERPARAM_SCAN_DESCRIPTION = "scan description";
             UserParam param = spectrum.userParam(USERPARAM_SCAN_DESCRIPTION);
@@ -1291,7 +1298,7 @@ namespace pwiz.ProteowizardWrapper
             return GetMetaDataValue(scanIndex, GetStartTime, v => v.HasValue, v => v ?? 0, ref _detailStartTime);
         }
 
-        private static double? GetStartTime(Spectrum spectrum)
+        internal static double? GetStartTime(Spectrum spectrum)
         {
             if (spectrum.scanList.scans.Count == 0)
                 return null;
@@ -1397,7 +1404,7 @@ namespace pwiz.ProteowizardWrapper
             });
         }
 
-        private static SignedMz? GetPrecursorMz(Precursor precursor, bool negativePolarity)
+        internal static SignedMz? GetPrecursorMz(Precursor precursor, bool negativePolarity)
         {
             // CONSIDER: Only the first selected ion m/z is considered for the precursor m/z
             var selectedIon = precursor.selectedIons.FirstOrDefault();
