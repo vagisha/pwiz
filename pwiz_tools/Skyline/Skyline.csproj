@@ -331,15 +331,6 @@
     <Compile Include="Alerts\UpgradeLicenseDlg.designer.cs">
       <DependentUpon>UpgradeLicenseDlg.cs</DependentUpon>
     </Compile>
-    <Compile Include="AlgLib\alglibinternal.cs" />
-    <Compile Include="AlgLib\alglibmisc.cs" />
-    <Compile Include="AlgLib\ap.cs" />
-    <Compile Include="AlgLib\dataanalysis.cs" />
-    <Compile Include="AlgLib\linalg.cs" />
-    <Compile Include="AlgLib\optimization.cs" />
-    <Compile Include="AlgLib\solvers.cs" />
-    <Compile Include="AlgLib\specialfunctions.cs" />
-    <Compile Include="AlgLib\statistics.cs" />
     <Compile Include="CommandArgUsage.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -356,6 +347,20 @@
     </Compile>
     <Compile Include="Controls\FullScanGrid.Designer.cs">
       <DependentUpon>FullScanGrid.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\Clustering\ClusteredHeatMapItem.cs" />
+    <Compile Include="Controls\Clustering\HierarchicalClusterGraph.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Controls\Clustering\HierarchicalClusterGraph.Designer.cs">
+      <DependentUpon>HierarchicalClusterGraph.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Controls\Clustering\ClusterGraphResults.cs" />
+    <Compile Include="Controls\Clustering\PcaPlot.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Controls\Clustering\PcaPlot.Designer.cs">
+      <DependentUpon>PcaPlot.cs</DependentUpon>
     </Compile>
     <Compile Include="Controls\Graphs\ExportMethodScheduleGraph.cs">
       <SubType>Form</SubType>
@@ -380,6 +385,7 @@
     <Compile Include="Controls\Graphs\DetectionToolbarProperties.Designer.cs">
       <DependentUpon>DetectionToolbarProperties.cs</DependentUpon>
     </Compile>
+    <Compile Include="Controls\Graphs\PaneProgressBar.cs" />
     <Compile Include="Controls\Graphs\ReplicateGroupOp.cs" />
     <Compile Include="Controls\Graphs\ReplicateValue.cs" />
     <Compile Include="Controls\ImageListBox.cs">
@@ -424,6 +430,18 @@
       <DependentUpon>DocumentChangeLogEntryDlg.cs</DependentUpon>
     </Compile>
     <Compile Include="Controls\Graphs\AreaCVGraphData.cs" />
+    <Compile Include="Menus\ChromatogramContextMenu.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Menus\ChromatogramContextMenu.Designer.cs">
+      <DependentUpon>ChromatogramContextMenu.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Menus\EditMenu.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Menus\EditMenu.Designer.cs">
+      <DependentUpon>EditMenu.cs</DependentUpon>
+    </Compile>
     <Compile Include="Menus\RefineMenu.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -432,6 +450,12 @@
     </Compile>
     <Compile Include="Menus\SkylineControl.cs">
       <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Menus\ViewMenu.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Menus\ViewMenu.Designer.cs">
+      <DependentUpon>ViewMenu.cs</DependentUpon>
     </Compile>
     <Compile Include="Model\AbstractDdaSearchEngine.cs" />
     <Compile Include="Model\AreaCVRefinementData.cs" />
@@ -475,6 +499,7 @@
     <Compile Include="Model\Crosslinking\CrosslinkSequenceParser.cs" />
     <Compile Include="Model\Crosslinking\ModificationSite.cs" />
     <Compile Include="Model\Crosslinking\LinkedPeptide.cs" />
+    <Compile Include="Model\Databinding\CellLocator.cs" />
     <Compile Include="Model\Databinding\Entities\ColumnCaptions.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -539,7 +564,7 @@
     <Compile Include="Model\Lib\LibKeyIndex.cs" />
     <Compile Include="Model\Lib\SpectralLibraryExporter.cs" />
     <Compile Include="Model\Lib\SpectrumRanker.cs" />
-    <Compile Include="Model\Lib\ViewLibraryPepInfoList.cs" />
+    <Compile Include="SettingsUI\ViewLibraryPepInfoList.cs" />
     <Compile Include="Model\Lib\LibKeyMap.cs" />
     <Compile Include="Model\Lib\LibraryKey.cs" />
     <Compile Include="Model\Lists\ListExceptionDetail.cs" />
@@ -551,6 +576,7 @@
     <Compile Include="Model\DdaSearch\MsgfPlusSearchEngine.cs" />
     <Compile Include="Model\IsotopeModificationPermuter.cs" />
     <Compile Include="Model\Optimization\OptimizationDictionary.cs" />
+    <Compile Include="Model\ProgressMonitor.cs" />
     <Compile Include="Model\Prosit\Config\PrositConfig.cs" />
     <Compile Include="Model\Prosit\Models\PrositIntensityModel.cs" />
     <Compile Include="Model\Prosit\Models\PrositModel.cs" />
@@ -2097,6 +2123,12 @@
     <EmbeddedResource Include="Controls\AuditLog\AuditLogForm.resx">
       <DependentUpon>AuditLogForm.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="Controls\Clustering\HierarchicalClusterGraph.resx">
+      <DependentUpon>HierarchicalClusterGraph.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Controls\Clustering\PcaPlot.resx">
+      <DependentUpon>PcaPlot.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Controls\Databinding\ChooseFormatDlg.ja.resx">
       <DependentUpon>ChooseFormatDlg.cs</DependentUpon>
     </EmbeddedResource>
@@ -2530,8 +2562,17 @@
     <EmbeddedResource Include="FileUI\ChooseIrtStandardPeptidesDlg.resx">
       <DependentUpon>ChooseIrtStandardPeptidesDlg.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="Menus\ChromatogramContextMenu.resx">
+      <DependentUpon>ChromatogramContextMenu.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Menus\EditMenu.resx">
+      <DependentUpon>EditMenu.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="Menus\RefineMenu.resx">
       <DependentUpon>RefineMenu.cs</DependentUpon>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Menus\ViewMenu.resx">
+      <DependentUpon>ViewMenu.cs</DependentUpon>
     </EmbeddedResource>
     <EmbeddedResource Include="Model\AuditLog\AuditLogStrings.ja.resx">
       <DependentUpon>AuditLogStrings.resx</DependentUpon>
@@ -5385,7 +5426,7 @@
     <Exec Command="SignAfterPublish.bat &quot;$(ProjectDir)University of Washington (MacCoss Lab).pfx&quot; password &quot;$(ProjectDir)bin\$(Platform)\$(ConfigurationName)\app.publish&quot; $(TargetName)" />
   </Target>
   <PropertyGroup>
-    <PreBuildEvent>$(ProjectDir)ProtocolBuffers\generatecode.bat &amp;&amp; $(ProjectDir)Model\Prosit\Config\UpdatePrositConfiguration.bat</PreBuildEvent>
+    <PreBuildEvent>$(ProjectDir)ProtocolBuffers\generatecode.bat</PreBuildEvent>
   </PropertyGroup>
   <PropertyGroup>
     <PostBuildEvent>
