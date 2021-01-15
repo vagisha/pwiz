@@ -158,7 +158,7 @@ namespace pwiz.Skyline.Model
 
         public static bool IsValidPeptideSequence(string seq)
         {
-            return IsExSequence(seq) || null != CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(seq, 0);
+            return IsExSequence(seq) || null != CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(seq, 0, IonMobilityAndCCS.EMPTY);
         }
 
         private readonly string _name;

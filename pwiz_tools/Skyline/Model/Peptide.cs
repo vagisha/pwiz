@@ -23,6 +23,7 @@ using System.Linq;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
+using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -143,7 +144,22 @@ namespace pwiz.Skyline.Model
                 foreach (var group in nodePep.TransitionGroups.Where(tranGroup => tranGroup.TransitionGroup.IsCustomIon))
                 {
                     if (!useFilter || settings.TransitionSettings.IsMeasurablePrecursor(group.PrecursorMz))
-                      yield return group.TransitionGroup;
+                    {
+                        if (!group.ExplicitValues.IonMobilityAndCCS.IsEmpty)
+                        {
+                            yield return group.TransitionGroup; // Always retain nodes with explicitly set IM 
+                        }
+                        else
+                        {
+                            // Retain if IM matches an library, or if no IM in use
+                            var libKey = new LibKey(group.Peptide.Target, group.PrecursorAdduct, IonMobilityAndCCS.EMPTY);
+                            var ionMobilities = settings.GetIonMobilities(libKey, null); // Returns at leastIonMobilityAndCCS.EMPTY
+                            if (ionMobilities.Any(im => Equals(im, group.IonMobilityAndCCS)))
+                            {
+                                yield return group.TransitionGroup;
+                            }
+                        }
+                    }
                 }
             }
             else
@@ -187,7 +203,13 @@ namespace pwiz.Skyline.Model
                         if (i == 0 || precursorMass != precursorMassLight)
                         {
                             if (settings.TransitionSettings.IsMeasurablePrecursor(SequenceMassCalc.GetMZ(precursorMass, adduct)))
-                                yield return new TransitionGroup(this, adduct, labelType);
+                            {
+                                var libKey = new LibKey(Target, adduct, IonMobilityAndCCS.EMPTY);
+                                foreach (var ionMobility in settings.GetIonMobilities(libKey, null)) // Add a node for every ion mobility conformation
+                                {
+                                    yield return new TransitionGroup(this, adduct, ionMobility, labelType);
+                                }
+                            }
                         }
                     }
                 }
@@ -729,11 +751,11 @@ namespace pwiz.Skyline.Model
             Assume.IsNull(Molecule);
             return new Target(sequence);
         }
-        public LibKey GetLibKey(Adduct adduct)
+        public LibKey GetLibKey(Adduct adduct, IonMobilityAndCCS ionMobility)  // TODO(bspratt) default this to minimize code changes elsewhere
         {
             if (IsProteomic)
-                return new LibKey(Sequence, adduct.AdductCharge);
-            return new LibKey(Molecule.GetSmallMoleculeLibraryAttributes(), adduct);
+                return new LibKey(Sequence, adduct.AdductCharge, ionMobility);
+            return new LibKey(Molecule.GetSmallMoleculeLibraryAttributes(), adduct, ionMobility);
         }
 
         public static int CompareOrdinal(Target left, Target right)

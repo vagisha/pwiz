@@ -1655,7 +1655,7 @@ namespace pwiz.Skyline.Model
             }
             else
             {
-                if (null == CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(line.Trim(), 0))
+                if (null == CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(line.Trim(), 0, IonMobilityAndCCS.EMPTY))
                 {
                     if (TrySplitColumns(line, TextUtil.SEPARATOR_CSV, out columns))
                     {
@@ -2331,10 +2331,10 @@ namespace pwiz.Skyline.Model
                 finalLibrarySpectra.Add(new SpectrumMzInfo
                 {
                     SourceFile = _sourceFile ?? CLIPBOARD_FILENAME,
-                    Key = new LibKey(modifiedSequenceWithIsotopes, groupLibTriple.NodeGroup.TransitionGroup.PrecursorAdduct),
+                    Key = new LibKey(modifiedSequenceWithIsotopes, groupLibTriple.NodeGroup.TransitionGroup.PrecursorAdduct,
+                        groupLibTriple.NodeGroup.TransitionGroup.IonMobility),
                     Label = groupLibTriple.SpectrumInfo.Label,
                     PrecursorMz = groupLibTriple.SpectrumInfo.PrecursorMz,
-                    IonMobility = groupLibTriple.SpectrumInfo.IonMobility,
                     SpectrumPeaks = groupLibTriple.SpectrumInfo.SpectrumPeaks,
                     RetentionTime = peptideIrt
                 }); 
@@ -2451,6 +2451,7 @@ namespace pwiz.Skyline.Model
             var precursorExp = GetBestPrecursorExp();
             var transitionGroup = new TransitionGroup(_activePeptide,
                                                       precursorExp.PrecursorAdduct,
+                                                      IonMobilityAndCCS.EMPTY,  // TODO(bspratt) this should be a loop that pulls conformers from imsdb
                                                       precursorExp.LabelType,
                                                       false,
                                                       precursorExp.MassShift);
@@ -2472,7 +2473,7 @@ namespace pwiz.Skyline.Model
             var currentLibrarySpectrum = !_activeLibraryIntensities.Any() ? null : 
                 new SpectrumMzInfo
                 {
-                    Key = new LibKey(_activePeptide.Sequence, precursorExp.PrecursorAdduct),
+                    Key = new LibKey(_activePeptide.Sequence, precursorExp.PrecursorAdduct, transitionGroup.IonMobility),
                     PrecursorMz = _activePrecursorMz,
                     Label = precursorExp.LabelType,
                     SpectrumPeaks = new SpectrumPeaksInfo(_activeLibraryIntensities.ToArray()),

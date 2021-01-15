@@ -869,7 +869,7 @@ namespace pwiz.Skyline.Model.DocSettings
 
         public bool LibrariesContain(Target sequenceMod, Adduct charge)
         {
-            return PeptideSettings.Libraries.Contains(new LibKey(sequenceMod, charge));
+            return PeptideSettings.Libraries.Contains(new LibKey(sequenceMod, charge, IonMobilityAndCCS.EMPTY));
         }
 
         public bool LibrariesContainAny(Target sequence)
@@ -894,7 +894,7 @@ namespace pwiz.Skyline.Model.DocSettings
             }
             foreach (var typedSequence in GetTypedSequences(sequence, mods, adduct))
             {
-                var key = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct);
+                var key = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct, IonMobilityAndCCS.EMPTY);
                 if (libraries.TryGetLibInfo(key, out libInfo))
                 {
                     type = typedSequence.LabelType;
@@ -917,7 +917,7 @@ namespace pwiz.Skyline.Model.DocSettings
                 var unlabeled = new Target(peptide.CustomMolecule.ChangeFormula(peptide.CustomMolecule.UnlabeledFormula));
                 foreach (var typedAdduct in GetTypedSequences(unlabeled, mods, adduct))
                 {
-                    var key = new LibKey(keybase, typedAdduct.Adduct);
+                    var key = new LibKey(keybase, typedAdduct.Adduct, IonMobilityAndCCS.EMPTY);
                     if (libraries.TryGetLibInfo(key, out libInfo))
                     {
                         type = typedAdduct.LabelType;
@@ -936,7 +936,7 @@ namespace pwiz.Skyline.Model.DocSettings
             var libraries = PeptideSettings.Libraries;
             foreach (var typedSequence in GetTypedSequences(sequence, mods, adduct))
             {
-                var key = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct);
+                var key = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct, IonMobilityAndCCS.EMPTY);
                 if (libraries.TryLoadSpectrum(key, out spectrum))
                 {
                     type = typedSequence.LabelType;
@@ -955,11 +955,13 @@ namespace pwiz.Skyline.Model.DocSettings
         /// Returns an array of ion mobility values, guaranteed to contain at least IonMobilityAndCCS.EMPTY.
         /// This supports the "multiple conformers" case where an ion may have multiple ion mobilities
         /// </summary>
-        public IonMobilityAndCCS[] GetLibraryIonMobilities(LibKey libKey, ExplicitTransitionGroupValues explicitValues)
+        public IonMobilityAndCCS[] GetIonMobilities(LibKey libKey, ExplicitTransitionGroupValues explicitValues)
         {
-            // Explicit value wins
-            if (explicitValues.IonMobilityAndCCS.IsEmpty)
+            // Explicit value overrides any other possible value
+            if (explicitValues != null && !explicitValues.IonMobilityAndCCS.IsEmpty)
+            {
                 return new []{ explicitValues.IonMobilityAndCCS };
+            }
 
             // Ion mobility library values have second priority, spectral library values have third priority
             var mobilities = GetIonMobilities(new[] {libKey}, null);
@@ -971,6 +973,12 @@ namespace pwiz.Skyline.Model.DocSettings
             // No CCS found
             return CCS_VALUES_EMPTY;
         }
+
+        public IonMobilityAndCCS[] GetLibraryIonMobilities(Target target, Adduct adduct)
+        {
+            return GetIonMobilities(new LibKey(target, adduct, IonMobilityAndCCS.EMPTY), ExplicitTransitionGroupValues.EMPTY);
+        }
+
 
         /// <summary>
         /// Get ion mobility for the charged peptide from ion mobility library, or,
@@ -1025,7 +1033,7 @@ namespace pwiz.Skyline.Model.DocSettings
         {
             foreach (var typedSequence in GetTypedSequences(nodePep.Target, nodePep.ExplicitMods, nodeGroup.PrecursorAdduct))
             {
-                var chargedPeptide = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct);
+                var chargedPeptide = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct, IonMobilityAndCCS.EMPTY);
 
                 var result = TransitionSettings.IonMobilityFiltering.GetIonMobilityFilter(chargedPeptide, nodeGroup.PrecursorMz,  ionMobilityFunctionsProvider, ionMobilityMax);
                 if (result != null && result.HasIonMobilityValue)
@@ -1052,11 +1060,14 @@ namespace pwiz.Skyline.Model.DocSettings
             var libraries = PeptideSettings.Libraries;
             foreach (var typedSequence in GetTypedSequences(sequence, mods, adduct))
             {
-                var key = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct);
-                if (libraries.TryGetRetentionTimes(key, filePath, out retentionTimes))
+                foreach (var ionMobility in GetLibraryIonMobilities(typedSequence.ModifiedSequence, typedSequence.Adduct))
                 {
-                    type = typedSequence.LabelType;
-                    return true;
+                    var key = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct, ionMobility);
+                    if (libraries.TryGetRetentionTimes(key, filePath, out retentionTimes))
+                    {
+                        type = typedSequence.LabelType;
+                        return true;
+                    }
                 }
             }
 
@@ -1333,29 +1344,32 @@ namespace pwiz.Skyline.Model.DocSettings
         /// Retrieve ion mobility values for the indicated ions,
         /// from .imsdb file if possible, or spectral libraries if need be
         /// </summary>
-        /// <param name="targetIons">The ions whose ion mobility we seek</param>
+        /// <param name="targetIonList">The ions whose ion mobility we seek</param>
         /// <param name="fileUri">Path to a raw data file which contains calibration. Can be null, in which case no CCS->IM conversion occurs.</param>
         /// <returns></returns>
-        public LibraryIonMobilityInfo GetIonMobilities(LibKey[] targetIons, MsDataFileUri fileUri)
+        public LibraryIonMobilityInfo GetIonMobilities(IEnumerable<LibKey> targetIonList, MsDataFileUri fileUri)
         {
             // Look in ion mobility library (.imsdb) if available, then fill gaps with spectral libs if requested
             var imFiltering = TransitionSettings.IonMobilityFiltering;
             if (imFiltering != null)
             {
+                var targetIons = // Reduce multiple conformers to a single entry each
+                    targetIonList.Select(ion => ion.ChangeIonMobilityAndCCS(IonMobilityAndCCS.EMPTY)).ToHashSet();
                 var dict = new Dictionary<LibKey, IonMobilityAndCCS[]>();
                 if (imFiltering.IonMobilityLibrary != null && !imFiltering.IonMobilityLibrary.IsNone)
                 {
                     foreach (var ion in targetIons)
                     {
-                        var ims = imFiltering.GetIonMobilityInfoFromLibrary(ion);
+                        var ims = imFiltering.GetIonMobilitiesInfoFromLibrary(ion);
                         if (ims != null)
                         {
                             dict.Add(ion, ims.ToArray());
                         }
                     }
                 }
-                var map = LibKeyMap<IonMobilityAndCCS[]>.FromDictionary(dict);
-                if (dict.Count < targetIons.Length && imFiltering.UseSpectralLibraryIonMobilityValues)
+                var map = LibKeyMap<IonMobilityAndCCS[]>.FromDictionary(dict); // Use LibKeyMap for more robust ion matching (mod mass precision etc)
+                if (dict.Count < targetIons.Count && // Any ions still unaccounted for?
+                    imFiltering.UseSpectralLibraryIonMobilityValues) // Should we try spectral libraries
                 {
                     var libraries = PeptideSettings.Libraries;
                     if (libraries.TryGetSpectralLibraryIonMobilities(targetIons, fileUri, out var ionMobilities) && ionMobilities != null)
@@ -1373,6 +1387,11 @@ namespace pwiz.Skyline.Model.DocSettings
                     : LibraryIonMobilityInfo.EMPTY;
             }
             return null;
+        }
+
+        public LibraryIonMobilityInfo GetIonMobilities(Target target, Adduct adduct, MsDataFileUri fileUri)
+        {
+            return GetIonMobilities(new []{new LibKey(target, adduct, IonMobilityAndCCS.EMPTY) }, fileUri);
         }
 
         /// <summary>
@@ -1398,7 +1417,7 @@ namespace pwiz.Skyline.Model.DocSettings
         {
             var libraries = PeptideSettings.Libraries;
             return from typedSequence in GetTypedSequences(sequence, mods, charge)
-                   let key = typedSequence.ModifiedSequence.GetLibKey(typedSequence.Adduct)
+                   let key = typedSequence.ModifiedSequence.GetLibKey(typedSequence.Adduct, IonMobilityAndCCS.EMPTY)
                    from spectrumInfo in libraries.GetSpectra(key, typedSequence.LabelType, true)
                    select spectrumInfo;
         }
@@ -1406,7 +1425,7 @@ namespace pwiz.Skyline.Model.DocSettings
         public IEnumerable<SpectrumInfoLibrary> GetMidasSpectra(double precursorMz)
         {
             return PeptideSettings.Libraries.MidasLibraries.SelectMany(
-                lib => lib.GetSpectra(new LibKey(precursorMz), IsotopeLabelType.light, LibraryRedundancy.all));
+                lib => lib.GetSpectra(new LibKey(precursorMz, IonMobilityAndCCS.EMPTY), IsotopeLabelType.light, LibraryRedundancy.all));
         }
 
         /// <summary>
@@ -1416,22 +1435,23 @@ namespace pwiz.Skyline.Model.DocSettings
         /// <param name="peptide"> Supplies info on molecule to match. </param>
         /// <param name="sequence"> The sequence to match. </param>
         /// <param name="adduct"> The charge to match. </param>
+        /// <param name="ionMobility"> The ion mobility to match, if library provides. </param>
         /// <param name="labelType">The primary label type to match</param>
         /// <param name="mods"> The modifications to match. </param>
         /// <returns> Returns a list of the matching spectra. </returns>
-        public IEnumerable<SpectrumInfoLibrary> GetRedundantSpectra(Peptide peptide, Target sequence, Adduct adduct, IsotopeLabelType labelType,
+        public IEnumerable<SpectrumInfoLibrary> GetRedundantSpectra(Peptide peptide, Target sequence, Adduct adduct, IonMobilityAndCCS ionMobility, IsotopeLabelType labelType,
                                                        ExplicitMods mods)
         {
             LibKey libKey;
             if (!peptide.IsCustomMolecule)
             {
                 var sequenceMod = GetModifiedSequence(sequence, labelType, mods);
-                libKey = new LibKey(sequenceMod, adduct);
+                libKey = new LibKey(sequenceMod, adduct, ionMobility);
             }
             else
             {
                 // For small molecules, label is in the adduct
-                libKey = new LibKey(peptide.CustomMolecule.PrimaryEquivalenceKey, GetModifiedAdduct(adduct, peptide.CustomMolecule.UnlabeledFormula, labelType, mods)); // TODO that should be a formula
+                libKey = new LibKey(peptide.CustomMolecule.PrimaryEquivalenceKey, GetModifiedAdduct(adduct, peptide.CustomMolecule.UnlabeledFormula, labelType, mods), ionMobility); 
             }
             return PeptideSettings.Libraries.GetSpectra(libKey, labelType, false);
         }

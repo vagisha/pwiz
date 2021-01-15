@@ -25,6 +25,7 @@ using System.Text;
 using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -778,7 +779,7 @@ namespace pwiz.Skyline.Model.Results
                     }
                     else
                     {
-                        var oldKey = new PeptideLibraryKey(Encoding.UTF8.GetString(textIdBytes), 0);
+                        var oldKey = new PeptideLibraryKey(Encoding.UTF8.GetString(textIdBytes), 0, IonMobilityAndCCS.EMPTY);
                         var newKey = oldKey.FormatToOneDecimal();
                         newTextId = ImmutableList.ValueOf(Encoding.UTF8.GetBytes(newKey.ModifiedSequence));
                     }

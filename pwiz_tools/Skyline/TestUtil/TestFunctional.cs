@@ -1004,6 +1004,10 @@ namespace pwiz.SkylineTestUtil
                 if (_isPauseForScreenShots)
                 {
                     Program.PauseSeconds = -1;
+
+                    #region Multiple conformers test support
+                    TestMultipleConformers = false; // Extra test node will mess up the pretty pictures
+                    #endregion Multiple conformers test support
                 }
             }
         }
@@ -1606,6 +1610,9 @@ namespace pwiz.SkylineTestUtil
             EndTest();
 
             Settings.Default.Reset();
+#region Multiple conformers test support
+            Settings.Default.TestMultipleConformers = TestMultipleConformers;
+#endregion Multiple conformers test support
             MsDataFileImpl.PerfUtilFactory.Reset();
         }
 

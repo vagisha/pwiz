@@ -51,9 +51,9 @@ namespace pwiz.Skyline.Model.DocSettings
 
         public static bool IsNullOrEmpty(TransitionIonMobilityFiltering f) { return f == null || f.IsEmpty; }
 
-        public TransitionIonMobilityFiltering(string name, string dbDir, IDictionary<LibKey, List<IonMobilityAndCCS>> dict, bool useSpectralLibraryIonMobilityValues, IonMobilityWindowWidthCalculator filterWindowWidthCalculator)
+        public TransitionIonMobilityFiltering(string name, string dbDir, LibKeyIndex dict, bool useSpectralLibraryIonMobilityValues, IonMobilityWindowWidthCalculator filterWindowWidthCalculator)
         {
-            IonMobilityLibrary = IonMobilityLibrary.CreateFromDictionary(name, dbDir, dict);
+            IonMobilityLibrary = IonMobilityLibrary.CreateFromLibKeyIndex(name, dbDir, dict);
             UseSpectralLibraryIonMobilityValues = useSpectralLibraryIonMobilityValues;
             FilterWindowWidthCalculator = filterWindowWidthCalculator;
 
@@ -120,45 +120,39 @@ namespace pwiz.Skyline.Model.DocSettings
         public IonMobilityAndCCS GetIonMobilityFilter(LibKey ion, double mz,
             IIonMobilityFunctionsProvider ionMobilityFunctionsProvider)
         {
-            var ionMobilities = GetIonMobilityInfoFromLibrary(ion); // Library may contain multiple conformers - just use first seen TODO:bspratt full support for multiple conformers
+            var result = ion.IonMobility;
             // Convert from CCS to ion mobility if possible
-            if (ionMobilities != null && 
+            if (!IonMobilityAndCCS.IsNullOrEmpty(result) && 
                 ionMobilityFunctionsProvider != null &&
                 ionMobilityFunctionsProvider.ProvidesCollisionalCrossSectionConverter)
             {
-                var result = ionMobilities.FirstOrDefault();
-                if (!IonMobilityAndCCS.IsNullOrEmpty(result))
+                // ReSharper disable once PossibleNullReferenceException
+                if (result.CollisionalCrossSectionSqA.HasValue)
                 {
-                    // ReSharper disable once PossibleNullReferenceException
-                    if (result.CollisionalCrossSectionSqA.HasValue)
+                    var ionMobilityValue = ionMobilityFunctionsProvider.IonMobilityFromCCS(
+                        result.CollisionalCrossSectionSqA.Value,
+                        ion.PrecursorMz ?? mz, ion.Charge);
+                    if (!Equals(ionMobilityValue, result.IonMobility))
                     {
-                        var ionMobilityValue = ionMobilityFunctionsProvider.IonMobilityFromCCS(
-                            result.CollisionalCrossSectionSqA.Value,
-                            ion.PrecursorMz ?? mz, ion.Charge);
-                        if (!Equals(ionMobilityValue, result.IonMobility))
-                        {
-                            result = IonMobilityAndCCS.GetIonMobilityAndCCS(ionMobilityValue,
-                                result.CollisionalCrossSectionSqA, result.HighEnergyIonMobilityValueOffset);
-                        }
+                        result = IonMobilityAndCCS.GetIonMobilityAndCCS(ionMobilityValue,
+                            result.CollisionalCrossSectionSqA, result.HighEnergyIonMobilityValueOffset);
                     }
                 }
                 return result;
             }
-            else
-            {
-                return ionMobilities?.FirstOrDefault();
-            }
+
+            return result;
         }
 
-        public List<IonMobilityAndCCS> GetIonMobilityInfoFromLibrary(LibKey ion)
+        public List<IonMobilityAndCCS> GetIonMobilitiesInfoFromLibrary(LibKey ion)
         {
-            // Locate this target in ion mobility library, if any
+            // Locate this ion in ion mobility library, if any
             if (IonMobilityLibrary != null && !IonMobilityLibrary.IsNone)
             {
-                var dict = IonMobilityLibrary.GetIonMobilityLibKeyMap();
-                if (dict != null && dict.TryGetValue(ion, out var imList))
+                var libKeyIndex = IonMobilityLibrary.GetIonMobilityLibKeyIndex();
+                if (libKeyIndex != null)
                 {
-                    return imList;
+                    return libKeyIndex.ItemsMatching(ion, LibKeyIndex.LibraryMatchType.ion).Select(item => item.LibraryKey.IonMobility).ToList();
                 }
             }
 
@@ -790,6 +784,21 @@ namespace pwiz.Skyline.Model.DocSettings
         public bool IsEmpty { get { return !HasIonMobilityValue && !HasCollisionalCrossSection; } }
         public static bool IsNullOrEmpty(IonMobilityAndCCS val) {  return val == null || val.IsEmpty; }
 
+        private static readonly LibraryKeyProto.Types.IonMobilityAndCCS EMPTY_PROTO = new LibraryKeyProto.Types.IonMobilityAndCCS();
+        public static LibraryKeyProto.Types.IonMobilityAndCCS GetLibraryProto(IonMobilityAndCCS val)
+        {
+            return IsNullOrEmpty(val)
+                ? EMPTY_PROTO
+                : new LibraryKeyProto.Types.IonMobilityAndCCS
+                {
+                    CollisionalCrossSectionSqA = val.CollisionalCrossSectionSqA ?? 0,
+                    HighEnergyIonMobilityValueOffset = val.HighEnergyIonMobilityValueOffset ?? 0,
+                    IonMobilityUnits =
+                        (LibraryKeyProto.Types.IonMobilityAndCCS.Types.IonMobilityUnits)val.IonMobility.Units,
+                    IonMobility = val.IonMobility.Mobility ?? 0
+                };
+        }
+
         public override bool Equals(object obj)
         {
             if (ReferenceEquals(null, obj)) return false;
@@ -826,12 +835,17 @@ namespace pwiz.Skyline.Model.DocSettings
             return 0;
         }
 
-        public override string ToString() // For debug convenience
+        public override string ToString() 
         {
-            string ccs = HasCollisionalCrossSection ? $@"ccs{CollisionalCrossSectionSqA}" : null;
-            string im = IonMobility.HasValue ? $@"im{IonMobility}" : null;
-            string highEnergyOffset = (HighEnergyIonMobilityValueOffset??0) != 0 ? $@"he{HighEnergyIonMobilityValueOffset}" : null;
+            string ccs = HasCollisionalCrossSection ? $@"CCS{CollisionalCrossSectionSqA}" : null;
+            string im = IonMobility.HasValue ? $@"IM{IonMobility}" : null;
+            string highEnergyOffset = (HighEnergyIonMobilityValueOffset??0) != 0 ? $@"HEO{HighEnergyIonMobilityValueOffset}" : null;
             return TextUtil.SpaceSeparate(ccs,im,highEnergyOffset).Replace(@" ",@"/");
+        }
+
+        public string ToDisplayString()
+        {
+            return IsEmpty ? string.Empty : ToString();
         }
     }
 

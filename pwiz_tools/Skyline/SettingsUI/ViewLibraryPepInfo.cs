@@ -20,6 +20,7 @@
 using System.Linq;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Util;
 
@@ -62,7 +63,8 @@ namespace pwiz.Skyline.SettingsUI
                 var peptideKey = Key.LibraryKey as PeptideLibraryKey;
                 if (peptideKey != null)
                 {
-                    return peptideKey.ModifiedSequence + Transition.GetChargeIndicator(peptideKey.Adduct);
+                    return peptideKey.ModifiedSequence + Transition.GetChargeIndicator(peptideKey.Adduct) +
+                        (peptideKey.IonMobility.IsEmpty ? string.Empty : peptideKey.IonMobility.ToString());
                 }
                 return DisplayText;
             } 
@@ -88,6 +90,11 @@ namespace pwiz.Skyline.SettingsUI
         /// The charge state of the peptide matched to a spectrum
         /// </summary>
         public Adduct Adduct { get { return Key.Adduct; } }
+
+        /// <summary>
+        /// The ion mobility of the peptide+adduct matched to a spectrum
+        /// </summary>
+        public IonMobilityAndCCS IonMobilityAndCCS { get { return Key.IonMobility; } }
 
         /// <summary>
         /// The modified peptide sequence associated with a spectrum

@@ -1171,11 +1171,11 @@ namespace pwiz.SkylineTest
             Assert.AreEqual(0, pred1.FilterWindowWidthCalculator.PeakWidthAtIonMobilityValueMax);
             Assert.AreEqual(100, pred1.FilterWindowWidthCalculator.ResolvingPower);
             var dummy_mz = 0;
-            Assert.AreEqual(17.0, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED), dummy_mz, null).IonMobility.Mobility);
-            Assert.AreEqual(123.45, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED), dummy_mz, null).CollisionalCrossSectionSqA);
-            Assert.AreEqual(17.0, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED), dummy_mz, null).GetHighEnergyIonMobility() ?? 0); // Apply the high energy offset
-            Assert.IsNull(pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED), dummy_mz, null)); // Should not find a value for that charge state
-            Assert.IsNull(pred1.GetIonMobilityFilter(new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED), dummy_mz, null)); // Should not find a value for that peptide
+            Assert.AreEqual(17.0, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).IonMobility.Mobility);
+            Assert.AreEqual(123.45, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).CollisionalCrossSectionSqA);
+            Assert.AreEqual(17.0, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).GetHighEnergyIonMobility() ?? 0); // Apply the high energy offset
+            Assert.IsNull(pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that charge state
+            Assert.IsNull(pred1.GetIonMobilityFilter(new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that peptide
 
             // Check for enforcement of valid resolving power
             CheckIonMobilitySettingsBackwardCompatibility(predictor1.Replace("100", "-1"),Resources.DriftTimePredictor_Validate_Resolving_power_must_be_greater_than_0_);
@@ -1186,10 +1186,10 @@ namespace pwiz.SkylineTest
             Assert.AreEqual(0, pred2.FilterWindowWidthCalculator.PeakWidthAtIonMobilityValueZero);
             Assert.AreEqual(0, pred2.FilterWindowWidthCalculator.PeakWidthAtIonMobilityValueMax);
             Assert.AreEqual(100, pred2.FilterWindowWidthCalculator.ResolvingPower);
-            Assert.AreEqual(17.0, pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED), dummy_mz, null).IonMobility.Mobility);
-            Assert.AreEqual(16.0, pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED), dummy_mz, null).GetHighEnergyIonMobility() ?? 0); // Apply the high energy offset
-            Assert.IsNull(pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED), dummy_mz, null)); // Should not find a value for that charge state
-            Assert.IsNull(pred2.GetIonMobilityFilter(new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED), dummy_mz, null)); // Should not find a value for that peptide
+            Assert.AreEqual(17.0, pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).IonMobility.Mobility);
+            Assert.AreEqual(16.0, pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).GetHighEnergyIonMobility() ?? 0); // Apply the high energy offset
+            Assert.IsNull(pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that charge state
+            Assert.IsNull(pred2.GetIonMobilityFilter(new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that peptide
 
             // Check using drift time predictor with only measured drift times, and a high energy scan drift time offset, and linear width
             var predictor3 =

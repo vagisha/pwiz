@@ -19,6 +19,7 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.Collections;
 using pwiz.Skyline.Model.Crosslinking;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.SkylineTestUtil;
 
@@ -31,7 +32,7 @@ namespace pwiz.SkylineTest
         public void TestCrosslinkSequenceParser()
         {
             CrosslinkLibraryKey libKey =
-                CrosslinkSequenceParser.ParseCrosslinkLibraryKey("VTIAQGGVLPNIQAVLLPKK-TESHHKACGK-[+138.0681@19,6]", 1);
+                CrosslinkSequenceParser.ParseCrosslinkLibraryKey("VTIAQGGVLPNIQAVLLPKK-TESHHKACGK-[+138.0681@19,6]", 1, IonMobilityAndCCS.EMPTY);
             Assert.AreEqual(2, libKey.PeptideLibraryKeys.Count);
             Assert.AreEqual("VTIAQGGVLPNIQAVLLPKK", libKey.PeptideLibraryKeys[0].ModifiedSequence);
             Assert.AreEqual("TESHHKACGK", libKey.PeptideLibraryKeys[1].ModifiedSequence);
@@ -46,7 +47,7 @@ namespace pwiz.SkylineTest
         public void TestCrosslinkWithModifications()
         {
             CrosslinkLibraryKey libKey = CrosslinkSequenceParser.ParseCrosslinkLibraryKey(
-                "C[+57.02146]C[+57.02146]TKPESER-EKVLTSSAR-[+138.0681@4,2]", 1);
+                "C[+57.02146]C[+57.02146]TKPESER-EKVLTSSAR-[+138.0681@4,2]", 1, IonMobilityAndCCS.EMPTY);
             Assert.AreEqual(2, libKey.PeptideLibraryKeys.Count);
             Assert.AreEqual("C[+57.02146]C[+57.02146]TKPESER", libKey.PeptideLibraryKeys[0].ModifiedSequence);
             Assert.AreEqual("EKVLTSSAR", libKey.PeptideLibraryKeys[1].ModifiedSequence);
@@ -73,7 +74,7 @@ namespace pwiz.SkylineTest
 
         private static void VerifySupported(string libKeyString, bool expectedSupported)
         {
-            var libKey = CrosslinkSequenceParser.ParseCrosslinkLibraryKey(libKeyString, 1);
+            var libKey = CrosslinkSequenceParser.ParseCrosslinkLibraryKey(libKeyString, 1, IonMobilityAndCCS.EMPTY);
             Assert.AreEqual(expectedSupported, libKey.IsSupportedBySkyline());
         }
     }

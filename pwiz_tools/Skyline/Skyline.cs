@@ -2204,7 +2204,8 @@ namespace pwiz.Skyline
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
                     Assume.IsTrue(Equals(dlg.ResultCustomMolecule, nodeTransGroup.Peptide.CustomMolecule)); // Not expecting any change to neutral molecule
-                    var newTransGroup = new TransitionGroup(nodeTransGroup.Peptide, dlg.Adduct, dlg.IsotopeLabelType);
+                    var ionMobility = GetLibraryIonMobilityAndCCS(nodeTransGroup.Peptide, dlg);
+                    var newTransGroup = new TransitionGroup(nodeTransGroup.Peptide, dlg.Adduct, ionMobility, dlg.IsotopeLabelType);
                     ModifyDocument(string.Format(Resources.SkylineWindow_ModifyPeptide_Modify__0__,
                             nodeTransitionGroupTree.Text),
                         doc =>
@@ -2222,7 +2223,6 @@ namespace pwiz.Skyline
                                 var newNode =
                                     new TransitionGroupDocNode(nodeTransGroup.TransitionGroup,
                                         nodeTransGroup.Annotations, Document.Settings, null, null,
-                                        nodeTransGroup.IonMobilityAndCCS,
                                         dlg.ResultExplicitTransitionGroupValues, nodeTransGroup.Results,
                                         nodeTransGroup.Children.Cast<TransitionDocNode>().ToArray(),
                                         nodeTransGroup.AutoManageChildren);
@@ -3305,10 +3305,10 @@ namespace pwiz.Skyline
                         TransitionGroupDocNode tranGroupDocNode = null;
                         ModifyDocument(string.Format(Resources.SkylineWindow_AddSmallMolecule_Add_small_molecule_precursor__0_, dlg.ResultCustomMolecule.DisplayName), doc =>
                         {
-                            tranGroup = new TransitionGroup(nodePep.Peptide, dlg.Adduct, dlg.IsotopeLabelType);
+                            var ionMobility = GetLibraryIonMobilityAndCCS(nodePep.Peptide, dlg);
+                            tranGroup = new TransitionGroup(nodePep.Peptide, dlg.Adduct, ionMobility, dlg.IsotopeLabelType);
                             tranGroupDocNode = new TransitionGroupDocNode(tranGroup, Annotations.EMPTY,
                                 doc.Settings, null, null, 
-                                IonMobilityAndCCS.EMPTY,
                                 dlg.ResultExplicitTransitionGroupValues, null, GetDefaultPrecursorTransitions(doc, tranGroup), true);
                             return (SrmDocument)doc.Add(pepPath, tranGroupDocNode);
                         }, docPair => AuditLogEntry.DiffDocNodes(MessageType.added_small_molecule_precursor, docPair, tranGroupDocNode.AuditLogText));
@@ -3343,10 +3343,10 @@ namespace pwiz.Skyline
                             // If ion was described as having an adduct, leave that off for the parent "peptide" molecular formula
                             var peptideMolecule = dlg.ResultCustomMolecule;
                             var peptide = new Peptide(peptideMolecule);
-                            var tranGroup = new TransitionGroup(peptide, dlg.Adduct, dlg.IsotopeLabelType, true, null);
+                            var ionMobility = GetLibraryIonMobilityAndCCS(peptide, dlg);
+                            var tranGroup = new TransitionGroup(peptide, dlg.Adduct, ionMobility, dlg.IsotopeLabelType, true, null);
                             var tranGroupDocNode = new TransitionGroupDocNode(tranGroup, Annotations.EMPTY,
                                 doc.Settings, null, null,
-                                IonMobilityAndCCS.EMPTY,
                                 dlg.ResultExplicitTransitionGroupValues, null,
                                 GetDefaultPrecursorTransitions(doc, tranGroup), true);
                             var nodePepNew = new PeptideDocNode(peptide, Document.Settings, null, null,
@@ -3356,6 +3356,15 @@ namespace pwiz.Skyline
                     }
                 }
             }
+        }
+
+        private IonMobilityAndCCS GetLibraryIonMobilityAndCCS(Peptide peptide, EditCustomMoleculeDlg dlg)
+        {
+            var ionMobilities = Document.Settings.GetLibraryIonMobilities(peptide.Target, dlg.Adduct);
+            var ionMobility =
+                ionMobilities.FirstOrDefault() ??
+                IonMobilityAndCCS.EMPTY; // CONSIDER(bspratt) alert if more than one CCS available?
+            return ionMobility;
         }
 
         #endregion

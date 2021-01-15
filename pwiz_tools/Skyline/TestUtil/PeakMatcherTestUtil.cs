@@ -6,6 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline;
 using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Util;
@@ -21,10 +22,10 @@ namespace pwiz.SkylineTestUtil
             var skylineWindow = Program.MainWindow;
             var doc = skylineWindow.Document;
             IdentityPath identityPath = null;
-            var libKeyToMatch = new PeptideLibraryKey(modifiedSequence, 0);
+            var libKeyToMatch = new PeptideLibraryKey(modifiedSequence, 0, IonMobilityAndCCS.EMPTY);
             foreach (PeptideGroupDocNode nodePepGroup in doc.MoleculeGroups)
             {
-                foreach (var nodePep in nodePepGroup.Peptides.Where(nodePep => LibKeyIndex.KeysMatch(libKeyToMatch, nodePep.ModifiedTarget.GetLibKey(Adduct.EMPTY))))
+                foreach (var nodePep in nodePepGroup.Peptides.Where(nodePep => LibKeyIndex.KeysMatch(libKeyToMatch, nodePep.ModifiedTarget.GetLibKey(Adduct.EMPTY, IonMobilityAndCCS.EMPTY))))
                 {
                     var nodeTranGroup = precursorMz.HasValue
                         ? nodePep.TransitionGroups.First(tranGroup => Math.Abs(tranGroup.PrecursorMz - precursorMz.Value) < 0.01)

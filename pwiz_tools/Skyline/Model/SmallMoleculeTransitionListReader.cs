@@ -1784,7 +1784,7 @@ namespace pwiz.Skyline.Model
                     }
                 }
             }
-            var group = new TransitionGroup(pep, adduct, isotopeLabelType);
+            var group = new TransitionGroup(pep, adduct, IonMobilityAndCCS.EMPTY, isotopeLabelType);
             string errmsg;
             try
             {
@@ -1793,7 +1793,6 @@ namespace pwiz.Skyline.Model
                     return null;
                 return new TransitionGroupDocNode(group, document.Annotations, document.Settings, null,
                     null,
-                    IonMobilityAndCCS.EMPTY, 
                     moleculeInfo.ExplicitTransitionGroupValues, null, new[] { tran }, true);
             }
             catch (InvalidDataException x)

@@ -21,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using pwiz.Common.Collections;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Model.Lib
@@ -57,8 +58,8 @@ namespace pwiz.Skyline.Model.Lib
 
         public bool TryGetValue(Target target, out TItem item)
         {
-            var libraryKey = new LibKey(target, Adduct.EMPTY).LibraryKey;
-            foreach (var matchingItem in ItemsMatching(libraryKey, false))
+            var libraryKey = new LibKey(target, Adduct.EMPTY, IonMobilityAndCCS.EMPTY).LibraryKey;
+            foreach (var matchingItem in ItemsMatching(libraryKey, LibKeyIndex.LibraryMatchType.target))
             {
                 item = matchingItem;
                 return true;
@@ -92,19 +93,19 @@ namespace pwiz.Skyline.Model.Lib
 
         public IEnumerable<TItem> ItemsWithUnmodifiedSequence(Target target)
         {
-            var libraryKey = new LibKey(target, Adduct.EMPTY).LibraryKey;
+            var libraryKey = new LibKey(target, Adduct.EMPTY, IonMobilityAndCCS.EMPTY).LibraryKey;
             var matches = _index.ItemsWithUnmodifiedSequence(libraryKey);
             return matches.Select(item => _allItems[item.OriginalIndex]);
         }
 
-        public IEnumerable<TItem> ItemsMatching(LibraryKey libraryKey, bool matchAdductAlso)
+        public IEnumerable<TItem> ItemsMatching(LibraryKey libraryKey, LibKeyIndex.LibraryMatchType matchType)
         {
-            return _index.ItemsMatching(libraryKey, matchAdductAlso).Select(GetItem);
+            return _index.ItemsMatching(libraryKey, matchType).Select(GetItem);
         }
 
-        public IEnumerable<KeyValuePair<LibKey, TItem>> KeyPairsMatching(LibraryKey libraryKey, bool matchAdductAlso)
+        public IEnumerable<KeyValuePair<LibKey, TItem>> KeyPairsMatching(LibraryKey libraryKey, LibKeyIndex.LibraryMatchType matchType)
         {
-            return _index.ItemsMatching(libraryKey, matchAdductAlso).Select(GetKeyPair);
+            return _index.ItemsMatching(libraryKey, matchType).Select(GetKeyPair);
         }
 
         public IDictionary<LibKey, TItem> AsDictionary()
@@ -125,7 +126,7 @@ namespace pwiz.Skyline.Model.Lib
 
         public bool TryGetValue(LibKey key, out TItem value)
         {
-            foreach (TItem matchingValue in ItemsMatching(key.LibraryKey, true))
+            foreach (TItem matchingValue in ItemsMatching(key.LibraryKey, LibKeyIndex.LibraryMatchType.mobility))
             {
                 value = matchingValue;
                 return true;

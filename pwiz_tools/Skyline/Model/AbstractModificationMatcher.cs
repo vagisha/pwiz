@@ -456,7 +456,7 @@ namespace pwiz.Skyline.Model
                     out nodeGroupMatched);
             }
 
-            var ionMobilities = Settings.GetLibraryIonMobilities(key, ExplicitTransitionGroupValues.EMPTY);
+            var ionMobilities = Settings.GetIonMobilities(key, ExplicitTransitionGroupValues.EMPTY);
             if (!key.Target.IsProteomic)
             {
                 // Scan the spectral lib entry for top N ranked (for now, that's just by intensity with high mz as tie breaker) fragments, 
@@ -470,9 +470,9 @@ namespace pwiz.Skyline.Model
                         var nodes = new List<TransitionGroupDocNode>();
                         foreach (var ionMobility in ionMobilities)
                         {
-                            var group = new TransitionGroup(peptide, key.Adduct, isotopeLabelType);
+                            var group = new TransitionGroup(peptide, key.Adduct, ionMobility, isotopeLabelType);
                             var node = new TransitionGroupDocNode(group, Annotations.EMPTY, Settings, null, libInfo,
-                                ionMobility, ExplicitTransitionGroupValues.EMPTY, null, null, false);
+                                ExplicitTransitionGroupValues.EMPTY, null, null, false);
                             SpectrumPeaksInfo spectrum;
                             if (Settings.PeptideSettings.Libraries.TryLoadSpectrum(key, out spectrum))
                             {
@@ -607,7 +607,7 @@ namespace pwiz.Skyline.Model
                 return null;
             }
 
-            var crosslinkLibraryKey = CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(target.Sequence, 0);
+            var crosslinkLibraryKey = CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(target.Sequence, 0, IonMobilityAndCCS.EMPTY);
 
             if (null != crosslinkLibraryKey)
             {
@@ -680,12 +680,10 @@ namespace pwiz.Skyline.Model
             var crosslinkedPeptide = mainPeptide.ChangeExplicitMods(newMods).ChangeSettings(Settings, diff ?? SrmSettingsDiff.ALL);
             if (!crosslinkLibraryKey.Adduct.IsEmpty)
             {
-
-                // N.B. no ion mobility support for crosslinking (yet?)
                 nodeGroupMatched = new[] { new TransitionGroupDocNode(
-                    new TransitionGroup(mainPeptide.Peptide, crosslinkLibraryKey.Adduct, IsotopeLabelType.light),
+                    new TransitionGroup(mainPeptide.Peptide, crosslinkLibraryKey.Adduct, crosslinkLibraryKey.IonMobility, IsotopeLabelType.light),
                     Annotations.EMPTY,
-                    Settings, newMods, null, IonMobilityAndCCS.EMPTY,  ExplicitTransitionGroupValues.EMPTY, null, null, true)};
+                    Settings, newMods, null,  ExplicitTransitionGroupValues.EMPTY, null, null, true)};
                 crosslinkedPeptide = (PeptideDocNode)crosslinkedPeptide.ChangeChildren( nodeGroupMatched );
             }
 

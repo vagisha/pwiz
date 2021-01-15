@@ -24,6 +24,7 @@ using System.Threading;
 using System.Xml.Serialization;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Prosit.Communication;
 using pwiz.Skyline.Model.Prosit.Config;
 using pwiz.Skyline.Model.Prosit.Models;
@@ -54,7 +55,7 @@ namespace pwiz.SkylineTestConnected
         {
             var pingPep = new Peptide(@"PING");
             var peptide = new PeptideDocNode(pingPep);
-            var precursor = new TransitionGroupDocNode(new TransitionGroup(pingPep, Adduct.SINGLY_PROTONATED, IsotopeLabelType.light),
+            var precursor = new TransitionGroupDocNode(new TransitionGroup(pingPep, Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY, IsotopeLabelType.light),
                 new TransitionDocNode[0]);
             var input = new PrositIntensityModel.PeptidePrecursorNCE(peptide, precursor, IsotopeLabelType.light, 32);
             var intensityModel = PrositIntensityModel.GetInstance(PrositIntensityModel.Models.First());

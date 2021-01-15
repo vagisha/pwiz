@@ -278,15 +278,15 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
                 // CONSIDER: or are they multiple conformers? They have multiple hits with distinct IM in the pepXML
                 var expectedDiffs = LibKeyMap<double>.FromDictionary(new Dictionary<LibKey, double>
                 {
-                    {new PeptideLibraryKey("LC[+57.0]VLHEK", 2), 18.09  },
-                    {new PeptideLibraryKey("EC[+57.0]C[+57.0]DKPLLEK", 3), 7.0},
-                    {new PeptideLibraryKey("SHC[+57.0]IAEVEK", 3), 6.0},
-                    {new PeptideLibraryKey("DDPHAC[+57.0]YSTVFDK", 2), 24.0}
+                    {new PeptideLibraryKey("LC[+57.0]VLHEK", 2, IonMobilityAndCCS.EMPTY), 18.09  },
+                    {new PeptideLibraryKey("EC[+57.0]C[+57.0]DKPLLEK", 3, IonMobilityAndCCS.EMPTY), 7.0},
+                    {new PeptideLibraryKey("SHC[+57.0]IAEVEK", 3, IonMobilityAndCCS.EMPTY), 6.0},
+                    {new PeptideLibraryKey("DDPHAC[+57.0]YSTVFDK", 2, IonMobilityAndCCS.EMPTY), 24.0}
                 }).AsDictionary();
                 foreach (var pair in doc1.PeptidePrecursorPairs)
                 {
                     string errMsg = string.Empty;
-                    var key = new LibKey(pair.NodePep.ModifiedSequence, pair.NodeGroup.PrecursorAdduct);
+                    var key = new LibKey(pair.NodePep.ModifiedSequence, pair.NodeGroup.PrecursorAdduct, IonMobilityAndCCS.EMPTY);
                     double tolerCCS = 5;
                     if (expectedDiffs.ContainsKey(key))
                     {
@@ -332,7 +332,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
                     {
                         var calculatedDriftTime = doc1.Settings.GetIonMobilityFilter(
                             pep, nodeGroup, null, libraryIonMobilityInfo, instrumentInfo, 0);
-                        var libKey = new LibKey(pep.ModifiedSequence, nodeGroup.PrecursorAdduct);
+                        var libKey = new LibKey(pep.ModifiedSequence, nodeGroup.PrecursorAdduct, IonMobilityAndCCS.EMPTY);
                         IonMobilityAndCCS[] infoValueExplicitDT;
                         if (!dictExplicitDT.TryGetValue(libKey, out infoValueExplicitDT))
                         {

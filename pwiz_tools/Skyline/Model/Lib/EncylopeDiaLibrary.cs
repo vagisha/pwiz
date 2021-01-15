@@ -746,7 +746,8 @@ namespace pwiz.Skyline.Model.Lib
             public ElibSpectrumInfo(String peptideModSeq, int charge, int bestFileId, IEnumerable<KeyValuePair<int, FileData>> fileDatas)
             {
                 PeptideModSeq = peptideModSeq;
-                Key = new LibKey(SequenceMassCalc.NormalizeModifiedSequence(peptideModSeq), charge);
+                Key = new LibKey(SequenceMassCalc.NormalizeModifiedSequence(peptideModSeq), charge, 
+                    IonMobilityAndCCS.EMPTY); // No ion mobility info in EncyclopeDta
                 BestFileId = bestFileId;
                 FileDatas = ImmutableSortedList.FromValues(fileDatas);
             }

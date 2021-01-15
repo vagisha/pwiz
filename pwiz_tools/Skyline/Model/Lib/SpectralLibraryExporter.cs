@@ -90,13 +90,14 @@ namespace pwiz.Skyline.Model.Lib
             {
                 var sequence = Document.Settings.GetPrecursorCalc(nodeTranGroup.TransitionGroup.LabelType, nodePep.ExplicitMods)
                     .GetModifiedSequence(nodePep.Peptide.Target, SequenceModFormatType.lib_precision, false);
-                key = new LibKey(sequence, nodeTranGroup.PrecursorAdduct.AdductCharge);
+                key = new LibKey(sequence, nodeTranGroup.PrecursorAdduct.AdductCharge, IonMobilityAndCCS.EMPTY);
             }
             else
             {
                 // For small molecules, the "modification" is expressed in the adduct
-                key = new LibKey(nodeTranGroup.CustomMolecule.GetSmallMoleculeLibraryAttributes(), nodeTranGroup.PrecursorAdduct);
+                key = new LibKey(nodeTranGroup.CustomMolecule.GetSmallMoleculeLibraryAttributes(), nodeTranGroup.PrecursorAdduct, IonMobilityAndCCS.EMPTY);
             }
+
             var mi = new List<SpectrumPeaksInfo.MI>();
             var rt = 0.0;
             var im = IonMobilityAndCCS.EMPTY;
@@ -170,7 +171,6 @@ namespace pwiz.Skyline.Model.Lib
                     PrecursorMz = nodeTranGroup.PrecursorMz,
                     SpectrumPeaks = new SpectrumPeaksInfo(mi.ToArray()),
                     RetentionTimes = new List<SpectrumMzInfo.IonMobilityAndRT>(),
-                    IonMobility = im,
                     Protein = nodePepGroup.Name,
                     RetentionTime = rt
                 };
@@ -179,7 +179,6 @@ namespace pwiz.Skyline.Model.Lib
             var isBest = replicateIndex == nodePep.BestResult;
             if (isBest)
             {
-                spectrumMzInfo.IonMobility = im;
                 spectrumMzInfo.RetentionTime = rt;
             }
             spectrumMzInfo.RetentionTimes.Add(new SpectrumMzInfo.IonMobilityAndRT(chromFileName, im, rt, isBest));

@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using pwiz.Common.Collections;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Util;
 
@@ -64,7 +65,7 @@ namespace pwiz.Skyline.Model
 
         public bool Contains(KeyValuePair<Target, TValue> item)
         {
-            return _libKeyMap.ItemsMatching(MakeKey(item.Key), false).Contains(item.Value);
+            return _libKeyMap.ItemsMatching(MakeKey(item.Key), LibKeyIndex.LibraryMatchType.target).Contains(item.Value);
         }
 
         public bool ContainsKey(Target key)
@@ -114,11 +115,11 @@ namespace pwiz.Skyline.Model
 
         private IEnumerable<TValue> ItemsMatching(Target target)
         {
-            return _libKeyMap.ItemsMatching(MakeKey(target), false);
+            return _libKeyMap.ItemsMatching(MakeKey(target), LibKeyIndex.LibraryMatchType.target);
         }
         private static LibraryKey MakeKey(Target target)
         {
-            return new LibKey(target, Adduct.EMPTY).LibraryKey;
+            return new LibKey(target, Adduct.EMPTY, IonMobilityAndCCS.EMPTY).LibraryKey;
         }
 
         void ICollection<KeyValuePair<Target, TValue>>.Add(KeyValuePair<Target, TValue> item)

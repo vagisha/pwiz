@@ -341,8 +341,8 @@ namespace pwiz.Skyline.Model.Results
             if (nodePep != null && nodePep.IsProteomic && _chromEntryIndex != null)
             {
                 bool anyFound = false;
-                var key = new LibKey(nodePep.ModifiedTarget, Adduct.EMPTY).LibraryKey;
-                foreach (var chromatogramIndex in _chromEntryIndex.ItemsMatching(key, false).SelectMany(list=>list))
+                var key = new LibKey(nodePep.ModifiedTarget, Adduct.EMPTY, IonMobilityAndCCS.EMPTY).LibraryKey;
+                foreach (var chromatogramIndex in _chromEntryIndex.ItemsMatching(key, LibKeyIndex.LibraryMatchType.target).SelectMany(list=>list))
                 {
                     var entry = _chromatogramEntries[chromatogramIndex];
                     if (!MatchMz(precursorMz, entry.Precursor, tolerance))
@@ -411,8 +411,8 @@ namespace pwiz.Skyline.Model.Results
             }
             else
             {
-                var key1 = new PeptideLibraryKey(nodePep.ModifiedSequence, 0);
-                var key2 = new PeptideLibraryKey(Encoding.ASCII.GetString(_textIdBytes, textIdIndex, textIdLen), 0);
+                var key1 = new PeptideLibraryKey(nodePep.ModifiedSequence, 0, IonMobilityAndCCS.EMPTY);
+                var key2 = new PeptideLibraryKey(Encoding.ASCII.GetString(_textIdBytes, textIdIndex, textIdLen), 0, IonMobilityAndCCS.EMPTY);
                 return LibKeyIndex.KeysMatch(key1, key2);
             }
         }
@@ -1515,12 +1515,12 @@ namespace pwiz.Skyline.Model.Results
                         var customMolecule =
                             CustomMolecule.FromSerializableString(Encoding.UTF8.GetString(_textIdBytes, textIdIndex,
                                 textIdLength));
-                        libraryKey = new MoleculeLibraryKey(customMolecule.GetSmallMoleculeLibraryAttributes(), Adduct.EMPTY);
+                        libraryKey = new MoleculeLibraryKey(customMolecule.GetSmallMoleculeLibraryAttributes(), Adduct.EMPTY, IonMobilityAndCCS.EMPTY);
                     }
                     else
                     {
                         libraryKey =
-                            new PeptideLibraryKey(Encoding.ASCII.GetString(_textIdBytes, textIdIndex, textIdLength), 0);
+                            new PeptideLibraryKey(Encoding.ASCII.GetString(_textIdBytes, textIdIndex, textIdLength), 0, IonMobilityAndCCS.EMPTY);
                     }
                     libraryKeys.Add(libraryKey);
                     chromGroupIndexList = new List<int>();

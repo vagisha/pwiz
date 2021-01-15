@@ -625,9 +625,11 @@ namespace pwiz.Skyline.SettingsUI
                         {
                             var seqCharge = new SequenceAndCharge(values[0], this);
                             var fragCharge = new FragmentAndCharge(values[1]);
+                            var ionMobility = IonMobilityAndCCS.EMPTY; // CONSIDER(bspratt) IMS optimization
                             libraryOptimizationsNew.Add(new DbOptimization(ViewDbType,
                                 seqCharge.ModifiedSequence,
                                 seqCharge.Charge,
+                                ionMobility,
                                 fragCharge.FragmentIon,
                                 fragCharge.Adduct,
                                 double.Parse(values[2])));
@@ -639,9 +641,11 @@ namespace pwiz.Skyline.SettingsUI
                         values =>
                         {
                             var seqCharge = new SequenceAndCharge(values[0], this);
+                            var ionMobility = IonMobilityAndCCS.EMPTY; // CONSIDER(bspratt) IMS optimization
                             libraryOptimizationsNew.Add(new DbOptimization(ViewDbType,
                                 seqCharge.ModifiedSequence,
                                 seqCharge.Charge,
+                                ionMobility,
                                 null, Adduct.EMPTY, double.Parse(values[1])));
                         });
                 }
@@ -920,19 +924,20 @@ namespace pwiz.Skyline.SettingsUI
                         {
                             var sequence = _document.Settings.GetSourceTarget(peptide);
                             var charge = nodeGroup.TransitionGroup.PrecursorAdduct;
+                            var ionMobility = nodeGroup.IonMobilityAndCCS;
                             foreach (TransitionDocNode nodeTran in nodeGroup.Children)
                             {
                                 OptimizationKey key = null;
                                 double? value = null;
                                 if (Equals(ViewType, ExportOptimize.CE))
                                 {
-                                    key = new OptimizationKey(ViewDbType, sequence, charge, nodeTran.GetFragmentIonName(CultureInfo.InvariantCulture), nodeTran.Transition.Adduct);
+                                    key = new OptimizationKey(ViewDbType, sequence, charge, ionMobility, nodeTran.GetFragmentIonName(CultureInfo.InvariantCulture), nodeTran.Transition.Adduct);
                                     value = OptimizationStep<CollisionEnergyRegression>.FindOptimizedValueFromResults(
                                             settings, peptide, nodeGroup, nodeTran, OptimizedMethodType.Transition, GetCollisionEnergy);
                                 }
                                 else if (Equals(ViewType, ExportOptimize.COV))
                                 {
-                                    key = new OptimizationKey(ViewDbType, sequence, charge, null, Adduct.EMPTY);
+                                    key = new OptimizationKey(ViewDbType, sequence, charge, ionMobility, null, Adduct.EMPTY);
                                     value = OptimizationStep<CompensationVoltageRegressionFine>.FindOptimizedValueFromResults(_document.Settings,
                                         peptide, nodeGroup, null, OptimizedMethodType.Precursor, SrmDocument.GetCompensationVoltageFine) ?? 0;
                                 }

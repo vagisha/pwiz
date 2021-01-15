@@ -318,7 +318,7 @@ namespace pwiz.Skyline.Model.Serialization
             {
                 return target.Sequence;
             }
-            return new PeptideLibraryKey(target.Sequence, 0).FormatToOneDecimal().ModifiedSequence;
+            return new PeptideLibraryKey(target.Sequence, 0, IonMobilityAndCCS.EMPTY).FormatToOneDecimal().ModifiedSequence;
         }
 
         private void WriteLookupMods(XmlWriter writer, PeptideDocNode node)
@@ -681,6 +681,7 @@ namespace pwiz.Skyline.Model.Serialization
             {
                 var optimization = lib.GetOptimization(OptimizationType.collision_energy,
                     Settings.GetSourceTarget(nodePep), nodeGroup.PrecursorAdduct,
+                    nodeGroup.IonMobilityAndCCS,
                     nodeTransition.FragmentIonName, nodeTransition.Transition.Adduct);
                 if (optimization != null)
                 {

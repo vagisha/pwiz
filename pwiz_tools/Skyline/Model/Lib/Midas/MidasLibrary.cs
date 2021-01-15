@@ -377,7 +377,8 @@ namespace pwiz.Skyline.Model.Lib.Midas
                     continue;
                 }
                 var key = new PeptideLibraryKey(spectrum.DocumentPeptide,
-                    spectrum.DocumentPrecursorCharge.GetValueOrDefault());
+                    spectrum.DocumentPrecursorCharge.GetValueOrDefault(),
+                    IonMobilityAndCCS.EMPTY); // TODO(bspratt) and IMS interactions with MIDAS?
                 if (LibKeyIndex.KeysMatch(libKey.LibraryKey, key))
                 {
                     yield return spectrum;
@@ -397,10 +398,10 @@ namespace pwiz.Skyline.Model.Lib.Midas
 
         public override bool ContainsAny(Target target)
         {
-            var key = new PeptideLibraryKey(target.Sequence, 0);
+            var key = new PeptideLibraryKey(target.Sequence, 0, IonMobilityAndCCS.EMPTY);
             return _spectra.SelectMany(fileSpectra => fileSpectra.Value)
                 .Any(spectrum => null != spectrum.DocumentPeptide && key.UnmodifiedSequence ==
-                                 new PeptideLibraryKey(spectrum.DocumentPeptide, 0).UnmodifiedSequence);
+                                 new PeptideLibraryKey(spectrum.DocumentPeptide, 0, IonMobilityAndCCS.EMPTY).UnmodifiedSequence);
         }
 
         public override bool TryGetLibInfo(LibKey key, out SpectrumHeaderInfo libInfo)
@@ -536,7 +537,9 @@ namespace pwiz.Skyline.Model.Lib.Midas
                     yield break;
 
                 foreach (var spectrum in _spectra.Values.SelectMany(s => s).Where(s => s.HasPrecursorMatch))
-                    yield return new LibKey(spectrum.MatchedPrecursorMz.GetValueOrDefault(), spectrum.RetentionTime);
+                    yield return new LibKey(spectrum.MatchedPrecursorMz.GetValueOrDefault(),
+                        IonMobilityAndCCS.EMPTY, // CONSIDER(bspratt) MIDAS ion mobility?
+                        spectrum.RetentionTime);
             }
         }
 

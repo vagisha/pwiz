@@ -28,6 +28,7 @@ using System.Xml;
 using System.Xml.Serialization;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -477,7 +478,7 @@ namespace pwiz.Skyline.Model.Lib
                 // These libraries should not have duplicates, but just in case.
                 // Apparently, GPM libraries do contain redundancies, as we found
                 // when a revision lost this test.
-                var key = new LibKey(modifiedSequence, charge);
+                var key = new LibKey(modifiedSequence, charge, IonMobilityAndCCS.EMPTY);
                 if (setLibKeys.Add(key))
                 {
                     libraryEntries.Add(new XHunterSpectrumInfo(key, i2, expect, numPeaks, location));

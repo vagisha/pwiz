@@ -1176,7 +1176,7 @@ namespace pwiz.Skyline.SettingsUI.Irt
             {
                 var targetIndexes = ImmutableList.ValueOf(Enumerable.Range(0, Items.Count)
                     .Where(index => null != Items[index].ModifiedTarget));
-                libraryIndices = new LibKeyMap<int>(targetIndexes, targetIndexes.Select(i=>Items[i].ModifiedTarget.GetLibKey(Adduct.EMPTY).LibraryKey));
+                libraryIndices = new LibKeyMap<int>(targetIndexes, targetIndexes.Select(i=>Items[i].ModifiedTarget.GetLibKey(Adduct.EMPTY, IonMobilityAndCCS.EMPTY).LibraryKey));
 
                 changed = new List<Target>();
                 overwrite = new List<Target>();

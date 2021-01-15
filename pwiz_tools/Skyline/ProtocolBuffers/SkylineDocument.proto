@@ -174,6 +174,19 @@ message LibraryKeyProto
 	message Positions {
 		repeated int32 position = 1;
 	}
+	message IonMobilityAndCCS { // Multiple conformers support
+		enum IonMobilityUnits {
+			none = 0;
+			drift_time_msec = 1;
+			inverse_K0_Vsec_per_cm2 = 2;
+			compensation_V = 3;
+		}
+		double ionMobility = 1;
+		IonMobilityUnits ionMobilityUnits = 2;
+		double highEnergyIonMobilityValueOffset = 3;
+		double collisionalCrossSectionSqA = 4;
+	}
+
 	KeyType keyType = 1;
 	string modifiedSequence = 2;
 	int32 charge = 3;
@@ -186,5 +199,6 @@ message LibraryKeyProto
 	double retentionTime = 10;
 	repeated string crosslinkedSequences = 11;
 	repeated Crosslinker crosslinkers = 12;
+	IonMobilityAndCCS ionMobilityAndCCS = 13;
 }
 

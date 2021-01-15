@@ -723,6 +723,7 @@ namespace pwiz.Skyline.Model.Lib
                         int fileId = iFileId < 0 || reader.IsDBNull(iFileId) ? -1 : reader.GetInt32(iFileId);
                         string sequence = reader.GetString(iModSeq);
                         int charge = reader.GetInt16(iCharge);
+                        var ionMobility = IonMobilityAndCCS.EMPTY; // TODO(bspratt) retrieve IMS info from refSpectra table
                         string adduct = iAdduct >= 0 && !reader.IsDBNull(iAdduct) ? reader.GetString(iAdduct) : null;
                         int copies = reader.GetInt32(iCopies);
                         int numPeaks = reader.GetInt32(iPeaks);
@@ -771,16 +772,16 @@ namespace pwiz.Skyline.Model.Lib
                         if (isProteomic)
                         {
                             LibraryKey libraryKey =
-                                CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(sequence, charge);
+                                CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(sequence, charge, ionMobility);
                             if (libraryKey == null)
                             {
-                                libraryKey = new PeptideLibraryKey(sequence, charge);
+                                libraryKey = new PeptideLibraryKey(sequence, charge, ionMobility);
                             }
                             key = new LibKey(libraryKey);
                         }
                         else
                         {
-                            key = new LibKey(smallMoleculeLibraryAttributes, Adduct.FromStringAssumeChargeOnly(adduct));
+                            key = new LibKey(smallMoleculeLibraryAttributes, Adduct.FromStringAssumeChargeOnly(adduct), ionMobility);
                         }
                         // These libraries should not have duplicates, but just in case.
                         // CONSIDER: Emit error about redundancy?
@@ -1635,7 +1636,7 @@ namespace pwiz.Skyline.Model.Lib
                         return true; // return value false means "that's not a proper file index"'
                     }
 
-                    ionMobilitiesLookup = targetIons.SelectMany(target => _libraryEntries.ItemsMatching(target, true)).ToLookup(
+                    ionMobilitiesLookup = targetIons.SelectMany(target => _libraryEntries.ItemsMatching(target, LibKeyIndex.LibraryMatchType.mobility)).ToLookup(
                         entry => entry.Key,
                         entry => entry.IonMobilitiesByFileId.GetIonMobilityInfo(source.Id));
                 }
@@ -1670,7 +1671,7 @@ namespace pwiz.Skyline.Model.Lib
                 var ionMobilitiesDict = new Dictionary<LibKey, IonMobilityAndCCS[]>();
                 foreach (var target in targetIons)
                 {
-                    var targetMatches = _libraryEntries.ItemsMatching(target, true);
+                    var targetMatches = _libraryEntries.ItemsMatching(target, LibKeyIndex.LibraryMatchType.ion);
                     foreach (var matchedItem in targetMatches)
                     {
                         var matchedTarget = matchedItem.Key;
@@ -2367,7 +2368,7 @@ namespace pwiz.Skyline.Model.Lib
                 newSequence.Append(ModifiedSequence.Bracket(mod.Value));
             }
             newSequence.Append(unmodifiedSequence.Substring(aaCount));
-            return new PeptideLibraryKey(newSequence.ToString(), impreciseLibraryKey.Charge);
+            return new PeptideLibraryKey(newSequence.ToString(), impreciseLibraryKey.Charge, impreciseLibraryKey.IonMobility);
         }
     }
 

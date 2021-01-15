@@ -290,6 +290,7 @@ namespace pwiz.Skyline.Model.Lib.ChromLib
                         }
                         var modifiedSequence = new Target((string) row[1]);
                         var charge = (int) row[2];  // TODO(bspratt) generalize chromatogram libs to small mol
+                        var ionMobility = IonMobilityAndCCS.EMPTY; // TODO(bspratt) inspect ion mobility columns in newest clib format
                         double totalArea = Convert.ToDouble(row[3]);
                         List<KeyValuePair<int, double>> retentionTimes;
                         var indexedRetentionTimes = new IndexedRetentionTimes();
@@ -307,7 +308,7 @@ namespace pwiz.Skyline.Model.Lib.ChromLib
                             continue;
                         }
 
-                        var libKey = new LibKey(modSeqNormal.Sequence, charge);
+                        var libKey = new LibKey(modSeqNormal.Sequence, charge, ionMobility);
                         IList<SpectrumPeaksInfo.MI> transitionAreas;
                         allTransitionAreas.TryGetValue(id, out transitionAreas);
                         spectrumInfos.Add(new ChromLibSpectrumInfo(libKey, id, totalArea, indexedRetentionTimes, transitionAreas));

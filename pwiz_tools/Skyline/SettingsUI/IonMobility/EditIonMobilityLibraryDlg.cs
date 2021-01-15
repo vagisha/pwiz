@@ -119,19 +119,12 @@ namespace pwiz.Skyline.SettingsUI.IonMobility
                 if (_originalMobilitiesFlat.Length != LibraryMobilitiesFlat.Count)
                     return true;
 
-                var ionMobilities = IonMobilityLibrary.FlatListToMultiConformerDictionary(LibraryMobilitiesFlat);
+                var ionMobilities = IonMobilityLibrary.FlatListToLibKeyIndex(LibraryMobilitiesFlat);
                 foreach (var item in _originalMobilitiesFlat)
                 {
-                    if (ionMobilities.TryGetValue(item.Precursor, out var value))
+                    if (!ionMobilities.ItemsMatching(item.Precursor, LibKeyIndex.LibraryMatchType.mobility).Any())
                     {
-                        if (!value.Any(v => Equals(v, item.GetIonMobilityAndCCS())))
-                        {
-                            return true; // Original mobility value for this ion is not present
-                        }
-                    }
-                    else
-                    {
-                        return true;
+                        return true; // Original mobility value for this ion is not present in current list
                     }
                 }
                 return false;
@@ -479,13 +472,15 @@ namespace pwiz.Skyline.SettingsUI.IonMobility
 
         public static string ValidateUniquePrecursors(IEnumerable<ValidatingIonMobilityPrecursor> precursorIonMobilities, out List<ValidatingIonMobilityPrecursor> minimalSet)
         {
-            var dict = IonMobilityLibrary.FlatListToMultiConformerDictionary(precursorIonMobilities);
-            minimalSet = IonMobilityLibrary.MultiConformerDictionaryToFlatList(dict); // The conversion to dict removed any duplicates
+            var libKeyIndex = IonMobilityLibrary.FlatListToLibKeyIndex(precursorIonMobilities);
+            minimalSet = IonMobilityLibrary.MultiConformerDictionaryToFlatList(libKeyIndex); // The conversion to dict removed any duplicates
             var multiConformers = new HashSet<LibKey>();
-            foreach (var pair in dict)
+            foreach (var item in libKeyIndex)
             {
-                if (pair.Value.Count > 1)
-                    multiConformers.Add(pair.Key);
+                if (libKeyIndex.ItemsMatching(item.LibraryKey, LibKeyIndex.LibraryMatchType.ion).ToList().Count > 1)
+                {
+                    multiConformers.Add(new LibKey(item.LibraryKey.Target, item.LibraryKey.Adduct, IonMobilityAndCCS.EMPTY));
+                }
             }
 
             var multiConformersCount = multiConformers.Count;
@@ -598,7 +593,7 @@ namespace pwiz.Skyline.SettingsUI.IonMobility
                 foreach (var existing in previous)
                 {
                     // Determine whether the document uses a different representation of the same precursor
-                    var match = found.KeyPairsMatching(existing.Precursor, true).ToArray();
+                    var match = found.KeyPairsMatching(existing.Precursor, LibKeyIndex.LibraryMatchType.ion).ToArray();
                     if (match.Length == 0)
                     {
                         // Document did not contain the library precursor, retain it
@@ -628,7 +623,8 @@ namespace pwiz.Skyline.SettingsUI.IonMobility
         {
 
             // List any measured ion mobility values
-            _gridViewLibraryDriver.SetTablePrecursors(ionMobilities.Select(item => new ValidatingIonMobilityPrecursor(item.Key, item.Value)));
+            _gridViewLibraryDriver.SetTablePrecursors(ionMobilities.Select(item => 
+                new ValidatingIonMobilityPrecursor(item.Key.Target, item.Key.Adduct, item.Value)));
 
             cbOffsetHighEnergySpectra.Checked = ionMobilities.Any(item => item.Value.HighEnergyIonMobilityValueOffset != 0);
 
@@ -767,7 +763,7 @@ namespace pwiz.Skyline.SettingsUI.IonMobility
                                         var updated = new List<ValidatingIonMobilityPrecursor>();
                                         foreach (var kvp in dict)
                                         {
-                                            updated.Add(new ValidatingIonMobilityPrecursor(kvp.Key, kvp.Value));
+                                            updated.Add(new ValidatingIonMobilityPrecursor(kvp.Key.Target, kvp.Key.Adduct, kvp.Value));
                                         }
                                         peptideCollisionalCrossSections = updated;
                                     }

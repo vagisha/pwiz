@@ -61,20 +61,20 @@ namespace pwiz.Skyline.Model.Crosslinking
             return ChangeProp(ImClone(this), im => im.ExplicitMods = explicitMods);
         }
 
-        public TransitionGroup GetTransitionGroup(IsotopeLabelType labelType, Adduct adduct)
+        public TransitionGroup GetTransitionGroup(IsotopeLabelType labelType, Adduct adduct, IonMobilityAndCCS ionMobility)
         {
-            return new TransitionGroup(Peptide, adduct, labelType);
+            return new TransitionGroup(Peptide, adduct, ionMobility, labelType);
         }
 
-        public TransitionGroupDocNode GetTransitionGroupDocNode(SrmSettings settings, IsotopeLabelType labelType, Adduct adduct) {
-            var transitionGroup = GetTransitionGroup(labelType, adduct);
-            var transitionGroupDocNode = new TransitionGroupDocNode(transitionGroup, Annotations.EMPTY, settings, ExplicitMods, null, IonMobilityAndCCS.EMPTY, ExplicitTransitionGroupValues.EMPTY, null, null, false);
+        public TransitionGroupDocNode GetTransitionGroupDocNode(SrmSettings settings, IsotopeLabelType labelType, Adduct adduct, IonMobilityAndCCS ionMobility) {
+            var transitionGroup = GetTransitionGroup(labelType, adduct, ionMobility);
+            var transitionGroupDocNode = new TransitionGroupDocNode(transitionGroup, Annotations.EMPTY, settings, ExplicitMods, null, ExplicitTransitionGroupValues.EMPTY, null, null, false);
             return transitionGroupDocNode;
         }
 
         public MoleculeMassOffset GetNeutralFormula(SrmSettings settings, IsotopeLabelType labelType)
         {
-            var transitionGroupDocNode = GetTransitionGroupDocNode(settings, labelType, Adduct.SINGLY_PROTONATED);
+            var transitionGroupDocNode = GetTransitionGroupDocNode(settings, labelType, Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY);
             return transitionGroupDocNode.GetNeutralFormula(settings, ExplicitMods);
         }
 
@@ -135,7 +135,7 @@ namespace pwiz.Skyline.Model.Crosslinking
         public IEnumerable<ComplexFragmentIon> ListSimpleFragmentIons(SrmSettings settings, bool useFilter)
         {
             var transitionGroupDocNode =
-                GetTransitionGroupDocNode(settings, IsotopeLabelType.light, Adduct.SINGLY_PROTONATED);
+                GetTransitionGroupDocNode(settings, IsotopeLabelType.light, Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY);
             yield return ComplexFragmentIon.NewOrphanFragmentIon(transitionGroupDocNode.TransitionGroup, ExplicitMods, Adduct.SINGLY_PROTONATED);
             foreach (var transitionDocNode in transitionGroupDocNode.TransitionGroup.GetTransitions(settings,
                 transitionGroupDocNode, ExplicitMods, transitionGroupDocNode.PrecursorMz,
@@ -235,7 +235,7 @@ namespace pwiz.Skyline.Model.Crosslinking
 
         public ComplexFragmentIon MakeComplexFragmentIon(SrmSettings settings, IsotopeLabelType labelType, ComplexFragmentIonName complexFragmentIonName)
         {
-            var transitionGroup = GetTransitionGroup(labelType, Adduct.SINGLY_PROTONATED);
+            var transitionGroup = GetTransitionGroup(labelType, Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY);
             Transition transition;
             if (complexFragmentIonName.IonType == IonType.precursor || complexFragmentIonName.IonType == IonType.custom)
             {

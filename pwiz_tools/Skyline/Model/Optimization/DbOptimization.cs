@@ -18,6 +18,7 @@
  */
 using System;
 using System.Globalization;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Irt;
 using pwiz.Skyline.Model.Lib.BlibData;
 using pwiz.Skyline.Properties;
@@ -42,6 +43,7 @@ namespace pwiz.Skyline.Model.Optimization
         public OptimizationType OptType { get; set; }
         public Target PeptideModSeq { get; set; }
         public Adduct PrecursorAdduct { get; set; }
+        public IonMobilityAndCCS PrecursorIonMobility { get; set; }
         public string FragmentIon { get; set; }
         public Adduct ProductAdduct { get; set; }
 
@@ -50,29 +52,31 @@ namespace pwiz.Skyline.Model.Optimization
             OptType = OptimizationType.unknown;
         }
 
-        public OptimizationKey(OptimizationType optType, Target peptideModSeq, Adduct precursorAdduct, string fragmentIon, Adduct productAdduct)
+        public OptimizationKey(OptimizationType optType, Target peptideModSeq, Adduct precursorAdduct, IonMobilityAndCCS precursorIonMobility, string fragmentIon, Adduct productAdduct)
         {
             OptType = optType;
             PeptideModSeq = peptideModSeq;
             PrecursorAdduct = precursorAdduct;
+            PrecursorIonMobility = precursorIonMobility;
             FragmentIon = fragmentIon;
             ProductAdduct = productAdduct;
         }
 
         public OptimizationKey(OptimizationKey other)
-            : this(other.OptType, other.PeptideModSeq, other.PrecursorAdduct, other.FragmentIon, other.ProductAdduct)
+            : this(other.OptType, other.PeptideModSeq, other.PrecursorAdduct, other.PrecursorIonMobility, other.FragmentIon, other.ProductAdduct)
         {
         }
 
         public override string ToString()  // For debugging
         {
+            var mobility = PrecursorIonMobility.IsEmpty ? string.Empty : $@"(IM {PrecursorIonMobility})";
             if (PeptideModSeq.IsProteomic)
               return !string.IsNullOrEmpty(FragmentIon)
-                    ? string.Format(@"{0} (charge {1}); {2} (charge {3})", PeptideModSeq, PrecursorAdduct, FragmentIon, ProductAdduct)
-                    : string.Format(@"{0} (charge {1})", PeptideModSeq, PrecursorAdduct);
+                    ? string.Format(@"{0} (charge {1}); {2} (charge {3}){4}", PeptideModSeq, PrecursorAdduct, FragmentIon, ProductAdduct, mobility)
+                    : string.Format(@"{0} (charge {1}){2}", PeptideModSeq, PrecursorAdduct, mobility);
             return !string.IsNullOrEmpty(FragmentIon)
-                ? string.Format(@"{0}{1}; {2}{3}", PeptideModSeq, PrecursorAdduct, FragmentIon, ProductAdduct)
-                : string.Format(@"{0}{1}", PeptideModSeq, PrecursorAdduct);
+                ? string.Format(@"{0}{1}{4}; {2}{3}", PeptideModSeq, PrecursorAdduct, FragmentIon, ProductAdduct, mobility)
+                : string.Format(@"{0}{1}{2}", PeptideModSeq, PrecursorAdduct, mobility);
         }
 
         public int CompareTo(object obj)
@@ -201,7 +205,7 @@ namespace pwiz.Skyline.Model.Optimization
         public virtual Target Target { get { return Key.PeptideModSeq; } }
 
         public DbOptimization(OptimizationKey key, double value)
-            : this(key.OptType, key.PeptideModSeq, key.PrecursorAdduct, key.FragmentIon, key.ProductAdduct, value)
+            : this(key.OptType, key.PeptideModSeq, key.PrecursorAdduct, key.PrecursorIonMobility, key.FragmentIon, key.ProductAdduct, value)
         {
         }
 
@@ -211,9 +215,9 @@ namespace pwiz.Skyline.Model.Optimization
             Id = other.Id;
         }
 
-        public DbOptimization(OptimizationType type, Target seq, Adduct charge, string fragmentIon, Adduct productCharge, double value)
+        public DbOptimization(OptimizationType type, Target seq, Adduct charge, IonMobilityAndCCS ionMobility, string fragmentIon, Adduct productCharge, double value)
         {
-            Key = new OptimizationKey(type, seq, charge, fragmentIon, productCharge);
+            Key = new OptimizationKey(type, seq, charge, ionMobility, fragmentIon, productCharge);
             Value = value;
         }
 

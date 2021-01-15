@@ -1824,7 +1824,23 @@ namespace pwiz.Skyline.Properties {
                 this["TestSmallMolecules"] = value;
             }
         }
-        
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool TestMultipleConformers
+        {
+            get
+            {
+                return ((bool)(this["TestMultipleConformers"]));
+            }
+            set
+            {
+                this["TestMultipleConformers"] = value;
+            }
+        }
+
+
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("True")]

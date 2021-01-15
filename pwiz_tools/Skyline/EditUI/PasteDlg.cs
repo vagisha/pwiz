@@ -467,7 +467,7 @@ namespace pwiz.Skyline.EditUI
                 }
 
                 CrosslinkLibraryKey crosslinkLibraryKey =
-                    CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(peptideSequence, 0);
+                    CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(peptideSequence, 0, IonMobilityAndCCS.EMPTY);
                 if (crosslinkLibraryKey == null)
                 {
                     if (!FastaSequence.IsExSequence(peptideSequence))

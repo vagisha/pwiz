@@ -69,7 +69,7 @@ namespace pwiz.Skyline.Model
             if (_sequences.Current != null)
             {
                 CrosslinkLibraryKey crosslinkLibraryKey =
-                    CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(_sequences.Current, 0);
+                    CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(_sequences.Current, 0, IonMobilityAndCCS.EMPTY);
                 if (crosslinkLibraryKey != null)
                 {
                     return crosslinkLibraryKey.PeptideLibraryKeys.SelectMany(peptideLibraryKey =>

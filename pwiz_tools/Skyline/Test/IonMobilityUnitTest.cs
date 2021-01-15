@@ -82,8 +82,8 @@ namespace pwiz.SkylineTest
             var ccs2 = new List<IonMobilityAndCCS> {  IonMobilityAndCCS.GetIonMobilityAndCCS(im, 3, HIGH_ENERGY_DRIFT_TIME_OFFSET_MSEC),  IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.EMPTY, 4, HIGH_ENERGY_DRIFT_TIME_OFFSET_MSEC) }; // Collisional cross sections
             const string seq1 = "JKLM";
             const string seq2 = "KLMN";
-            dictCCS1.Add(new LibKey(seq1,1),ccs1.ToArray());
-            dictCCS1.Add(new LibKey(seq2,1),ccs2.ToArray());
+            dictCCS1.Add(new LibKey(seq1,1, IonMobilityAndCCS.EMPTY),ccs1.ToArray());
+            dictCCS1.Add(new LibKey(seq2,1, IonMobilityAndCCS.EMPTY),ccs2.ToArray());
             var lib = new List<LibraryIonMobilityInfo> { new LibraryIonMobilityInfo("test", false, dictCCS1) };
 
             var peptideTimes = CollisionalCrossSectionGridViewDriver.CollectIonMobilitiesAndCollisionalCrossSections(null,
@@ -121,7 +121,7 @@ namespace pwiz.SkylineTest
             var dictCCS2 = new Dictionary<LibKey, IonMobilityAndCCS[]>();
             var ccs3 = new List<IonMobilityAndCCS> { IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.GetIonMobilityValue(4, eIonMobilityUnits.drift_time_msec), 1.75, HIGH_ENERGY_DRIFT_TIME_OFFSET_MSEC), IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.GetIonMobilityValue(5, eIonMobilityUnits.drift_time_msec), null, HIGH_ENERGY_DRIFT_TIME_OFFSET_MSEC) }; // Drift times
             const string seq3 = "KLMNJ";
-            dictCCS2.Add(new LibKey(seq3, Adduct.SINGLY_PROTONATED), ccs3.ToArray());
+            dictCCS2.Add(new LibKey(seq3, Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), ccs3.ToArray());
 
             lib = new List<LibraryIonMobilityInfo> { new LibraryIonMobilityInfo("test", false, dictCCS2) };
             peptideTimes = CollisionalCrossSectionGridViewDriver.CollectIonMobilitiesAndCollisionalCrossSections(null,

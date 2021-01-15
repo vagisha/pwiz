@@ -1253,7 +1253,7 @@ namespace pwiz.Skyline.Model.Serialization
             var typedMods = ReadLabelType(reader, IsotopeLabelType.light);
 
             int? decoyMassShift = reader.GetNullableIntAttribute(ATTR.decoy_mass_shift);
-            var ionMobillityAndCCS = ReadIonMobilityAttributes(reader);
+            var ionMobilityAndCCS = ReadIonMobilityAttributes(reader);
             var explicitTransitionGroupValues = ReadExplicitTransitionGroupValuesAttributes(reader, FormatVersion, out var pre422ExplicitValues);
             if (peptide.IsCustomMolecule)
             {
@@ -1281,7 +1281,7 @@ namespace pwiz.Skyline.Model.Serialization
                     Assume.IsTrue(Equals(ionString, moleculeWithAdduct), @"Expected precursor ion formula to match parent molecule with adduct applied");
                 }
             }
-            var group = new TransitionGroup(peptide, precursorAdduct, typedMods.LabelType, false, decoyMassShift);
+            var group = new TransitionGroup(peptide, precursorAdduct, ionMobilityAndCCS, typedMods.LabelType, false, decoyMassShift);
             var children = new TransitionDocNode[0];    // Empty until proven otherwise
             bool autoManageChildren = reader.GetBoolAttribute(ATTR.auto_manage_children, true);
             double? precursorConcentration = reader.GetNullableDoubleAttribute(ATTR.precursor_concentration);
@@ -1296,7 +1296,6 @@ namespace pwiz.Skyline.Model.Serialization
                                                   Settings,
                                                   mods,
                                                   null,
-                                                  ionMobillityAndCCS,
                                                   explicitTransitionGroupValues,
                                                   null,
                                                   children,
@@ -1315,7 +1314,6 @@ namespace pwiz.Skyline.Model.Serialization
                                                   Settings,
                                                   mods,
                                                   libInfo,
-                                                  ionMobility,
                                                   explicitTransitionGroupValues,
                                                   results,
                                                   children,
@@ -1393,7 +1391,7 @@ namespace pwiz.Skyline.Model.Serialization
                     else
                     {
                         // No existing group matches, so create a new one
-                        curGroup = new TransitionGroup(peptide, info.PrecursorAdduct, IsotopeLabelType.light);
+                        curGroup = new TransitionGroup(peptide, info.PrecursorAdduct, IonMobilityAndCCS.EMPTY,  IsotopeLabelType.light);
                         curList = new List<TransitionDocNode>();
                         listGroups.Add(curGroup);
                         mapGroupToList.Add(curGroup, curList);
@@ -1416,7 +1414,7 @@ namespace pwiz.Skyline.Model.Serialization
             foreach (TransitionGroup group in listGroups)
             {
                 list.Add(new TransitionGroupDocNode(group, Annotations.EMPTY,
-                    Settings, mods, null, IonMobilityAndCCS.EMPTY,  ExplicitTransitionGroupValues.EMPTY, null, mapGroupToList[group].ToArray(), true));
+                    Settings, mods, null,  ExplicitTransitionGroupValues.EMPTY, null, mapGroupToList[group].ToArray(), true));
             }
             return list.ToArray();
         }

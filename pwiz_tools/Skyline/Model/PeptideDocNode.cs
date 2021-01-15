@@ -108,7 +108,7 @@ namespace pwiz.Skyline.Model
         {
             if (Peptide.IsCustomMolecule && children.Any())
             {
-                // Enforce order for small molecules, except those that are fictions of the test system
+                // Enforce order for small molecules
                 return children.OrderBy(t => (TransitionGroupDocNode)t, new TransitionGroupDocNode.CustomIonPrecursorComparer()).ToArray();
             }
             else
@@ -1018,7 +1018,8 @@ namespace pwiz.Skyline.Model
                 var keepers = new Dictionary<TransitionGroupDocNode, IonMobilityAndCCS>(); // Nodes to retain, with desired IM value
                 var blockedOnIMSDB = !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsNone &&
                                      !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsUsable;
-                var blockedOnBlib = settingsNew.PeptideSettings.Libraries.HasLibraries && !settingsNew.PeptideSettings.Libraries.IsLoaded;
+                var blockedOnBlib = settingsNew.TransitionSettings.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues &&
+                                    settingsNew.PeptideSettings.Libraries.HasLibraries && !settingsNew.PeptideSettings.Libraries.IsLoaded;
                 bool changeChildren = false;
                 if (!filterIM)
                 {
@@ -1034,7 +1035,7 @@ namespace pwiz.Skyline.Model
                         {
                             keepers.Add(node, IonMobilityAndCCS.EMPTY); // Retain a single node, remove any multiple conformers
                             var libKey = proposedTGNodeLibKeys[node];
-                            foreach (var otherNode in proposedTGNodes.Where(n => Equals(libKey, proposedTGNodeLibKeys[n])))
+                            foreach (var otherNode in proposedTGNodes.Where(n => libKey.EqualsIgnoringIonMobility(proposedTGNodeLibKeys[n])))
                             {
                                 if (!ReferenceEquals(node, otherNode) &&
                                     otherNode.ExplicitValues.IonMobilityAndCCS.IsEmpty) // Retain nodes with explicit IM values
@@ -1148,7 +1149,7 @@ namespace pwiz.Skyline.Model
                                     {
                                         var transitionGroupDocNode = keepersWithThisAdduct[0].Key;
                                         var transitionGroup = transitionGroupDocNode.TransitionGroup;
-                                        var newTransGroup = new TransitionGroup(transitionGroup.Peptide, libKey.Adduct, transitionGroup.LabelType,
+                                        var newTransGroup = new TransitionGroup(transitionGroup.Peptide, libKey.Adduct, ionMobility, transitionGroup.LabelType,
                                             false, transitionGroup.DecoyMassShift);
                                         var node = transitionGroupDocNode.DeepCopyTransitionGroup(
                                             newTransGroup.Peptide, newTransGroup, settingsNew, ionMobility);
@@ -1166,8 +1167,13 @@ namespace pwiz.Skyline.Model
                     foreach (var kvp in keepers)
                     {
                         var transitionGroupDocNode = kvp.Key;
-                        var ionMobilityAndCCS = kvp.Value;
-                        newNodes.Add(transitionGroupDocNode.ChangeLibraryIonMobility(ionMobilityAndCCS));
+                        var transitionGroup = kvp.Key.TransitionGroup;
+                        var ionMobility = kvp.Value;
+                        var newTransGroup = new TransitionGroup(transitionGroup.Peptide, transitionGroup.PrecursorAdduct, ionMobility, transitionGroup.LabelType,
+                            false, transitionGroup.DecoyMassShift);
+                        var node = transitionGroupDocNode.DeepCopyTransitionGroup(
+                            newTransGroup.Peptide, newTransGroup, settingsNew, ionMobility);
+                        newNodes.Add(node);
                     }
                     nodeResult = (PeptideDocNode)nodeResult.ChangeChildren(newNodes);
                 }

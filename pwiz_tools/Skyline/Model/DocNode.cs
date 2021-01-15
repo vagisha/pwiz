@@ -149,6 +149,17 @@ namespace pwiz.Skyline.Model
             return children; // No default sort order
         }
 
+
+        #region Multiple conformers test support
+        // Note these lead with zzz in hopes of placing them last in any sorting tests
+        public static string TestingMultiCCSAnnotationString = @"zzzSpecialMultiCCSTestNode";
+
+        public bool IsSpecialMultiCCSTestDocNode
+        {
+            get { return Note != null && Note.Contains(TestingMultiCCSAnnotationString); }
+        }
+        #endregion Multiple conformers test support
+
         /// <summary>
         /// Returns true, if the display string for this node contains a
         /// search string.
@@ -709,12 +720,26 @@ namespace pwiz.Skyline.Model
             List<DocNode> childrenNew = new List<DocNode>(Children);
             List<int> nodeCountStack = new List<int>(_nodeCountStack);
 
-            foreach(DocNode childAdd in childrenAdd)
+            #region Multiple conformers test support
+            // Support for multiple conformers work - most tests have a special node added to see if it breaks anything
+            bool hasSpecialTestNode = childrenNew.Any() && childrenNew.Last().IsSpecialMultiCCSTestDocNode;
+            if (hasSpecialTestNode)
+                childrenNew.RemoveAt(childrenNew.Count - 1);
+            #endregion Multiple conformers test support
+ 
+            foreach (DocNode childAdd in childrenAdd)
             {
                 childrenNew.Add(childAdd);
                 AddCounts(childAdd, nodeCountStack);
             }
 
+            #region Multiple conformers test support
+             if (hasSpecialTestNode)
+            {
+                childrenNew.Add(Children.Last()); // Restor ethe special test node, at the end
+            }
+            #endregion Multiple conformers test support
+ 
             return ChangeChildren(childrenNew, nodeCountStack);
         }
 

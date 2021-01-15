@@ -466,6 +466,14 @@ namespace pwiz.SkylineTestUtil
             int missingPeaks = 0;
             foreach (var pair in document.MoleculePrecursorPairs)
             {
+                #region Multiple conformer testing
+                if (pair.NodeGroup.IsSpecialMultiCCSTestDocNode)
+                {
+                    Assert.IsFalse(results.TryLoadChromatogram(iChrom1, pair.NodePep, pair.NodeGroup, tolerance, true, out _));
+                    continue;
+                }
+                #endregion Multiple conformer testing
+
                 ChromatogramGroupInfo[] chromGroupInfo1;
                 Assert.IsTrue(results.TryLoadChromatogram(iChrom1, pair.NodePep, pair.NodeGroup,
                     tolerance, true, out chromGroupInfo1));

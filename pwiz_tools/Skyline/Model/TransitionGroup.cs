@@ -59,15 +59,16 @@ namespace pwiz.Skyline.Model
 
         private readonly Peptide _peptide;
 
-        public TransitionGroup(Peptide peptide, Adduct precursorAdduct, IsotopeLabelType labelType)
-            : this(peptide, precursorAdduct, labelType, false, null)
+        public TransitionGroup(Peptide peptide, Adduct precursorAdduct, IonMobilityAndCCS ionMobility, IsotopeLabelType labelType)
+            : this(peptide, precursorAdduct, ionMobility, labelType, false, null)
         {
         }
 
-        public TransitionGroup(Peptide peptide, Adduct precursorAdduct, IsotopeLabelType labelType, bool unlimitedCharge, int? decoyMassShift)
+        public TransitionGroup(Peptide peptide, Adduct precursorAdduct, IonMobilityAndCCS ionMobility, IsotopeLabelType labelType, bool unlimitedCharge, int? decoyMassShift)
         {
             _peptide = peptide;
             PrecursorAdduct = precursorAdduct;
+            IonMobility = ionMobility ?? IonMobilityAndCCS.EMPTY;
             LabelType = labelType;
             DecoyMassShift = decoyMassShift;
 
@@ -83,6 +84,7 @@ namespace pwiz.Skyline.Model
 
         public int PrecursorCharge { get { return PrecursorAdduct.AdductCharge; } }
         public Adduct PrecursorAdduct { get; private set; }
+        public IonMobilityAndCCS IonMobility { get; private set; } // Support for multiple conformers (same ion, different shape)
         public IsotopeLabelType LabelType { get; private set; }
         public int? DecoyMassShift { get; private set; }
         public bool IsCustomIon { get { return CustomMolecule != null; } }
@@ -344,9 +346,9 @@ namespace pwiz.Skyline.Model
                 var calc = settings.GetFragmentCalc(labelType, mods);
                 if (calc == null)
                     continue;
-                var tranGroupOther = new TransitionGroup(Peptide, PrecursorAdduct, labelType, false, DecoyMassShift);
+                var tranGroupOther = new TransitionGroup(Peptide, PrecursorAdduct, IonMobility, labelType, false, DecoyMassShift);
                 var nodeGroupOther = new TransitionGroupDocNode(tranGroupOther, Annotations.EMPTY, settings, mods,
-                    libInfo, IonMobilityAndCCS.EMPTY, ExplicitTransitionGroupValues.EMPTY, null, new TransitionDocNode[0], false);
+                    libInfo, ExplicitTransitionGroupValues.EMPTY, null, new TransitionDocNode[0], false);
 
                 listOtherTypes.Add(new Tuple<TransitionGroupDocNode, IFragmentMassCalc>(nodeGroupOther, calc));
             }
@@ -889,9 +891,10 @@ namespace pwiz.Skyline.Model
             if (ReferenceEquals(this, obj)) return true;
             bool equal =  Equals(obj._peptide, _peptide) &&
                 Equals(obj.CustomMolecule, CustomMolecule) &&
-                obj.PrecursorAdduct == PrecursorAdduct &&
+                obj.PrecursorAdduct.Equals(PrecursorAdduct) &&
                 obj.LabelType.Equals(LabelType) &&
-                obj.DecoyMassShift.Equals(DecoyMassShift);
+                obj.DecoyMassShift.Equals(DecoyMassShift) &&
+                obj.IonMobility.Equals(IonMobility);
             return equal; // For debugging convenience
         }
 
@@ -908,20 +911,22 @@ namespace pwiz.Skyline.Model
             unchecked
             {
                 int result = _peptide.GetHashCode();
-                result = (result*397) ^ PrecursorAdduct.GetHashCode();
+                result = (result * 397) ^ PrecursorAdduct.GetHashCode();
                 result = (result*397) ^ LabelType.GetHashCode();
                 result = (result*397) ^ (DecoyMassShift ?? 0);
+                result = (result*397) ^ IonMobility.GetHashCode();
                 return result;
             }
         }
 
         public override string ToString()
         {
+            var imText = IonMobility.IsEmpty ? string.Empty : @" " + IonMobility;
             return LabelType.IsLight
-                       ? string.Format(@"Charge {0} {1}", PrecursorAdduct,   // For debugging
-                                       Transition.GetDecoyText(DecoyMassShift)) 
-                       : string.Format(@"Charge {0} ({1}) {2}", PrecursorAdduct, LabelType, // For debugging
-                                       Transition.GetDecoyText(DecoyMassShift));
+                ? string.Format(@"Charge {0} {1}{2}", PrecursorAdduct,   // For debugging
+                    Transition.GetDecoyText(DecoyMassShift), imText) 
+                : string.Format(@"Charge {0} ({1}) {2}{3}", PrecursorAdduct, LabelType, // For debugging
+                    Transition.GetDecoyText(DecoyMassShift), imText);
         }
 
         #endregion

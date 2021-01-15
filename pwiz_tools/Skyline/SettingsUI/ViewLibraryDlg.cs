@@ -556,7 +556,7 @@ namespace pwiz.Skyline.SettingsUI
             else if (null != pepInfo.Key.LibraryKey.Target)
             {
                 var peptide = pepInfo.Key.LibraryKey.CreatePeptideIdentityObj();
-                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, pepInfo.Adduct,
+                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, pepInfo.Adduct, pepInfo.IonMobilityAndCCS,
                                                       IsotopeLabelType.light, true, null), null);
                 if (pepInfo.Key.IsSmallMoleculeKey)
                 {
@@ -590,7 +590,7 @@ namespace pwiz.Skyline.SettingsUI
                 var precursorMono = new TypedMass(precursor, MassType.Monoisotopic);
                 var precursorAverage = new TypedMass(precursor, MassType.Average);
                 var peptide = new Peptide(new CustomMolecule(precursorMono, precursorAverage, precursor.ToString(CultureInfo.CurrentCulture)));
-                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, Adduct.EMPTY, IsotopeLabelType.light, true, null), null);
+                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, Adduct.EMPTY, IonMobilityAndCCS.EMPTY,  IsotopeLabelType.light, true, null), null);
                 mods = new ExplicitMods(peptide, new ExplicitMod[0], new TypedExplicitModifications[0]);
             }
         }

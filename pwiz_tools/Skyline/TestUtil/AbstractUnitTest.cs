@@ -96,6 +96,18 @@ namespace pwiz.SkylineTestUtil
             set { TestContext.Properties["RunSmallMoleculeTestVersions"] = value ? "true" : "false"; }
         }
 
+        #region Multiple conformers test support
+        /// <summary>
+        /// Determines whether or not to add a special multiple CCS node to each document for test purposes. 
+        /// </summary>
+        public static bool TestMultipleConformers
+        {
+            get => Settings.Default.TestMultipleConformers;
+            set => Settings.Default.TestMultipleConformers =  value;
+        }
+        #endregion Multiple conformers test support
+
+
         /// <summary>
         /// Perf tests (long running, huge-data-downloading) should be declared
         /// in the TestPerf namespace so that they can be skipped when the RunPerfTests 
@@ -309,6 +321,11 @@ namespace pwiz.SkylineTestUtil
 //            log.Info(TestContext.TestName + " started");
 
             Settings.Init();
+
+            #region Multiple conformers test support
+            // Support for testing multiple conformers without a lot of test sets available
+            TestMultipleConformers = GetBoolValue("TestMultipleConformers", true); // false); // TODO(bspratt) this should default false normally
+            #endregion Multiple conformers test support
 
             STOPWATCH.Restart();
             Initialize();

@@ -723,7 +723,7 @@ namespace pwiz.SkylineTestFunctional
                 var targ = new Target(seq);
                 var pep = new Peptide(targ);
                 var pepnode = new PeptideDocNode(pep);
-                var group = new TransitionGroup(pep, adduct, IsotopeLabelType.light);
+                var group = new TransitionGroup(pep, adduct, IonMobilityAndCCS.EMPTY, IsotopeLabelType.light);
                 var groupnode = new TransitionGroupDocNode(group, new TransitionDocNode[0]);
                 result = new PeptidePrecursorPair(pepnode, groupnode);
             }
@@ -775,8 +775,8 @@ namespace pwiz.SkylineTestFunctional
             
             var result = doc.Settings.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary;
             AssertEx.AreEqual(2, result.Count);
-            var key3 = new LibKey("GLAGVENVTELKK", Adduct.TRIPLY_PROTONATED);
-            var key2 = new LibKey("GLAGVENVTELKK", Adduct.DOUBLY_PROTONATED);
+            var key3 = new LibKey("GLAGVENVTELKK", Adduct.TRIPLY_PROTONATED, IonMobilityAndCCS.EMPTY);
+            var key2 = new LibKey("GLAGVENVTELKK", Adduct.DOUBLY_PROTONATED, IonMobilityAndCCS.EMPTY);
             const double expectedDT3= 4.0709;
             const double expectedOffset3 = 0.8969;
             AssertEx.AreEqual(expectedDT3, result.GetIonMobilityInfo(key3).First().IonMobility.Mobility.Value, .001);

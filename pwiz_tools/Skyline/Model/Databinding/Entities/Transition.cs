@@ -76,7 +76,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         protected override TransitionDocNode CreateEmptyNode()
         {
             var transitionGroup = new TransitionGroup(new Model.Peptide(null, @"X", null, null, 0),
-                Adduct.SINGLY_PROTONATED, IsotopeLabelType.light);
+                Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY, IsotopeLabelType.light);
             var transition = new Model.Transition(transitionGroup, 0, Adduct.SINGLY_PROTONATED);
             return new TransitionDocNode(transition, Annotations.EMPTY, null, TypedMass.ZERO_MONO_MASSH,
                 TransitionDocNode.TransitionQuantInfo.DEFAULT, ExplicitTransitionValues.EMPTY, null);

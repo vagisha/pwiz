@@ -379,7 +379,7 @@ namespace pwiz.Skyline.Model
 
         public override PeptideDocNode GetModifiedNode(string sequence)
         {
-            return GetModifiedNode(new LibKey(new PeptideLibraryKey(sequence, 1)), Settings, SrmSettingsDiff.ALL);
+            return GetModifiedNode(new LibKey(new PeptideLibraryKey(sequence, 1, IonMobilityAndCCS.EMPTY)), Settings, SrmSettingsDiff.ALL);
         }
 
         protected override bool IsMatch(Target seqMod, PeptideDocNode nodePepMod, out TransitionGroupDocNode[] nodeGroups)
@@ -392,8 +392,8 @@ namespace pwiz.Skyline.Model
                     return false;
                 var modSequence = calc.GetModifiedSequence(nodePepMod.Peptide.Target, false);
                 // If this sequence matches the sequence of the library peptide, a match has been found.
-                var libraryKey = modSequence.GetLibKey(Adduct.EMPTY);
-                if (LibKeyIndex.KeysMatch(seqMod.GetLibKey(Adduct.EMPTY), libraryKey))
+                var libraryKey = modSequence.GetLibKey(Adduct.EMPTY, IonMobilityAndCCS.EMPTY);
+                if (LibKeyIndex.KeysMatch(seqMod.GetLibKey(Adduct.EMPTY, IonMobilityAndCCS.EMPTY), libraryKey))
                 {
                     // Watch for multiple conformers
                     nodeGroups = nodeGroupChild.IonMobilityAndCCS.IsEmpty ?

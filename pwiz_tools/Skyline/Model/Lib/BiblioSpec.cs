@@ -16,6 +16,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+//
+// N.B. this code supports the original BiblioSpec format, which has long since been replaced by
+// the SQLite based .blib format (see BiblioSpecLite.cs).  It is retained solely for backward compatibility.
+// 
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -443,7 +449,7 @@ namespace pwiz.Skyline.Model.Lib
                         // These libraries should not have duplicates, but just in case.
                         // CONSIDER: Emit error about redundancy?
                         // These legacy libraries assume [+57.0] modified Cysteine
-                        LibKey key = new LibKey(GetCModified(Encoding.UTF8.GetString(specSequence, 0, seqLength)), charge);
+                        LibKey key = new LibKey(GetCModified(Encoding.UTF8.GetString(specSequence, 0, seqLength)), charge, IonMobilityAndCCS.EMPTY);
                         if (!dictLibrary.ContainsKey(key))
                             dictLibrary.Add(key, new BiblioSpectrumInfo((short)copies, (short)numPeaks, lenRead));
                     }
@@ -517,7 +523,7 @@ namespace pwiz.Skyline.Model.Lib
 
         public override bool Contains(LibKey key)
         {
-            return _dictLibrary.ItemsMatching(key.LibraryKey, true).Any();
+            return _dictLibrary.ItemsMatching(key.LibraryKey, LibKeyIndex.LibraryMatchType.mobility).Any();
         }
 
         public override bool ContainsAny(Target target)
@@ -530,7 +536,7 @@ namespace pwiz.Skyline.Model.Lib
         {
             if (_dictLibrary != null)
             {
-                foreach (var item in _dictLibrary.ItemsMatching(key.LibraryKey, true))
+                foreach (var item in _dictLibrary.ItemsMatching(key.LibraryKey, LibKeyIndex.LibraryMatchType.mobility))
                 {
                     libInfo = new BiblioSpecSpectrumHeaderInfo(Name, item.Copies, null, null, null);
                     return true;
@@ -544,7 +550,7 @@ namespace pwiz.Skyline.Model.Lib
         {
             if (_dictLibrary != null)
             {
-                foreach (var item in _dictLibrary.ItemsMatching(key.LibraryKey, true))
+                foreach (var item in _dictLibrary.ItemsMatching(key.LibraryKey, LibKeyIndex.LibraryMatchType.mobility))
                 {
                     spectrum = new SpectrumPeaksInfo(ReadSpectrum(item));
                     return true;
@@ -558,7 +564,7 @@ namespace pwiz.Skyline.Model.Lib
         public override SpectrumPeaksInfo LoadSpectrum(object spectrumKey)
         {
 
-            return new SpectrumPeaksInfo(ReadSpectrum(_dictLibrary.ItemsMatching(((LibKey)spectrumKey).LibraryKey, true)
+            return new SpectrumPeaksInfo(ReadSpectrum(_dictLibrary.ItemsMatching(((LibKey)spectrumKey).LibraryKey, LibKeyIndex.LibraryMatchType.mobility)
                 .First()));
 
         }

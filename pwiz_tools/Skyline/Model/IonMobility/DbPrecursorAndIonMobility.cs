@@ -65,6 +65,21 @@ namespace pwiz.Skyline.Model.IonMobility
             HighEnergyIonMobilityOffset = highEnergyOffset ?? 0;
         }
 
+        public virtual LibKey GetLibKey()
+        {
+            var target = DbPrecursorIon.GetTarget();
+            var adduct = DbPrecursorIon.GetPrecursorAdduct();
+            var ionMobility = GetIonMobilityAndCCS();
+            if (target.IsProteomic)
+            {
+                return new LibKey(target.Sequence, adduct.AdductCharge, ionMobility);
+            }
+            return new LibKey(target.Molecule.GetSmallMoleculeLibraryAttributes(), adduct, ionMobility);
+        }
+
+
+
+
         public virtual IonMobilityAndCCS GetIonMobilityAndCCS()
         {
             return IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.GetIonMobilityValue(IonMobilityNullable, 
@@ -268,7 +283,6 @@ namespace pwiz.Skyline.Model.IonMobility
         public virtual string InChiKey { get; set; }
         public virtual string OtherKeys { get; set; }
 
-
         public virtual bool EqualsIgnoreId(DbMolecule other)
         {
             return PeptideModifiedSequence == other.PeptideModifiedSequence &&
@@ -427,16 +441,6 @@ namespace pwiz.Skyline.Model.IonMobility
         public virtual Target GetTarget()
         {
             return DbMolecule.Target;
-        }
-
-        public virtual LibKey GetLibKey()
-        {
-            var target = DbMolecule.Target;
-            if (target.IsProteomic)
-            {
-                return new LibKey(target.Sequence, _adduct.AdductCharge);
-            }
-            return new LibKey(target.Molecule.GetSmallMoleculeLibraryAttributes(), _adduct);
         }
 
         public virtual bool EqualsIgnoreId(DbPrecursorIon other)

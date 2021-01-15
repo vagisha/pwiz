@@ -1154,6 +1154,7 @@ namespace pwiz.Skyline.Controls.Graphs
         {
             var settings = DocumentUI.Settings;
             var charge = nodeGroup.PrecursorAdduct;
+            var ionMobility = nodeGroup.IonMobilityAndCCS;
             var spectra = settings.GetBestSpectra(lookup.LookupSequence, charge, lookup.LookupMods).Select(s => new SpectrumDisplayInfo(s, nodeGroup)).ToList();
             // Showing redundant spectra is only supported for full-scan filtering when
             // the document has results files imported.
@@ -1164,7 +1165,7 @@ namespace pwiz.Skyline.Controls.Graphs
             {
                 var spectraRedundant = new List<SpectrumDisplayInfo>();
                 var dictReplicateNameFiles = new Dictionary<string, HashSet<string>>();
-                foreach (var spectrumInfo in settings.GetRedundantSpectra(nodeGroup.Peptide, lookup.LookupSequence, charge, nodeGroup.TransitionGroup.LabelType, lookup.LookupMods))
+                foreach (var spectrumInfo in settings.GetRedundantSpectra(nodeGroup.Peptide, lookup.LookupSequence, charge, ionMobility, nodeGroup.TransitionGroup.LabelType, lookup.LookupMods))
                 {
                     var matchingFile = settings.MeasuredResults.FindMatchingMSDataFile(MsDataFileUri.Parse(spectrumInfo.FilePath));
                     if (matchingFile == null)

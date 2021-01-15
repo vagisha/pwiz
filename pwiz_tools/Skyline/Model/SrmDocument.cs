@@ -52,6 +52,7 @@ using System.Threading;
 using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
+using pwiz.Common.Chemistry;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model.AuditLog;
@@ -1496,18 +1497,84 @@ namespace pwiz.Skyline.Model
             return (node != null && node.Annotations.Note != null &&
                     node.Annotations.Note.Contains(RefinementSettings.TestingConvertedFromProteomic));
         }
-        
+
+        #region Multiple conformers test support
+        /// <summary>
+        /// For automated test of multiple conformers in tests that aren't originally designed to test that at all
+        /// Modifies the last-in-list transition group to include multiple conformers
+        /// </summary>
+        public void CreateMultiCCSTestPeptideGroupDocNode(PeptideGroupDocNode[] existingPeptideGroupDocNodes)
+        {
+            var lastPeptideGroup = existingPeptideGroupDocNodes.Last();
+            var peptides = lastPeptideGroup.Children.ToList();
+            if (!peptides.Any())
+            {
+                return;
+            }
+
+            if (!(lastPeptideGroup.Children.Last() is PeptideDocNode lastPeptide))
+            {
+                return;
+            }
+
+            var transitionGroups = lastPeptide.Children.ToList();
+            if (!transitionGroups.Any())
+            {
+                return;
+            }
+
+            if (!(transitionGroups.Last() is TransitionGroupDocNode lastTransitionGroupDocNode))
+            {
+                return;
+            }
+
+            // If last transition group doesn't have an ion mobility value, add one
+            var mobility = lastTransitionGroupDocNode.IonMobilityAndCCS;
+            if (mobility.IsEmpty)
+            {
+                mobility = IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.GetIonMobilityValue(10, eIonMobilityUnits.drift_time_msec),
+                    100, -.001);
+                lastTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(lastPeptide.Peptide,
+                    lastTransitionGroupDocNode.TransitionGroup, Settings, mobility);
+                transitionGroups[transitionGroups.Count - 1] = lastTransitionGroupDocNode;
+            }
+
+            // Append a sibling transition group with slightly different ion mobility - i.e. a multiple conformer
+            var newMobility = IonMobilityAndCCS.GetIonMobilityAndCCS(mobility.IonMobility.Mobility+0.5,
+                mobility.IonMobility.Units,
+                mobility.CollisionalCrossSectionSqA.HasValue ? mobility.CollisionalCrossSectionSqA.Value+1 : mobility.CollisionalCrossSectionSqA, -0.6);
+            var newTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(lastPeptide.Peptide,
+                lastTransitionGroupDocNode.TransitionGroup, Settings, newMobility, TestingMultiCCSAnnotationString);
+            transitionGroups.Add(newTransitionGroupDocNode);
+
+            // And update the tree
+            peptides[peptides.Count - 1] = (PeptideDocNode)lastPeptide.ChangeChildren(transitionGroups);
+            existingPeptideGroupDocNodes[existingPeptideGroupDocNodes.Length-1] = (PeptideGroupDocNode)lastPeptideGroup.ChangeChildren(peptides);
+        }
+        #endregion Multiple conformers test support
+ 
         public SrmDocument AddPeptideGroups(IEnumerable<PeptideGroupDocNode> peptideGroupsNew,
             bool peptideList, IdentityPath to, out IdentityPath firstAdded, out IdentityPath nextAdd)
         {
             // For multiple add operations, make the next addtion at the same location by default
             nextAdd = to;
-            var peptideGroupsAdd = peptideGroupsNew.ToList();
+            var peptideGroupsAdd = peptideGroupsNew.ToArray();
+
+            #region Multiple conformers test support
+            // Code for the purpose of testing multiple conformers - normally used only in automated test
+            // Ensures that every non-empty document has a multi-CCS node in order to maximize testing of this new (as of Nov 2020) functionality
+            if (Properties.Settings.Default.TestMultipleConformers &&  // Special test mode?
+                peptideGroupsAdd.Any()) // Will resulting document be non-empty?
+            {
+                CreateMultiCCSTestPeptideGroupDocNode(peptideGroupsAdd);
+            }
+            #endregion Multiple conformers test support
+
 
             // If there are no new groups to add, as in the case where already added
             // FASTA sequences are pasted, just return this, and a null path.  Callers
             // must handle this case gracefully, e.g. not adding an undo record.
-            if (peptideGroupsAdd.Count == 0)
+            if (peptideGroupsAdd.Length == 0)
             {
                 firstAdded = null;
                 return this;
@@ -1968,6 +2035,13 @@ namespace pwiz.Skyline.Model
             else
             {
                 var children = documentReader.Children;
+                #region Multiple conformers test support
+                // Code for the purpose of testing multiple conformers - normally used only in automated test
+                if (Properties.Settings.Default.TestSmallMolecules && children.Any() && !children.Any(p => p.IsNonProteomic)) // Make sure there's a custom ion node present in any non-empty document
+                {
+                    CreateMultiCCSTestPeptideGroupDocNode(children);
+                }
+                #endregion Multiple conformers test support
 
                 // Make sure peptide standards lists are up to date
                 Settings = Settings.CachePeptideStandards(new PeptideGroupDocNode[0], children);
@@ -2163,6 +2237,7 @@ namespace pwiz.Skyline.Model
             {
                 var optimization = lib.GetOptimization(OptimizationType.collision_energy,
                     Settings.GetSourceTarget(nodePep), nodeGroup.PrecursorAdduct,
+                    nodeGroup.IonMobilityAndCCS,
                     nodeTransition.FragmentIonName, nodeTransition.Transition.Adduct);
                 if (optimization != null)
                 {
@@ -2226,7 +2301,7 @@ namespace pwiz.Skyline.Model
                         break;
 
                     if (lib != null && !lib.IsNone && lib.GetOptimization(optType, Settings.GetSourceTarget(nodePep),
-                            nodeTranGroup.PrecursorAdduct) != null)
+                            nodeTranGroup.PrecursorAdduct, nodeTranGroup.IonMobilityAndCCS) != null)
                         break;
 
                     double? cov;
@@ -2377,7 +2452,7 @@ namespace pwiz.Skyline.Model
             if (lib != null && !lib.IsNone)
             {
                 var optimization = lib.GetOptimization(CompensationVoltageParameters.GetOptimizationType(tuneLevel),
-                    Settings.GetSourceTarget(nodePep), nodeGroup.PrecursorAdduct);
+                    Settings.GetSourceTarget(nodePep), nodeGroup.PrecursorAdduct, nodeGroup.IonMobilityAndCCS);
                 if (optimization != null)
                     return optimization.Value;
             }

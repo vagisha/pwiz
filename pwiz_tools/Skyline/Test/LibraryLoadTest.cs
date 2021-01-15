@@ -24,6 +24,7 @@ using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Util;
 using pwiz.SkylineTestUtil;
@@ -138,7 +139,7 @@ namespace pwiz.SkylineTest
                     { MoleculeAccessionNumbers.TagCAS, "1118-68-9"},
                     { MoleculeAccessionNumbers.TagKEGG, "C01026"},
                     { MoleculeAccessionNumbers.TagInChI, "1S/C4H9NO2/c1-5(2)3-4(6)7/h3H2,1-2H3,(H,6,7)"}
-                }), Adduct.M_PLUS);
+                }), Adduct.M_PLUS, IonMobilityAndCCS.EMPTY);
 
             Assert.IsTrue(lib.TryLoadSpectrum(key, out var peaksInfo));
             Assert.AreEqual(70.1, peaksInfo.MZs.FirstOrDefault(), 0.0001);
@@ -295,10 +296,10 @@ namespace pwiz.SkylineTest
 
         public static readonly LibKey[] KEYS_LIB_YEAST_NIST =
         {
-            new LibKey("QQGPLEPTVGNSTAITEER", Adduct.DOUBLY_PROTONATED),
-            new LibKey("IPSAIHLQISNK", Adduct.DOUBLY_PROTONATED),
-            new LibKey("NSTDIPLQDATETYR", Adduct.DOUBLY_PROTONATED),
-            new LibKey("VLHNFLTTPSK", Adduct.DOUBLY_PROTONATED),
+            new LibKey("QQGPLEPTVGNSTAITEER", Adduct.DOUBLY_PROTONATED, IonMobilityAndCCS.EMPTY),
+            new LibKey("IPSAIHLQISNK", Adduct.DOUBLY_PROTONATED, IonMobilityAndCCS.EMPTY),
+            new LibKey("NSTDIPLQDATETYR", Adduct.DOUBLY_PROTONATED, IonMobilityAndCCS.EMPTY),
+            new LibKey("VLHNFLTTPSK", Adduct.DOUBLY_PROTONATED, IonMobilityAndCCS.EMPTY),
         };
 
         public const string TEXT_LIB_YEAST_NIST =
@@ -884,7 +885,7 @@ namespace pwiz.SkylineTest
 
         public static readonly LibKey[] KEYS_LIB_BICENE_NIST =
         {
-            new LibKey(SmallMoleculeLibraryAttributes.Create("N,N-Bis(2-hydroxyethyl)glycine", "C6H13NO4", "FSVCELGFZIQNCK-UHFFFAOYSA-N", MoleculeAccessionNumbers.TagCAS+":150-25-4" ), Adduct.M_PLUS_H),
+            new LibKey(SmallMoleculeLibraryAttributes.Create("N,N-Bis(2-hydroxyethyl)glycine", "C6H13NO4", "FSVCELGFZIQNCK-UHFFFAOYSA-N", MoleculeAccessionNumbers.TagCAS+":150-25-4" ), Adduct.M_PLUS_H, IonMobilityAndCCS.EMPTY),
         };
 
         public const string TEXT_LIB_NO_ADDUCT =

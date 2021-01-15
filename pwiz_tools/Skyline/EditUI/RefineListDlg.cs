@@ -25,6 +25,7 @@ using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.AuditLog;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -148,7 +149,7 @@ namespace pwiz.Skyline.EditUI
                 if (!peptideSequences.ContainsKey(target))
                     notFoundLines.Add(line);
                 else
-                    acceptedPeptides.Add(new LibKey(target, charge).LibraryKey); 
+                    acceptedPeptides.Add(new LibKey(target, charge, IonMobilityAndCCS.EMPTY).LibraryKey); 
             }
 
             if (invalidLines.Count > 0)

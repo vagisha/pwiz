@@ -654,18 +654,18 @@ namespace pwiz.Skyline.Model.Lib
 
         /// <summary>
         /// Attempts to get spectrum header information for a specific
-        /// (sequence, charge) pair.
+        /// (target, charge, ion mobility) tuple.
         /// </summary>
-        /// <param name="key">A sequence, charge pair</param>
+        /// <param name="key">A target, charge, ion mobility tuple</param>
         /// <param name="libInfo">The spectrum header information, if successful</param>
         /// <returns>True if the library contains the key</returns>
         public abstract bool TryGetLibInfo(LibKey key, out SpectrumHeaderInfo libInfo);
 
         /// <summary>
         /// Attempts to get spectrum peak information for a specific
-        /// (sequence, charge) pair.
+        /// (target, charge, ion mobility) tuple pair.
         /// </summary>
-        /// <param name="key">A sequence, charge pair</param>
+        /// <param name="key">A target, charge, ion mobility tuple</param>
         /// <param name="spectrum">The spectrum peak information, if successful</param>
         /// <returns>True if the spectrum was retrieved successfully</returns>
         public abstract bool TryLoadSpectrum(LibKey key, out SpectrumPeaksInfo spectrum);
@@ -776,7 +776,7 @@ namespace pwiz.Skyline.Model.Lib
         /// may include redundant spectra.  The spectrum points themselves are only loaded as it they
         /// requested to give this function acceptable performance.
         /// </summary>
-        /// <param name="key">The sequence, charge pair requested</param>
+        /// <param name="key">The sequence, charge, ion mobility tuple requested</param>
         /// <param name="labelType">An <see cref="IsotopeLabelType"/> for which to get spectra</param>
         /// <param name="redundancy">Level of redundancy requested in returned values</param>
         /// <returns>An enumeration of <see cref="SpectrumInfo"/></returns>
@@ -984,7 +984,7 @@ namespace pwiz.Skyline.Model.Lib
             {
                 return -1;
             }
-            foreach (var entry in _libraryEntries.Index.ItemsMatching(key, true))
+            foreach (var entry in _libraryEntries.Index.ItemsMatching(key, LibKeyIndex.LibraryMatchType.mobility))
             {
                 return entry.OriginalIndex;
             }
@@ -1197,7 +1197,7 @@ namespace pwiz.Skyline.Model.Lib
 
         protected IEnumerable<TInfo> LibraryEntriesWithSequence(Target target)
         {
-            return _libraryEntries.ItemsMatching(new LibKey(target, Adduct.EMPTY).LibraryKey, false);
+            return _libraryEntries.ItemsMatching(new LibKey(target, Adduct.EMPTY, IonMobilityAndCCS.EMPTY).LibraryKey, LibKeyIndex.LibraryMatchType.target);
         }
 
         // ReSharper disable PossibleMultipleEnumeration
@@ -2205,7 +2205,7 @@ namespace pwiz.Skyline.Model.Lib
         public LibKey Key { get; set; }
         public string Protein { get; set; } // Also used as Molecule List Name for small molecules
         public SmallMoleculeLibraryAttributes SmallMoleculeLibraryAttributes { get { return Key.SmallMoleculeLibraryAttributes; } }
-        public IonMobilityAndCCS IonMobility { get; set; }
+        public IonMobilityAndCCS IonMobility { get { return Key.IonMobility; } }
         public double PrecursorMz { get; set; }
         public double? RetentionTime { get; set; }
         public IsotopeLabelType Label { get; set; }
@@ -2217,7 +2217,7 @@ namespace pwiz.Skyline.Model.Lib
         public class IonMobilityAndRT
         {
             public string SourceFile { get; private set; }
-            public IonMobilityAndCCS IonMobility { get; private set; }
+            public IonMobilityAndCCS IonMobility { get; private set; }   // CONSIDER(bspratt) needed if IM is in libkey?
             public double? RetentionTime { get; private set; }
             public bool IsBest { get; private set; }
 
@@ -2262,7 +2262,6 @@ namespace pwiz.Skyline.Model.Lib
                 Key = infoOther.Key,
                 Label = infoOther.Label,
                 PrecursorMz = infoOther.PrecursorMz,
-                IonMobility = infoOther.IonMobility,
                 RetentionTime = infoOther.RetentionTime,
                 SpectrumPeaks = new SpectrumPeaksInfo(newPeaks)
             };
@@ -2654,62 +2653,62 @@ namespace pwiz.Skyline.Model.Lib
     /// </summary>
     public struct LibKey
     {
-        public static LibKey EMPTY = new LibKey(SmallMoleculeLibraryAttributes.EMPTY, Adduct.EMPTY);
+        public static LibKey EMPTY = new LibKey(SmallMoleculeLibraryAttributes.EMPTY, Adduct.EMPTY, IonMobilityAndCCS.EMPTY);
 
         public LibKey(LibraryKey libraryKey) : this()
         {
             LibraryKey = libraryKey;
         }
 
-        public LibKey(string sequence, int charge) : this()
+        public LibKey(string sequence, int charge, IonMobilityAndCCS ionMobility) : this()
         {
-            LibraryKey = (LibraryKey) CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(sequence, charge)
-                         ?? new PeptideLibraryKey(sequence, charge);
+            LibraryKey = (LibraryKey) CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(sequence, charge, ionMobility)
+                         ?? new PeptideLibraryKey(sequence, charge, ionMobility);
         }
 
-        public LibKey(SmallMoleculeLibraryAttributes attributes, Adduct adduct) : this()
+        public LibKey(SmallMoleculeLibraryAttributes attributes, Adduct adduct, IonMobilityAndCCS ionMobility) : this()
         {
-            LibraryKey = new MoleculeLibraryKey(attributes, adduct);
+            LibraryKey = new MoleculeLibraryKey(attributes, adduct, ionMobility);
         }
 
-        public LibKey(string primaryKey, Adduct adduct) : this()
+        public LibKey(string primaryKey, Adduct adduct, IonMobilityAndCCS ionMobility) : this()
         {
             if (adduct.IsProteomic)
             {
                 LibraryKey = (LibraryKey)
-                             CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(primaryKey, adduct.AdductCharge)
-                             ?? new PeptideLibraryKey(primaryKey, adduct.AdductCharge);
+                             CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(primaryKey, adduct.AdductCharge, ionMobility)
+                             ?? new PeptideLibraryKey(primaryKey, adduct.AdductCharge, ionMobility);
             }
             else
             {
-                LibraryKey = new MoleculeLibraryKey(SmallMoleculeLibraryAttributes.Create(primaryKey, null, null, string.Empty), adduct);
+                LibraryKey = new MoleculeLibraryKey(SmallMoleculeLibraryAttributes.Create(primaryKey, null, null, string.Empty), adduct, ionMobility);
             }
         }
 
         [Track]
         public LibraryKey LibraryKey { get; private set; }
 
-        public LibKey(double precursorMz,
+        public LibKey(double precursorMz, IonMobilityAndCCS ionMobility, // TODO(bspratt) default this to minimize code changes elsewhere
             double? retentionTime = null)
-            : this() // TODO(bspratt) probably should add ion mobility 
+            : this() 
         {
-            LibraryKey = new PrecursorLibraryKey(precursorMz, retentionTime);
+            LibraryKey = new PrecursorLibraryKey(precursorMz, ionMobility, retentionTime);
         }
 
-        public LibKey(Target target, Adduct adduct)
+        public LibKey(Target target, Adduct adduct, IonMobilityAndCCS ionMobility)  // TODO(bspratt) default this to minimize code changes elsewhere
             : this()
         {
             if (target.IsProteomic)
             {
                 LibraryKey = (LibraryKey)
-                             CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(target.Sequence, adduct.AdductCharge)
-                             ?? new PeptideLibraryKey(target.Sequence, adduct.AdductCharge);
+                             CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(target.Sequence, adduct.AdductCharge, ionMobility)
+                             ?? new PeptideLibraryKey(target.Sequence, adduct.AdductCharge, ionMobility);
             }
             else
-                LibraryKey = new MoleculeLibraryKey(target.Molecule.GetSmallMoleculeLibraryAttributes(), adduct);
+                LibraryKey = new MoleculeLibraryKey(target.Molecule.GetSmallMoleculeLibraryAttributes(), adduct, ionMobility);
         }
 
-        public LibKey(Target target, int charge) : this(target.Sequence, charge)
+        public LibKey(Target target, int charge, IonMobilityAndCCS ionMobility) : this(target.Sequence, charge, ionMobility)
         {
         }
 
@@ -2750,11 +2749,19 @@ namespace pwiz.Skyline.Model.Lib
                 ? ((PeptideLibraryKey) LibraryKey).Charge
                 : (IsPrecursorKey ? 0 : ((MoleculeLibraryKey) LibraryKey).Adduct.AdductCharge);
         } }
-        public Adduct Adduct 
+        public Adduct Adduct
         {
             get
             {
                 return LibraryKey.Adduct;
+            }
+        }
+
+        public IonMobilityAndCCS IonMobility
+        {
+            get
+            {
+                return LibraryKey.IonMobility;
             }
         }
 
@@ -2800,9 +2807,34 @@ namespace pwiz.Skyline.Model.Lib
             }
         }
 
+        public LibKey ChangeIonMobilityAndCCS(IonMobilityAndCCS ionMobility)
+        {
+            if (Equals(IonMobility, ionMobility))
+            {
+                return this;
+            }
+            return new LibKey(Target, Adduct, ionMobility);
+        }
+
         public static implicit operator LibraryKey(LibKey libKey)
         {
             return libKey.LibraryKey;
+        }
+
+        public bool EqualsIgnoringIonMobility(LibKey other)
+        {
+            if (Equals(other))
+            {
+                return true;
+            }
+
+            if (IonMobility.IsEmpty && other.IonMobility.IsEmpty)
+            {
+                return false;
+            }
+
+            return Equals(new LibKey(Target, Adduct, IonMobilityAndCCS.EMPTY),
+                new LibKey(other.Target, other.Adduct, IonMobilityAndCCS.EMPTY));
         }
 
         #region object overrides

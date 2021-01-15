@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 
@@ -27,7 +28,7 @@ namespace pwiz.Skyline.Model.Crosslinking
 {
     public class CrosslinkSequenceParser
     {
-        public static CrosslinkLibraryKey TryParseCrosslinkLibraryKey(string str, int charge)
+        public static CrosslinkLibraryKey TryParseCrosslinkLibraryKey(string str, int charge, IonMobilityAndCCS ionMobility)
         {
             if (!LooksLikeCrosslinkSequence(str))
             {
@@ -36,7 +37,7 @@ namespace pwiz.Skyline.Model.Crosslinking
 
             try
             {
-                return ParseCrosslinkLibraryKey(str, charge);
+                return ParseCrosslinkLibraryKey(str, charge, ionMobility);
             }
             catch
             {
@@ -52,7 +53,7 @@ namespace pwiz.Skyline.Model.Crosslinking
             return FastaSequence.StripModifications(str).IndexOf('-') >= 0;
         }
 
-        public static CrosslinkLibraryKey ParseCrosslinkLibraryKey(string str, int charge)
+        public static CrosslinkLibraryKey ParseCrosslinkLibraryKey(string str, int charge, IonMobilityAndCCS ionMobility)
         {
             List<PeptideLibraryKey> peptideSequences = new List<PeptideLibraryKey>();
             List<CrosslinkLibraryKey.Crosslink> crosslinks = new List<CrosslinkLibraryKey.Crosslink>();
@@ -81,12 +82,12 @@ namespace pwiz.Skyline.Model.Crosslinking
                     {
                         throw CommonException.Create(new ParseExceptionDetail(Resources.CrosslinkSequenceParser_ParseCrosslinkLibraryKey_Invalid_peptide_sequence, ich));
                     }
-                    peptideSequences.Add(new PeptideLibraryKey(sequence, 0));
+                    peptideSequences.Add(new PeptideLibraryKey(sequence, 0, IonMobilityAndCCS.EMPTY));
                 }
 
                 ich += token.Length;
             }
-            return new CrosslinkLibraryKey(peptideSequences, crosslinks, charge);
+            return new CrosslinkLibraryKey(peptideSequences, crosslinks, charge, ionMobility);
         }
 
 

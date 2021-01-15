@@ -304,7 +304,7 @@ namespace pwiz.Skyline.Model.Optimization
                         var charge = (int)reader[@"Charge"];
                         var productMz = (double)reader[@"Mz"];
                         var value = (double)reader[@"Value"];
-                        optimizations.Add(new Tuple<DbOptimization, double>(new DbOptimization(type, modifiedSequence, Adduct.FromChargeProtonated(charge), string.Empty, Adduct.EMPTY, value), productMz));
+                        optimizations.Add(new Tuple<DbOptimization, double>(new DbOptimization(type, modifiedSequence, Adduct.FromChargeProtonated(charge), IonMobilityAndCCS.EMPTY, string.Empty, Adduct.EMPTY, value), productMz));
 
                         if (!precursors.ContainsKey(modifiedSequence))
                         {
@@ -347,7 +347,8 @@ namespace pwiz.Skyline.Model.Optimization
                 foreach (var nodeGroup in nodePep.TransitionGroups)
                 {
                     var charge = nodeGroup.PrecursorAdduct;
-                    var libKeyToMatch = newDoc.Settings.GetSourceTarget(nodePep).GetLibKey(charge).LibraryKey;
+                    // CONSIDER(bspratt) any ion mobility implications here?
+                    var libKeyToMatch = newDoc.Settings.GetSourceTarget(nodePep).GetLibKey(charge, nodeGroup.IonMobilityAndCCS).LibraryKey;
                     foreach (var nodeTran in nodeGroup.Transitions)
                     {
                         double productMz = nodeTran.Mz;
@@ -356,7 +357,7 @@ namespace pwiz.Skyline.Model.Optimization
                             opt.Item1.ProductAdduct.IsEmpty &&  
                             Math.Abs(opt.Item2 - productMz) < 0.00001))
                         {
-                            var optLibKey = optimization.Item1.Target.GetLibKey(optimization.Item1.Adduct).LibraryKey;
+                            var optLibKey = optimization.Item1.Target.GetLibKey(optimization.Item1.Adduct, IonMobilityAndCCS.EMPTY).LibraryKey;
                             if (!LibKeyIndex.KeysMatch(optLibKey, libKeyToMatch))
                             {
                                 continue;

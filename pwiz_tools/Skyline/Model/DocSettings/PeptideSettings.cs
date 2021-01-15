@@ -2098,10 +2098,11 @@ namespace pwiz.Skyline.Model.DocSettings
         /// shared some kind of common interface so there is guaranteed consistent behavior around how we pick from
         /// other libraries when the ostensibly correct library doesn't have values we need
         /// </summary>
-        public bool TryGetSpectralLibraryIonMobilities(LibKey[] targetIons, MsDataFileUri filePath, out LibraryIonMobilityInfo ionMobilities)
+        public bool TryGetSpectralLibraryIonMobilities(IEnumerable<LibKey> targetIonList, MsDataFileUri filePath, out LibraryIonMobilityInfo ionMobilities)
         {
             Assume.IsTrue(IsLoaded);
             // Get ion mobilities from spectral library for this ms data file, if any
+            var targetIons = targetIonList.ToArray();
             ionMobilities = GetLibraryDriftTimesForFilePath(targetIons, filePath);
             var resultDict = ionMobilities == null ?
                 new Dictionary<LibKey, IonMobilityAndCCS[]>() :

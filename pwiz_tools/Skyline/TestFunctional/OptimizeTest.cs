@@ -791,7 +791,7 @@ namespace pwiz.SkylineTestFunctional
         {
             var target = GetTarget(sequence);
 
-            return new DbOptimization(type, target, adduct, null, Adduct.EMPTY, optValue);
+            return new DbOptimization(type, target, adduct, IonMobilityAndCCS.EMPTY, null, Adduct.EMPTY, optValue);
         }
 
         private void CompareFiles(string fileActual, string fileExpected)
@@ -1047,6 +1047,7 @@ namespace pwiz.SkylineTestFunctional
                                     optLib.GetOptimization(OptimizationType.collision_energy,
                                         document.Settings.GetSourceTarget(nodePep), nodeGroup.TransitionGroup.PrecursorAdduct,
                                         //nodeGroup.TransitionGroup.Peptide.Sequence, nodeGroup.TransitionGroup.PrecursorAdduct,
+                                        nodeGroup.TransitionGroup.IonMobility,
                                         nodeTran.FragmentIonName, nodeTran.Transition.Adduct);
                                 if (optimization != null)
                                     Assert.AreEqual(optimization.Value, tranCE, 0.05);

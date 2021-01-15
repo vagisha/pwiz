@@ -101,14 +101,14 @@ namespace pwiz.SkylineTestFunctional
             int leftLength = aaMods.Count / 3;
             int middleLength = (2 * aaMods.Count) / 3 - leftLength;
 
-            var left = new PeptideLibraryKey(string.Join(string.Empty, aaMods.Take(leftLength)), 0);
-            var middle = new PeptideLibraryKey(string.Join(string.Empty, aaMods.Skip(leftLength).Take(middleLength)), 0);
-            var right = new PeptideLibraryKey(string.Join(string.Empty, aaMods.Skip(leftLength + middleLength)), 0);
+            var left = new PeptideLibraryKey(string.Join(string.Empty, aaMods.Take(leftLength)), 0, IonMobilityAndCCS.EMPTY);
+            var middle = new PeptideLibraryKey(string.Join(string.Empty, aaMods.Skip(leftLength).Take(middleLength)), 0, IonMobilityAndCCS.EMPTY);
+            var right = new PeptideLibraryKey(string.Join(string.Empty, aaMods.Skip(leftLength + middleLength)), 0, IonMobilityAndCCS.EMPTY);
             var crosslinkLibraryKey = new CrosslinkLibraryKey(new []{middle, left, right}, new []
             {
                 new CrosslinkLibraryKey.Crosslink(crosslinkerName, new [] {new[]{1}, new []{leftLength}, Enumerable.Empty<int>()}), 
                 new CrosslinkLibraryKey.Crosslink(crosslinkerName, new[]{ new[] { middleLength }, Enumerable.Empty<int>(), new []{1}})
-            }, 0);
+            }, 0, IonMobilityAndCCS.EMPTY);
             return crosslinkLibraryKey.ToString();
         }
 
