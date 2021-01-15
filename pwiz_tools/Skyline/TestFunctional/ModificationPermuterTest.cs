@@ -18,9 +18,11 @@
  */
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.Collections;
+using pwiz.Skyline.Controls;
 using pwiz.Skyline.EditUI;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Properties;
@@ -49,6 +51,20 @@ namespace pwiz.SkylineTestFunctional
                 pasteDlg.OkDialog();
             });
             Assert.AreEqual(4, SkylineWindow.Document.PeptideCount);
+
+            // Turn off "Auto manage children" on the second peptide and make sure the appropriate precursors still get added.
+            RunUI(()=>
+            {
+                SkylineWindow.SelectedPath = SkylineWindow.Document.GetPathTo((int) SrmDocument.Level.Molecules, 1);
+            });
+            RunDlg<PopupPickList>(SkylineWindow.ShowPickChildrenInTest, dlg =>
+            {
+                dlg.AutoManageChildren = false;
+                dlg.OnOk();
+            });
+            CollectionAssert.AreEqual(new[] {true, false, true, true},
+                SkylineWindow.Document.Peptides.Select(p => p.AutoManageChildren).ToList());
+
             var permuteIsotopeModificationsDlg =
                 ShowDialog<PermuteIsotopeModificationsDlg>(SkylineWindow.ShowPermuteIsotopeModificationsDlg);
             RunDlg<EditStaticModDlg>(permuteIsotopeModificationsDlg.AddIsotopeModification, editStaticModDlg =>
@@ -141,6 +157,15 @@ namespace pwiz.SkylineTestFunctional
                 }
                 Assert.AreEqual(Math.Pow(2, leucineCount) - 1, modificationIndexSets.Count);
             }
+
+            CollectionAssert.AreEqual(new[] {true, false, true, true},
+                SkylineWindow.Document.Peptides.Select(p => p.AutoManageChildren).ToList());
+            var filePath = Path.Combine(TestContext.TestDir, "ModificationPermuterTest.sky");
+            RunUI(()=>
+            {
+                SkylineWindow.SaveDocument(filePath);
+                SkylineWindow.OpenFile(filePath);
+            });
         }
     }
 }

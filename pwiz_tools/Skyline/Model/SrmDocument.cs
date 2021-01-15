@@ -1534,8 +1534,7 @@ namespace pwiz.Skyline.Model
             {
                 mobility = IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.GetIonMobilityValue(10, eIonMobilityUnits.drift_time_msec),
                     100, -.001);
-                lastTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(lastPeptide.Peptide,
-                    lastTransitionGroupDocNode.TransitionGroup, Settings, mobility);
+                lastTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(null, null, Settings, mobility);
                 transitionGroups[transitionGroups.Count - 1] = lastTransitionGroupDocNode;
             }
 
@@ -1543,8 +1542,7 @@ namespace pwiz.Skyline.Model
             var newMobility = IonMobilityAndCCS.GetIonMobilityAndCCS(mobility.IonMobility.Mobility+0.5,
                 mobility.IonMobility.Units,
                 mobility.CollisionalCrossSectionSqA.HasValue ? mobility.CollisionalCrossSectionSqA.Value+1 : mobility.CollisionalCrossSectionSqA, -0.6);
-            var newTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(lastPeptide.Peptide,
-                lastTransitionGroupDocNode.TransitionGroup, Settings, newMobility, TestingMultiCCSAnnotationString);
+            var newTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(null, null, Settings, newMobility, TestingMultiCCSAnnotationString);
             transitionGroups.Add(newTransitionGroupDocNode);
 
             // And update the tree
@@ -2062,11 +2060,11 @@ namespace pwiz.Skyline.Model
             var auditLogPath = GetAuditLogPath(documentPath);
             if (File.Exists(auditLogPath))
             {
-                if (AuditLogList.ReadFromFile(auditLogPath, out var loggedSkylineDocumentHash, out var auditLogList))
+                if (AuditLogList.ReadFromFile(auditLogPath, out var auditLogList))
                 {
                     auditLog = auditLogList;
 
-                    if (expectedSkylineDocumentHash != loggedSkylineDocumentHash)
+                    if (expectedSkylineDocumentHash != auditLogList.DocumentHash.HashString)
                     {
                         var entry = getDefaultEntry() ?? AuditLogEntry.CreateUndocumentedChangeEntry();
                         auditLog = new AuditLogList(entry.ChangeParent(auditLog.AuditLogEntries));
@@ -2127,8 +2125,11 @@ namespace pwiz.Skyline.Model
 
             var auditLogPath = GetAuditLogPath(displayName);
 
-            if (Settings.DataSettings.AuditLogging)
-                AuditLog?.WriteToFile(auditLogPath, hash);
+            if (Settings.DataSettings.AuditLogging && AuditLog != null)
+            {
+                var auditLog = AuditLog.RecalculateHashValues(skylineVersion.SrmDocumentVersion, hash);
+                auditLog.WriteToFile(auditLogPath, hash, skylineVersion.SrmDocumentVersion);
+            }
             else if (File.Exists(auditLogPath))
                 Helpers.TryTwice(() => File.Delete(auditLogPath));
         }

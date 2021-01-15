@@ -26,6 +26,7 @@ using System.Windows.Forms;
 using pwiz.Common.Controls;
 using ZedGraph;
 using pwiz.Common.DataBinding;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Model;
@@ -383,11 +384,6 @@ namespace pwiz.Skyline.SettingsUI
             }
         }
 
-        public static bool IsUnknown(double d)
-        {
-            return (double.IsNaN(d) || double.IsInfinity(d));
-        }
-
         /// <summary>
         /// Has this weight been assigned a score opposite to that expected in its definition?
         /// </summary>
@@ -405,7 +401,7 @@ namespace pwiz.Skyline.SettingsUI
 
         private static void ProcessScores(double score, ref double min, ref double max, ref int countUnknownScores)
         {
-            if (IsUnknown(score))
+            if (TargetDecoyGenerator.IsUnknown(score))
                 countUnknownScores++;
             else
             {
@@ -926,7 +922,7 @@ namespace pwiz.Skyline.SettingsUI
                 }
                 foreach (var score in Scores)
                 {
-                    if (IsUnknown(score))
+                    if (TargetDecoyGenerator.IsUnknown(score))
                         continue;
                     int bin = Math.Max(0, Math.Min(listBins.Count - 1, (int)((score - min) / binWidth)));
                     listBins[bin].Y++;

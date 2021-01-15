@@ -27,7 +27,6 @@ using System.Threading;
 using pwiz.Common.Chemistry;
 using pwiz.Common.SystemUtil;
 using pwiz.ProteomeDatabase.API;
-using pwiz.Skyline.EditUI;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -2131,5 +2130,13 @@ namespace pwiz.Skyline.Model
             Thread.CurrentThread.CurrentUICulture = currentUICulture;
             KnownHeaderSynonyms = knownColumnHeadersAllCultures;
         }
+    }
+
+    public class PasteError
+    {
+        public String Message { get; set; }
+        public int Line { get; set; }
+        public int Column { get; set; }
+        public int Length { get; set; }
     }
 }

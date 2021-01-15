@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
@@ -73,13 +74,13 @@ namespace pwiz.SkylineTestTutorial
 
             ForceMzml = true;   // Mzml is ~2x faster for this test.
 
-            LinkPdf = "https://skyline.gs.washington.edu/labkey/_webdav/home/software/Skyline/%40files/tutorials/OptimizeCE-1_4.pdf";
+            LinkPdf = "https://skyline.ms/_webdav/home/software/Skyline/%40files/tutorials/OptimizeCE-20_2.pdf";
 
             TestFilesZipPaths = new[]
             {
                 UseRawFiles
-                    ? @"https://skyline.gs.washington.edu/tutorials/OptimizeCE.zip"
-                    : @"https://skyline.gs.washington.edu/tutorials/OptimizeCEMzml.zip",
+                    ? @"https://skyline.ms/tutorials/OptimizeCE.zip"
+                    : @"https://skyline.ms/tutorials/OptimizeCEMzml.zip",
                 @"TestTutorial\CEOptimizationViews.zip"
             };
             RunFunctionalTest();
@@ -173,6 +174,7 @@ namespace pwiz.SkylineTestTutorial
                 SkylineWindow.ExpandPeptides();
             });
 
+            RestoreViewOnScreen(5);
             PauseForScreenShot("Main Skyline window", 5);
 
             // Creating Optimization Methods, p. 5
@@ -224,7 +226,7 @@ namespace pwiz.SkylineTestTutorial
 
             FindNode(decorator + "IHGFDLAAINLQR");
             RestoreViewOnScreen(8);
-
+            RunUI(() => SkylineWindow.Size = new Size(984, 553));
             PauseForScreenShot("Main Skyline window", 8);
 
             if (IsCoverShotMode)
@@ -251,7 +253,7 @@ namespace pwiz.SkylineTestTutorial
 
             FindNode(decorator + "IDALNENK");
 
-            RunUI(() => SkylineWindow.NormalizeAreaGraphTo(AreaNormalizeToView.area_percent_view));
+            RunUI(() => SkylineWindow.NormalizeAreaGraphTo(NormalizeOption.TOTAL));
 
             PauseForScreenShot("Main Skyline window", 9);
 

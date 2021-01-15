@@ -22,7 +22,9 @@ using System.Linq;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.DocSettings.Extensions;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Model
 {
@@ -58,13 +60,22 @@ namespace pwiz.Skyline.Model
         public List<StaticMod> GlobalStaticMods { get; set; }
         public List<StaticMod> GlobalIsotopeMods { get; set; }
 
+        public bool SkipPeptide(PeptideDocNode peptideDocNode)
+        {
+            return null != peptideDocNode.GlobalStandardType;
+        }
+
         public SrmDocument PermuteIsotopeModifications(IProgressMonitor progressMonitor, SrmDocument document)
         {
-            var progressStatus = new ProgressStatus(Resources.IsotopeModificationPermuter_PermuteIsotopeModifications_Permuting_isotope_modifiations);
+            var progressStatus = new ProgressStatus(Resources.IsotopeModificationPermuter_PermuteIsotopeModifications_Permuting_isotope_modifications);
             progressMonitor.UpdateProgress(progressStatus.ChangePercentComplete(0));
             int maxPermutationCount = 0;
             foreach (var peptide in document.Peptides)
             {
+                if (SkipPeptide(peptide))
+                {
+                    continue;
+                }
                 int residueCount = PotentiallyModifiedResidues(peptide, IsotopeModification).Count;
                 int permutationCount = SimplePermutation ? residueCount + 1 : 1 << residueCount;
                 maxPermutationCount = Math.Max(permutationCount, maxPermutationCount);
@@ -74,8 +85,16 @@ namespace pwiz.Skyline.Model
             document = EnsureLabelTypes(progressMonitor, document, maxPermutationCount, partialLabelTypes);
             int totalPeptideCount = document.PeptideCount;
             int processedPeptideCount = 0;
-            foreach (var peptideGroup in document.PeptideGroups)
+            var newMoleculeGroups = new List<PeptideGroupDocNode>();
+            foreach (var peptideGroup in document.MoleculeGroups)
             {
+                if (!peptideGroup.IsProteomic)
+                {
+                    newMoleculeGroups.Add(peptideGroup);
+                    continue;
+                }
+
+                var newPeptides = new List<PeptideDocNode>();
                 foreach (var peptideDocNode in peptideGroup.Peptides)
                 {
                     if (progressMonitor.IsCanceled)
@@ -84,22 +103,83 @@ namespace pwiz.Skyline.Model
                     }
 
                     progressMonitor.UpdateProgress(
-                        progressStatus.ChangePercentComplete((100 * processedPeptideCount++) / totalPeptideCount));
-                    var potentiallyModifiedResidues = PotentiallyModifiedResidues(peptideDocNode, IsotopeModification);
-                    if (potentiallyModifiedResidues.Count == 0)
-                    {
-                        continue;
-                    }
+                        progressStatus.ChangePercentComplete(100 * processedPeptideCount++ / totalPeptideCount));
 
-                    var newTypedExplicitModifications = PermuteTypedExplicitModifications(partialLabelTypes, peptideDocNode, potentiallyModifiedResidues);
-                    var newExplicitMods = new ExplicitMods(peptideDocNode.Peptide, peptideDocNode.ExplicitMods?.StaticModifications, newTypedExplicitModifications);
-                    var identityPath = new IdentityPath(peptideGroup.PeptideGroup, peptideDocNode.Peptide);
-                    document = document.ChangePeptideMods(identityPath, newExplicitMods, false, GlobalStaticMods,
-                        GlobalIsotopeMods);
+                    var newPeptide = PermuteModificationsOnPeptide(document, peptideGroup, peptideDocNode, partialLabelTypes);
+                    newPeptides.Add(newPeptide);
+                }
+
+                var newChildren = ImmutableList.ValueOf(newPeptides.Cast<DocNode>());
+                if (ArrayUtil.ReferencesEqual(newChildren, peptideGroup.Children))
+                {
+                    newMoleculeGroups.Add(peptideGroup);
+                }
+                else
+                {
+                    newMoleculeGroups.Add((PeptideGroupDocNode) peptideGroup.ChangeChildren(newChildren));
                 }
             }
 
+            document = (SrmDocument) document.ChangeChildren(ImmutableList.ValueOf(newMoleculeGroups.Cast<DocNode>()));
+            var pepModsNew = document.Settings.PeptideSettings.Modifications;
+            pepModsNew = pepModsNew.DeclareExplicitMods(document, GlobalStaticMods, GlobalIsotopeMods);
+            if (!Equals(pepModsNew, document.Settings.PeptideSettings.Modifications))
+            {
+                var newSettings = document.Settings.ChangePeptideModifications(m => pepModsNew);
+                document = document.ChangeSettings(newSettings);
+            }
             return document;
+        }
+
+        public PeptideDocNode PermuteModificationsOnPeptide(SrmDocument document, PeptideGroupDocNode peptideGroupDocNode,
+            PeptideDocNode peptideDocNode, List<IsotopeLabelType> partialLabelTypes)
+        {
+            if (SkipPeptide(peptideDocNode))
+            {
+                return peptideDocNode;
+            }
+
+            var potentiallyModifiedResidues = PotentiallyModifiedResidues(peptideDocNode, IsotopeModification);
+            if (potentiallyModifiedResidues.Count == 0)
+            {
+                return peptideDocNode;
+            }
+
+            // Create a document containing only one peptide so that "ChangePeptideMods" does not have to walk
+            // over a long list of peptides to see which modifications are in use.
+            var smallDocument = (SrmDocument) document.ChangeChildren(new DocNode[]
+                {peptideGroupDocNode.ChangeChildren(new DocNode[] {peptideDocNode})});
+            var newTypedExplicitModifications = PermuteTypedExplicitModifications(partialLabelTypes, peptideDocNode, potentiallyModifiedResidues);
+            var newExplicitMods = new ExplicitMods(peptideDocNode.Peptide, peptideDocNode.ExplicitMods?.StaticModifications, newTypedExplicitModifications);
+            var identityPath = new IdentityPath(peptideGroupDocNode.PeptideGroup, peptideDocNode.Peptide);
+            smallDocument = smallDocument.ChangePeptideMods(identityPath, newExplicitMods, false, GlobalStaticMods,
+                GlobalIsotopeMods);
+            peptideDocNode = (PeptideDocNode) smallDocument.FindPeptideGroup(peptideGroupDocNode.PeptideGroup).FindNode(peptideDocNode.Peptide);
+            var lightChargeStates = peptideDocNode.TransitionGroups.Where(tg=>tg.IsLight).Select(tg => tg.PrecursorCharge).Distinct().ToList();
+            var chargeStatesByLabel =
+                peptideDocNode.TransitionGroups.ToLookup(tg => tg.LabelType, tg => tg.PrecursorCharge);
+            var transitionGroupsToAdd = new List<TransitionGroupDocNode>();
+            foreach (var typedExplicitModifications in newExplicitMods.GetHeavyModifications())
+            {
+                var labelType = typedExplicitModifications.LabelType;
+                foreach (var chargeState in lightChargeStates.Except(chargeStatesByLabel[labelType]))
+                {
+                    var tranGroup = new TransitionGroup(peptideDocNode.Peptide, Adduct.FromChargeProtonated(chargeState), IonMobilityAndCCS.EMPTY, labelType);
+                    TransitionDocNode[] transitions = peptideDocNode.GetMatchingTransitions(tranGroup, smallDocument.Settings, newExplicitMods);
+
+                    var nodeGroup = new TransitionGroupDocNode(tranGroup, transitions);
+                    nodeGroup = nodeGroup.ChangeSettings(smallDocument.Settings, peptideDocNode, newExplicitMods, SrmSettingsDiff.ALL);
+                    transitionGroupsToAdd.Add(nodeGroup);
+                }
+            }
+
+            if (transitionGroupsToAdd.Any())
+            {
+                var newChildren = peptideDocNode.TransitionGroups.Concat(transitionGroupsToAdd).ToList();
+                newChildren.Sort(Peptide.CompareGroups);
+                peptideDocNode = (PeptideDocNode) peptideDocNode.ChangeChildren(newChildren.Cast<DocNode>().ToList());
+            }
+            return peptideDocNode;
         }
 
         public List<TypedExplicitModifications> PermuteTypedExplicitModifications(IList<IsotopeLabelType> partialLabelTypes, PeptideDocNode peptideDocNode, IList<int> potentiallyModifiedResidues)
