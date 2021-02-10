@@ -23,6 +23,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
+using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Util;
@@ -88,6 +89,11 @@ namespace pwiz.Skyline.Model.Lib
         public IEnumerable<IndexItem> ItemsWithUnmodifiedSequence(LibraryKey libraryKey)
         {
             return _subIndexes.SelectMany(index => index.ItemsMatchingWithoutModifications(libraryKey));
+        }
+
+        public HashSet<eIonMobilityUnits> IonMobilityUnitsInUse
+        {
+            get {  return _subIndexes.SelectMany(index => index.Select(item => item.LibraryKey.IonMobility.IonMobility.Units)).ToHashSet(); }
         }
 
         public struct IndexItem

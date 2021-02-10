@@ -23,6 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using NHibernate;
+using pwiz.Common.Chemistry;
 using pwiz.Common.Database.NHibernate;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
@@ -118,6 +119,11 @@ namespace pwiz.Skyline.Model.IonMobility
             {
                 return session.CreateCriteria(typeof (DbPrecursorAndIonMobility)).List<DbPrecursorAndIonMobility>();
             }
+        }
+
+        public HashSet<eIonMobilityUnits> IonMobilityUnitsInUse
+        {
+            get { return DictLibrary == null ? new HashSet<eIonMobilityUnits>() : DictLibrary.IonMobilityUnitsInUse; }
         }
 
         #region Property change methods

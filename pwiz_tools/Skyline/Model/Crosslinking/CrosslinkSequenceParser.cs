@@ -26,7 +26,7 @@ using pwiz.Skyline.Properties;
 
 namespace pwiz.Skyline.Model.Crosslinking
 {
-    public class CrosslinkSequenceParser
+    public static class CrosslinkSequenceParser
     {
         public static CrosslinkLibraryKey TryParseCrosslinkLibraryKey(string str, int charge, IonMobilityAndCCS ionMobility)
         {

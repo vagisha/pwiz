@@ -23,7 +23,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline.Controls.Graphs;
 using System.Windows.Forms;
 using pwiz.Common.DataBinding;
@@ -284,7 +283,6 @@ namespace pwiz.SkylineTestUtil
                         viewEditor.ViewName = newViewName ?? viewName;
                         viewEditor.OkDialog();
                     });
-PauseTest();
                 WaitForCondition(() => (documentGrid.RowCount == (expectedRowsFinal??expectedRowsInitial))); // Let it initialize
             }
         }
@@ -499,7 +497,6 @@ PauseTest();
         {
             WaitForGraphs();
             var graphChromatogram = GetGraphChrom(graphName);
-PauseTest();
             // Wait as long as 2 seconds for mouse move to produce a highlight point
             bool overHighlight = false;
             const int sleepCycles = 20;
@@ -651,9 +648,22 @@ PauseTest();
             }
             else
             {
-                Console.Write(@"{0:0.##}, ", actual);
+                if (CheckDocumentResultsGridValuesRecordedCount > 0)
+                {
+                    Console.Write(@", ");
+                }
                 if (++CheckDocumentResultsGridValuesRecordedCount % 18 == 0)
+                {
                     Console.WriteLine();
+            }
+                if (actual.HasValue)
+                {
+                    Console.Write(@"{0:0.##}", actual);
+                }
+                else
+                {
+                    Console.Write(@"null");
+                }
             }
         }
 
@@ -667,7 +677,7 @@ PauseTest();
             });
         }
 
-        public DocumentGridForm EnableDocumentGridIonMobilityResultsColumns()
+        public DocumentGridForm EnableDocumentGridIonMobilityResultsColumns(int? expectedRowCount = null)
         {
             /* Add these IMS related columns to the standard mixed transition list report
                 <column name="Results!*.Value.PrecursorResult.CollisionalCrossSection" />
@@ -697,7 +707,7 @@ PauseTest();
                     "Proteins!*.Peptides!*.Precursors!*.Transitions!*.Results!*.Value.Chromatogram.ChromatogramIonMobilityUnits"
                 },
                 null,
-                SkylineWindow.Document.MoleculeTransitionCount * (SkylineWindow.Document.MeasuredResults?.Chromatograms.Count ?? 1));
+                expectedRowCount ?? SkylineWindow.Document.MoleculeTransitionCount * (SkylineWindow.Document.MeasuredResults?.Chromatograms.Count ?? 1));
             return documentGrid;
         }
         
