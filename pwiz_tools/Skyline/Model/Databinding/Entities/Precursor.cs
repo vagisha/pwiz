@@ -79,7 +79,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
 
         protected override TransitionGroupDocNode CreateEmptyNode()
         {
-            return new TransitionGroupDocNode(new TransitionGroup(new Model.Peptide(null, @"X", null, null, 0), Util.Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY, IsotopeLabelType.light), null);
+            return new TransitionGroupDocNode(new TransitionGroup(new Model.Peptide(null, @"X", null, null, 0), Util.Adduct.SINGLY_PROTONATED, IsotopeLabelType.light, 0), null, IonMobilityAndCCS.EMPTY);
         }
 
         [InvariantDisplayName("PrecursorResultsSummary")]
@@ -138,7 +138,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 {
                     var parent = DataSchema.Document.FindNode(IdentityPath.Parent) as PeptideDocNode;
                     Adduct adduct;
-                    var molecule = RefinementSettings.ConvertToSmallMolecule(RefinementSettings.ConvertToSmallMoleculesMode.formulas, SrmDocument, parent, out adduct, DocNode.TransitionGroup.PrecursorAdduct.AdductCharge, DocNode.TransitionGroup.IonMobility, DocNode.TransitionGroup.LabelType);
+                    var molecule = RefinementSettings.ConvertToSmallMolecule(RefinementSettings.ConvertToSmallMoleculesMode.formulas, SrmDocument, parent, out adduct, DocNode.TransitionGroup.PrecursorAdduct.AdductCharge, DocNode.IonMobilityAndCCS, DocNode.TransitionGroup.LabelType);
                     return molecule.InvariantName ?? string.Empty;
                 }
             }

@@ -1824,23 +1824,7 @@ namespace pwiz.Skyline.Properties {
                 this["TestSmallMolecules"] = value;
             }
         }
-
-        [global::System.Configuration.UserScopedSettingAttribute()]
-        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("False")]
-        public bool TestMultipleConformers
-        {
-            get
-            {
-                return ((bool)(this["TestMultipleConformers"]));
-            }
-            set
-            {
-                this["TestMultipleConformers"] = value;
-            }
-        }
-
-
+        
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("True")]
@@ -3059,6 +3043,18 @@ namespace pwiz.Skyline.Properties {
             }
             set {
                 this["DetectionsShowLegend"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool TestMultiCCS {
+            get {
+                return ((bool)(this["TestMultiCCS"]));
+            }
+            set {
+                this["TestMultiCCS"] = value;
             }
         }
     }

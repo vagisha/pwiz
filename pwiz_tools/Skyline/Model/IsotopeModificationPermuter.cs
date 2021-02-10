@@ -164,10 +164,10 @@ namespace pwiz.Skyline.Model
                 var labelType = typedExplicitModifications.LabelType;
                 foreach (var chargeState in lightChargeStates.Except(chargeStatesByLabel[labelType]))
                 {
-                    var tranGroup = new TransitionGroup(peptideDocNode.Peptide, Adduct.FromChargeProtonated(chargeState), IonMobilityAndCCS.EMPTY, labelType);
+                    var tranGroup = new TransitionGroup(peptideDocNode.Peptide, Adduct.FromChargeProtonated(chargeState), labelType, 0);
                     TransitionDocNode[] transitions = peptideDocNode.GetMatchingTransitions(tranGroup, smallDocument.Settings, newExplicitMods);
 
-                    var nodeGroup = new TransitionGroupDocNode(tranGroup, transitions);
+                    var nodeGroup = new TransitionGroupDocNode(tranGroup, transitions, IonMobilityAndCCS.EMPTY);
                     nodeGroup = nodeGroup.ChangeSettings(smallDocument.Settings, peptideDocNode, newExplicitMods, SrmSettingsDiff.ALL);
                     transitionGroupsToAdd.Add(nodeGroup);
                 }

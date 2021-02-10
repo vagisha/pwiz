@@ -196,9 +196,10 @@ namespace pwiz.Skyline.Model.DocSettings
                 // Read child elements.
                 Prediction = reader.DeserializeElement<TransitionPrediction>();
                 Filter = reader.DeserializeElement<TransitionFilter>();
-                IonMobilityFiltering = reader.IsStartElement(TransitionIonMobilityFiltering.EL.ion_mobility_filtering) ?
-                    reader.DeserializeElement<TransitionIonMobilityFiltering>() :
-                    TransitionIonMobilityFiltering.EMPTY; // Looks like a pre-20.2 format
+                IonMobilityFiltering = (reader.IsStartElement(TransitionIonMobilityFiltering.EL.ion_mobility_filtering)
+                                           ? reader.DeserializeElement<TransitionIonMobilityFiltering>()
+                                           : null) // Looks like a pre-20.2 format
+                      ?? TransitionIonMobilityFiltering.EMPTY;
                 Libraries = reader.DeserializeElement<TransitionLibraries>();
                 Integration = reader.DeserializeElement<TransitionIntegration>();
                 Instrument = reader.DeserializeElement<TransitionInstrument>();

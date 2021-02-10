@@ -94,7 +94,9 @@ namespace pwiz.Skyline.Model
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
             // They at least have to be the same type, though.
-            return obj.GetType() == GetType();
+            if (obj.GetType() != GetType())
+                return false;
+            return true;
         }
 
         /// <summary>

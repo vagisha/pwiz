@@ -200,7 +200,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
                 foreach (var nodeGroup in pep.TransitionGroups)
                 {
                     var calculatedDriftTime = doc1.Settings.GetIonMobilityFilter(
-                        pep, nodeGroup, null, libraryIonMobilityInfo, instrumentInfo, 0).IonMobilityAndCCS;
+                        pep, nodeGroup, null, instrumentInfo, 0).IonMobilityAndCCS;
                     var libKey = new LibKey(pep.ModifiedSequence, nodeGroup.PrecursorAdduct, IonMobilityAndCCS.EMPTY);
                     IonMobilityAndCCS[] infoValueExplicitDT;
                     if (!dictExplicitDT.TryGetValue(libKey, out infoValueExplicitDT))

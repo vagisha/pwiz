@@ -90,6 +90,10 @@ namespace pwiz.SkylineTestUtil
             try
             {
                 SrmDocument result = (SrmDocument)xmlSerializer.Deserialize(reader);
+
+                // For automated test of multiple conformers in tests that aren't originally designed to test that at all
+                result = result.AddMultipleConformerTestLibrary();
+
                 return result;
             }
             catch (Exception x)
@@ -324,6 +328,12 @@ namespace pwiz.SkylineTestUtil
             AssertComplete();
             docResults = Document;
 
+            // Adjust expected counts in the case of tests automatically adding multi-conformer nodes
+            tranGroups += doc.SpecialTestTransitionGroupsCount - doc.SpecialTestHeavyTransitionGroupsCount;
+            tranGroupsHeavy += doc.SpecialTestHeavyTransitionGroupsCount;
+            transitions += doc.SpecialTestTransitionsCount - doc.SpecialTestHeavyTransitionsCount;
+            transitionsHeavy += doc.SpecialTestHeavyTransitionsCount;
+
             // Check the result state of the most recently added chromatogram set.
             var chroms = measuredResults.Chromatograms;
             AssertResult.IsDocumentResultsState(docResults, chroms[chroms.Count - 1].Name,
@@ -368,7 +378,7 @@ namespace pwiz.SkylineTestUtil
             int index;
             ChromatogramSet chromatogramSet;
             document.Settings.MeasuredResults.TryGetChromatogramSet(replicateName, out chromatogramSet, out index);
-            Assert.AreNotEqual(-1, index, string.Format("Replicate {0} not found among -> {1} <-", replicateName,
+            AssertEx.AreNotEqual(-1, index, string.Format("Replicate {0} not found among -> {1} <-", replicateName,
                 TextUtil.LineSeparate(document.Settings.MeasuredResults.Chromatograms.Select(c => c.Name))));
             int peptidesActual = 0;
 
@@ -413,7 +423,7 @@ namespace pwiz.SkylineTestUtil
             failMessage += CompareValues(transitions, transitionsActual, "transition");
             failMessage += CompareValues(transitionsHeavy, transitionsHeavyActual, "heavy transition");
             if (failMessage.Length > 0)
-                Assert.Fail("IsDocumentResultsState failed for replicate " + replicateName + ": "+failMessage);
+                AssertEx.Fail("IsDocumentResultsState failed for replicate " + replicateName + ": "+failMessage);
         }
 
         public static void MatchChromatograms(ResultsTestDocumentContainer docContainer,
@@ -467,7 +477,7 @@ namespace pwiz.SkylineTestUtil
             foreach (var pair in document.MoleculePrecursorPairs)
             {
                 #region Multiple conformer testing
-                if (pair.NodeGroup.IsSpecialMultiCCSTestDocNode)
+                if (pair.NodeGroup.IsSpecialTestDocNode)
                 {
                     Assert.IsFalse(results.TryLoadChromatogram(iChrom1, pair.NodePep, pair.NodeGroup, tolerance, true, out _));
                     continue;

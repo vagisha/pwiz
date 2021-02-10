@@ -48,6 +48,7 @@ namespace pwiz.Skyline.Model.DocSettings
     {
 
         public static TransitionIonMobilityFiltering EMPTY = new TransitionIonMobilityFiltering(IonMobilityLibrary.NONE, false, IonMobilityWindowWidthCalculator.EMPTY);
+        private IonMobilityLibrary _ionMobilityLibrary;
 
         public static bool IsNullOrEmpty(TransitionIonMobilityFiltering f) { return f == null || f.IsEmpty; }
 
@@ -62,7 +63,7 @@ namespace pwiz.Skyline.Model.DocSettings
 
         public TransitionIonMobilityFiltering(IonMobilityLibrary ionMobilityLibrary, bool useSpectralLibraryIonMobilityValues, IonMobilityWindowWidthCalculator filterWindowWidthCalculator)
         {
-            IonMobilityLibrary = ionMobilityLibrary ?? IonMobilityLibrary.NONE;
+            IonMobilityLibrary = ionMobilityLibrary;
             UseSpectralLibraryIonMobilityValues = useSpectralLibraryIonMobilityValues;
             FilterWindowWidthCalculator = filterWindowWidthCalculator;
 
@@ -72,7 +73,11 @@ namespace pwiz.Skyline.Model.DocSettings
         public bool IsEmpty { get { return Equals(EMPTY); } }
 
         [TrackChildren]
-        public IonMobilityLibrary IonMobilityLibrary { get; private set; }
+        public IonMobilityLibrary IonMobilityLibrary
+        {
+            get => _ionMobilityLibrary ?? IonMobilityLibrary.NONE;
+            private set => _ionMobilityLibrary = value;
+        }
 
         [Track]
         public bool UseSpectralLibraryIonMobilityValues { get; private set; }
@@ -144,19 +149,32 @@ namespace pwiz.Skyline.Model.DocSettings
             return result;
         }
 
-        public List<IonMobilityAndCCS> GetIonMobilitiesInfoFromLibrary(LibKey ion)
+        /// <summary>
+        /// Find all ion mobility library entries for the indicated (molecule,adduct) pairs
+        /// </summary>
+        public Dictionary<LibKey, IonMobilityAndCCS[]> GetIonMobilitiesInfoFromLibrary(IEnumerable<LibKey> targetIons)
         {
-            // Locate this ion in ion mobility library, if any
-            if (IonMobilityLibrary != null && !IonMobilityLibrary.IsNone)
+            var result = new Dictionary<LibKey, IonMobilityAndCCS[]>();
+
+            // Locate these ions in ion mobility library, if any
+            if (!IonMobilityLibrarySpec.IsNullOrEmpty(IonMobilityLibrary))
             {
                 var libKeyIndex = IonMobilityLibrary.GetIonMobilityLibKeyIndex();
                 if (libKeyIndex != null)
                 {
-                    return libKeyIndex.ItemsMatching(ion, LibKeyIndex.LibraryMatchType.ion).Select(item => item.LibraryKey.IonMobility).ToList();
+                    // If these target ions happen to have IM inforation already, disregard it for lookup purposes
+                    foreach (var ion in targetIons.Select(ion => ion.ChangeIonMobilityAndCCS(IonMobilityAndCCS.EMPTY)).Distinct())
+                    {
+                        var itemsMatchingIon = libKeyIndex.ItemsMatching(ion, LibKeyIndex.LibraryMatchType.ion).ToArray();
+                        if (itemsMatchingIon.Length > 0)
+                        {
+                            result.Add(ion, itemsMatchingIon.Select(item => item.LibraryKey.IonMobility).ToArray());
+                        }
+                    }
                 }
             }
 
-            return null;
+            return result;
         }
 
         /// <summary>
@@ -233,10 +251,6 @@ namespace pwiz.Skyline.Model.DocSettings
                 IonMobilityLibrary = readHelper.Deserialize(reader);
                 reader.ReadEndElement();
             }
-            if (IonMobilityLibrary == null)
-            {
-                IonMobilityLibrary = IonMobilityLibrary.NONE;
-            }
             Validate();
         }
 
@@ -246,7 +260,7 @@ namespace pwiz.Skyline.Model.DocSettings
             writer.WriteAttribute(ATTR.use_spectral_library_ion_mobility_values, UseSpectralLibraryIonMobilityValues);
             FilterWindowWidthCalculator.WriteXML(writer, false, true);
             // Write ion mobility library info
-            if (IonMobilityLibrary != null && !IonMobilityLibrary.IsNone)
+            if (!IonMobilityLibrarySpec.IsNullOrEmpty(IonMobilityLibrary))
             {
                 writer.WriteElement(IonMobilityLibrary);
             }
@@ -420,20 +434,24 @@ namespace pwiz.Skyline.Model.DocSettings
         // For Agilent "high resolution demultiplexing"
         [Track] public double FixedWindowWidth { get; private set; }
 
-        public double WidthAt(double ionMobility, double ionMobilityMax)
+        public double? WidthAt(double? ionMobility, double ionMobilityMax)
         {
+            if (!ionMobility.HasValue)
+            {
+                return null;
+            }
             switch (WindowWidthMode)
             {
                 case IonMobilityWindowWidthType.resolving_power:
                     return Math.Abs((ResolvingPower > 0 ? 2.0 / ResolvingPower : double.MaxValue) *
-                                    ionMobility); // 2.0*ionMobility/resolvingPower
+                                    ionMobility.Value); // 2.0*ionMobility/resolvingPower
                 case IonMobilityWindowWidthType.fixed_width:
                     return FixedWindowWidth;
                 case IonMobilityWindowWidthType.linear_range:
                     Assume.IsTrue(ionMobilityMax != 0,
                         @"Expected ionMobilityMax value != 0 for linear range ion mobility window calculation");
                     return PeakWidthAtIonMobilityValueZero +
-                           Math.Abs(ionMobility * (PeakWidthAtIonMobilityValueMax - PeakWidthAtIonMobilityValueZero) /
+                           Math.Abs(ionMobility.Value * (PeakWidthAtIonMobilityValueMax - PeakWidthAtIonMobilityValueZero) /
                                     ionMobilityMax);
             }
             return 0;

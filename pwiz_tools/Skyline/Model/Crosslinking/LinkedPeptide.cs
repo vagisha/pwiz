@@ -61,14 +61,14 @@ namespace pwiz.Skyline.Model.Crosslinking
             return ChangeProp(ImClone(this), im => im.ExplicitMods = explicitMods);
         }
 
-        public TransitionGroup GetTransitionGroup(IsotopeLabelType labelType, Adduct adduct, IonMobilityAndCCS ionMobility)
+        public TransitionGroup GetTransitionGroup(IsotopeLabelType labelType, Adduct adduct)
         {
-            return new TransitionGroup(Peptide, adduct, ionMobility, labelType);
+            return new TransitionGroup(Peptide, adduct, labelType, 0);
         }
 
         public TransitionGroupDocNode GetTransitionGroupDocNode(SrmSettings settings, IsotopeLabelType labelType, Adduct adduct, IonMobilityAndCCS ionMobility) {
-            var transitionGroup = GetTransitionGroup(labelType, adduct, ionMobility);
-            var transitionGroupDocNode = new TransitionGroupDocNode(transitionGroup, Annotations.EMPTY, settings, ExplicitMods, null, ExplicitTransitionGroupValues.EMPTY, null, null, false);
+            var transitionGroup = GetTransitionGroup(labelType, adduct);
+            var transitionGroupDocNode = new TransitionGroupDocNode(transitionGroup, Annotations.EMPTY, settings, ExplicitMods, ionMobility, null, ExplicitTransitionGroupValues.EMPTY, null, null, false);
             return transitionGroupDocNode;
         }
 
@@ -235,7 +235,7 @@ namespace pwiz.Skyline.Model.Crosslinking
 
         public ComplexFragmentIon MakeComplexFragmentIon(SrmSettings settings, IsotopeLabelType labelType, ComplexFragmentIonName complexFragmentIonName)
         {
-            var transitionGroup = GetTransitionGroup(labelType, Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY);
+            var transitionGroup = GetTransitionGroup(labelType, Adduct.SINGLY_PROTONATED);
             Transition transition;
             if (complexFragmentIonName.IonType == IonType.precursor || complexFragmentIonName.IonType == IonType.custom)
             {

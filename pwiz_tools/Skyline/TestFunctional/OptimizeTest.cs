@@ -1046,7 +1046,7 @@ namespace pwiz.SkylineTestFunctional
                                     optLib.GetOptimization(OptimizationType.collision_energy,
                                         document.Settings.GetSourceTarget(nodePep), nodeGroup.TransitionGroup.PrecursorAdduct,
                                         //nodeGroup.TransitionGroup.Peptide.Sequence, nodeGroup.TransitionGroup.PrecursorAdduct,
-                                        nodeGroup.TransitionGroup.IonMobility,
+                                        nodeGroup.IonMobilityAndCCS,
                                         nodeTran.FragmentIonName, nodeTran.Transition.Adduct);
                                 if (optimization != null)
                                     Assert.AreEqual(optimization.Value, tranCE, 0.05);

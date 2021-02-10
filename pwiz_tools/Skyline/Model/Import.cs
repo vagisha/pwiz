@@ -2332,7 +2332,7 @@ namespace pwiz.Skyline.Model
                 {
                     SourceFile = _sourceFile ?? CLIPBOARD_FILENAME,
                     Key = new LibKey(modifiedSequenceWithIsotopes, groupLibTriple.NodeGroup.TransitionGroup.PrecursorAdduct,
-                        groupLibTriple.NodeGroup.TransitionGroup.IonMobility),
+                        groupLibTriple.NodeGroup.LibraryIonMobility),
                     Label = groupLibTriple.SpectrumInfo.Label,
                     PrecursorMz = groupLibTriple.SpectrumInfo.PrecursorMz,
                     SpectrumPeaks = groupLibTriple.SpectrumInfo.SpectrumPeaks,
@@ -2448,14 +2448,16 @@ namespace pwiz.Skyline.Model
 
         private void CompleteTransitionGroup()
         {
+            var conformer = 0;
             var precursorExp = GetBestPrecursorExp();
-            var transitionGroup = new TransitionGroup(_activePeptide,
-                                                      precursorExp.PrecursorAdduct,
-                                                      IonMobilityAndCCS.EMPTY,  // TODO(bspratt) this should be a loop that pulls conformers from imsdb
-                                                      precursorExp.LabelType,
-                                                      false,
-                                                      precursorExp.MassShift);
-            var transitions = _activeTransitionInfos.ConvertAll(info =>
+            foreach (var libraryIonMobility in _settings.GetLibraryIonMobilities(_activePeptide.Target, precursorExp.PrecursorAdduct))
+            { 
+                var transitionGroup = new TransitionGroup(_activePeptide,
+                    precursorExp.PrecursorAdduct,
+                    precursorExp.LabelType,
+                    false,
+                    precursorExp.MassShift, conformer++);
+                var transitions = _activeTransitionInfos.ConvertAll(info =>
                 {
                     var productExp = info.TransitionExps.Single(exp => Equals(precursorExp, exp.Precursor)).Product;
                     var ionType = productExp.IonType;
@@ -2466,24 +2468,31 @@ namespace pwiz.Skyline.Model
                         massShift = 0;
                     var tran = new Transition(transitionGroup, ionType, offset, 0, productExp.Adduct, massShift);
                     // m/z and library info calculated later
-                    return new TransitionDocNode(tran, productExp.Losses, TypedMass.ZERO_MONO_MASSH, TransitionDocNode.TransitionQuantInfo.DEFAULT, ExplicitTransitionValues.EMPTY);
+                    return new TransitionDocNode(tran, productExp.Losses, TypedMass.ZERO_MONO_MASSH,
+                        TransitionDocNode.TransitionQuantInfo.DEFAULT, ExplicitTransitionValues.EMPTY);
                 });
-            // m/z calculated later
-            var newTransitionGroup = new TransitionGroupDocNode(transitionGroup, CompleteTransitions(transitions));
-            var currentLibrarySpectrum = !_activeLibraryIntensities.Any() ? null : 
-                new SpectrumMzInfo
-                {
-                    Key = new LibKey(_activePeptide.Sequence, precursorExp.PrecursorAdduct, transitionGroup.IonMobility),
-                    PrecursorMz = _activePrecursorMz,
-                    Label = precursorExp.LabelType,
-                    SpectrumPeaks = new SpectrumPeaksInfo(_activeLibraryIntensities.ToArray()),
-                };
-            _groupLibTriples.Add(new TransitionGroupLibraryIrtTriple(currentLibrarySpectrum, newTransitionGroup, _irtValue, _activePrecursorMz));
-            _activePrecursorMz = 0;
-            _activePrecursorExps.Clear();
-            _activeTransitionInfos.Clear();
-            _activeLibraryIntensities.Clear();
-            _irtValue = null;
+                // m/z calculated later
+                var newTransitionGroup =
+                    new TransitionGroupDocNode(transitionGroup, CompleteTransitions(transitions), libraryIonMobility);
+                var currentLibrarySpectrum = !_activeLibraryIntensities.Any()
+                    ? null
+                    : new SpectrumMzInfo
+                    {
+                        Key = new LibKey(_activePeptide.Sequence, precursorExp.PrecursorAdduct,
+                            newTransitionGroup.LibraryIonMobility),
+                        PrecursorMz = _activePrecursorMz,
+                        Label = precursorExp.LabelType,
+                        SpectrumPeaks = new SpectrumPeaksInfo(_activeLibraryIntensities.ToArray()),
+                    };
+                _groupLibTriples.Add(new TransitionGroupLibraryIrtTriple(currentLibrarySpectrum, newTransitionGroup,
+                    _irtValue, _activePrecursorMz));
+            }
+
+        _activePrecursorMz = 0;
+        _activePrecursorExps.Clear();
+        _activeTransitionInfos.Clear();
+        _activeLibraryIntensities.Clear();
+        _irtValue = null;
         }
 
         private PrecursorExp GetBestPrecursorExp()

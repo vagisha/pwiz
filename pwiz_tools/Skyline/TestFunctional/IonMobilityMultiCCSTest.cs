@@ -723,8 +723,8 @@ namespace pwiz.SkylineTestFunctional
                 var targ = new Target(seq);
                 var pep = new Peptide(targ);
                 var pepnode = new PeptideDocNode(pep);
-                var group = new TransitionGroup(pep, adduct, IonMobilityAndCCS.EMPTY, IsotopeLabelType.light);
-                var groupnode = new TransitionGroupDocNode(group, new TransitionDocNode[0]);
+                var group = new TransitionGroup(pep, adduct, IsotopeLabelType.light, 0);
+                var groupnode = new TransitionGroupDocNode(group, new TransitionDocNode[0], IonMobilityAndCCS.EMPTY);
                 result = new PeptidePrecursorPair(pepnode, groupnode);
             }
             return result;

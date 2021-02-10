@@ -370,8 +370,8 @@ namespace pwiz.SkylineTest
                 IsStandard = isStandard;
                 var libInfo = new ChromLibSpectrumHeaderInfo("", 0);
                 var peptide = new Peptide(null, "AVVAVVA", null, null, 0);
-                NodeGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, Adduct.FromChargeProtonated(charge ?? 2), IonMobilityAndCCS.EMPTY, labelType), null, null,
-                   null, libInfo, ExplicitTransitionGroupValues.EMPTY, null, new TransitionDocNode[0], true);
+                NodeGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, Adduct.FromChargeProtonated(charge ?? 2), labelType, 0), null, null,
+                   null, IonMobilityAndCCS.EMPTY, libInfo, ExplicitTransitionGroupValues.EMPTY, null, new TransitionDocNode[0], true);
             }
 
             public TransitionGroupDocNode NodeGroup { get; private set; }
@@ -400,7 +400,7 @@ namespace pwiz.SkylineTest
                 PeakData = new MockPeakData(data, massError) as TPeak;
                 var peptide = new Peptide(null, "AVVAVVA", null, null, 0);
                 charge = charge ?? 2;
-                var tranGroup = new TransitionGroup(peptide, Adduct.FromChargeProtonated(charge), IonMobilityAndCCS.EMPTY, labelType);
+                var tranGroup = new TransitionGroup(peptide, Adduct.FromChargeProtonated(charge), labelType, 0);
                 int offset = ionType == IonType.precursor ? 6 : 0;
                 var isotopeInfo = isotopeProportion == null ? null : new TransitionIsotopeDistInfo(1, (float)isotopeProportion);
                 NodeTran = new TransitionDocNode(new Transition(tranGroup, ionType, offset, 0, Adduct.FromChargeProtonated(charge), null),

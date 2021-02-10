@@ -122,7 +122,7 @@ namespace pwiz.SkylineTest
                         !tranGroup.LabelType.IsLight)
                 {
                     TransitionDocNode[] transitions = nodePep.GetMatchingTransitions(tranGroup, settings, mods);
-                    var nodeGroup = new TransitionGroupDocNode(tranGroup, transitions);
+                    var nodeGroup = new TransitionGroupDocNode(tranGroup, transitions, IonMobilityAndCCS.EMPTY);
                     nodeGroup = nodeGroup.ChangeSettings(settings, nodePep, mods, SrmSettingsDiff.ALL);
                     docStudy7 = (SrmDocument) docStudy7.Add(pepPath, nodeGroup);
                     break;

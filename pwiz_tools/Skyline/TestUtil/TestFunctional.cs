@@ -1027,7 +1027,7 @@ namespace pwiz.SkylineTestUtil
                     Program.PauseSeconds = -1;
 
                     #region Multiple conformers test support
-                    TestMultipleConformers = false; // Extra test node will mess up the pretty pictures
+                    Settings.Default.TestMultiCCS = false; // Extra test node will mess up the pretty pictures
                     #endregion Multiple conformers test support
                 }
             }
@@ -1632,7 +1632,7 @@ namespace pwiz.SkylineTestUtil
 
             Settings.Default.Reset();
 #region Multiple conformers test support
-            Settings.Default.TestMultipleConformers = TestMultipleConformers;
+            Settings.Default.TestMultiCCS = TestMultiCCS;
 #endregion Multiple conformers test support
             MsDataFileImpl.PerfUtilFactory.Reset();
         }

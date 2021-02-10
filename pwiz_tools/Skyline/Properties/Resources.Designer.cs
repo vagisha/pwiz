@@ -9317,6 +9317,16 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to A precursor with that adduct, label type, and ion mobility already exists..
+        /// </summary>
+        public static string EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct__label_type__and_ion_mobility_already_exists_ {
+            get {
+                return ResourceManager.GetString("EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct__label_type__and_ion_" +
+                        "mobility_already_exists_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to A precursor with that adduct and label type already exists..
         /// </summary>
         public static string EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct_and_label_type_already_exists_ {

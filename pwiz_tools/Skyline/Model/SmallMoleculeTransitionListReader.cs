@@ -287,7 +287,7 @@ namespace pwiz.Skyline.Model
                     if (!tranGroupFound)
                     {
                         var node =
-                            GetMoleculeTransitionGroup(document, row, pep.Peptide);
+                            GetMoleculeTransitionGroup(document, row, pep);
                         if (node == null)
                             return true;
                         document = (SrmDocument) document.Add(pepPath, node);
@@ -336,16 +336,14 @@ namespace pwiz.Skyline.Model
                 pepFound |= Math.Abs(ionMonoMz - precursorMonoMz) <= MzMatchTolerance &&
                             Math.Abs(ionAverageMz - precursorAverageMz) <=
                             MzMatchTolerance; // (we don't just check mass since we don't have a tolerance value for that)
-                // Or no formula, and different isotope labels or matching label and mz
+                // Or no formula, and different isotope labels or matching label, mz, ionMobility
+                var precursorsWithThisLabelAndIonMobility = 
+                    pep.TransitionGroups.Where(t => Equals(t.TransitionGroup.LabelType,
+                        labelType) && Equals(t.ExplicitValues.IonMobilityAndCCS, precursor.ExplicitTransitionGroupValues.IonMobilityAndCCS)).ToArray();
                 pepFound |= string.IsNullOrEmpty(pep.CustomMolecule.Formula) &&
                             string.IsNullOrEmpty(precursor.Formula) &&
-                            (!pep.TransitionGroups.Any(t => Equals(t.TransitionGroup.LabelType,
-                                 labelType)) || // First label of this kind
-                             pep.TransitionGroups.Any(
-                                 t => Equals(t.TransitionGroup.LabelType,
-                                          labelType) && // Already seen this label, and
-                                      Math.Abs(precursor.Mz - t.PrecursorMz) <=
-                                      MzMatchTolerance)); // Matches precursor mz of similar labels
+                            (!precursorsWithThisLabelAndIonMobility.Any() || // First label and ion mobility of this kind
+                             precursorsWithThisLabelAndIonMobility.Any(t => Math.Abs(precursor.Mz - t.PrecursorMz) <= MzMatchTolerance)); // Already seen this, and matches precursor mz of similar labels
             }
         }
 
@@ -1746,7 +1744,12 @@ namespace pwiz.Skyline.Model
             }
         }
 
-        private TransitionGroupDocNode GetMoleculeTransitionGroup(SrmDocument document, Row row, Peptide pep)
+        private TransitionGroupDocNode GetMoleculeTransitionGroup(SrmDocument document, Row row, PeptideDocNode pepNode)
+        {
+            return GetMoleculeTransitionGroup(document, row, pepNode.Peptide, pepNode);
+        }
+
+        private TransitionGroupDocNode GetMoleculeTransitionGroup(SrmDocument document, Row row, Peptide pep, PeptideDocNode pepNode = null)
         {
             var moleculeInfo = ReadPrecursorOrProductColumns(document, row, null, out var hasError); // Re-read the precursor columns
             if (moleculeInfo == null)
@@ -1783,7 +1786,11 @@ namespace pwiz.Skyline.Model
                     }
                 }
             }
-            var group = new TransitionGroup(pep, adduct, IonMobilityAndCCS.EMPTY, isotopeLabelType);
+
+            var conformerID = pepNode == null ? 0 :
+                PeptideDocNode.GetUniqueConformerID(pepNode.TransitionGroups.Where(t =>
+                    t.TransitionGroup.IsConformer(pep, adduct, isotopeLabelType, null))); // Create a new conformerID if there are siblings
+            var group = new TransitionGroup(pep, adduct, isotopeLabelType, conformerID);
             string errmsg;
             try
             {
@@ -1791,7 +1798,7 @@ namespace pwiz.Skyline.Model
                 if (tran == null)
                     return null;
                 return new TransitionGroupDocNode(group, document.Annotations, document.Settings, null,
-                    null,
+                    IonMobilityAndCCS.EMPTY, null, 
                     moleculeInfo.ExplicitTransitionGroupValues, null, new[] { tran }, true);
             }
             catch (InvalidDataException x)

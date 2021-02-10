@@ -2201,11 +2201,16 @@ namespace pwiz.Skyline.Model.Lib
     /// </summary>
     public class SpectrumMzInfo
     {
+        private IonMobilityAndCCS _ionMobility;
         public string SourceFile { get; set; }
         public LibKey Key { get; set; }
         public string Protein { get; set; } // Also used as Molecule List Name for small molecules
         public SmallMoleculeLibraryAttributes SmallMoleculeLibraryAttributes { get { return Key.SmallMoleculeLibraryAttributes; } }
-        public IonMobilityAndCCS IonMobility { get { return Key.IonMobility; } }
+        public IonMobilityAndCCS IonMobility
+        {
+            get => _ionMobility ?? Key.IonMobility;
+            set => _ionMobility = value;
+        }
         public double PrecursorMz { get; set; }
         public double? RetentionTime { get; set; }
         public IsotopeLabelType Label { get; set; }

@@ -89,7 +89,8 @@ namespace pwiz.SkylineTest
             long startCacheLen = ResultsUtil.CacheSize(doc, cacheSizes[firstIndex],
                 groupCounts[firstIndex], tranCounts[firstIndex], peakCounts[firstIndex]);
             AssertEx.IsDocumentState(doc, null, docImported.MoleculeGroupCount, docImported.MoleculeCount,
-                docImported.MoleculeTransitionGroupCount, docImported.MoleculeTransitionCount);
+                docImported.MoleculeTransitionGroupCount - docImported.SpecialTestTransitionGroupsCount, 
+                docImported.MoleculeTransitionCount - docImported.SpecialTestTransitionsCount);
             
             long singleCacheLen = new FileInfo(cachePersistPath).Length;
             Assert.AreEqual(startCacheLen, singleCacheLen);

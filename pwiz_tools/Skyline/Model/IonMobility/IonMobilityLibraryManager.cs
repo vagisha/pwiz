@@ -30,9 +30,9 @@ namespace pwiz.Skyline.Model.IonMobility
         public static string IsNotLoadedDocumentExplained(SrmDocument document)
         {
             // Not loaded if the library is not usable
-            var calc = GetIonMobilityLibrary(document);
-            if (calc == null || calc.IsNone || calc.IsUsable)
-                return null;
+            var lib = GetIonMobilityLibrary(document);
+            if (IonMobilityLibrarySpec.IsNullOrEmpty(lib) || lib.IsUsable)
+                return null; 
             return @"IonMobilityLibraryManager : GetIonMobilityLibrary(document) not usable and not none";
         }
 

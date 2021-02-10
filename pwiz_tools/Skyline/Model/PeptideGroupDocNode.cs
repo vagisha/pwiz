@@ -117,7 +117,12 @@ namespace pwiz.Skyline.Model
 
         public int MoleculeCount { get { return GetCount((int)Level.Molecules); } }
         public int TransitionGroupCount { get { return GetCount((int)Level.TransitionGroups); } }
+        // Count transition groups with unique adducts
+        public int TransitionGroupCountIgnoringMultipleConformers { get { return Molecules.Sum(m => m.TransitionGroupCountIgnoringMultipleConformers); } }
+
         public int TransitionCount { get { return GetCount((int)Level.Transitions); } }
+        // Count transitions from transition groups with unique adducts
+        public int TransitionCountIgnoringMultipleConformers { get { return Molecules.Sum(m => m.TransitionCountIgnoringMultipleConformers); } }
 
         public int PeptideCount { get { return IsProteomic ? MoleculeCount : 0; } }
 

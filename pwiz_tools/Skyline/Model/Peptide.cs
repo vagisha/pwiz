@@ -23,7 +23,6 @@ using System.Linq;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
-using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -204,11 +203,7 @@ namespace pwiz.Skyline.Model
                         {
                             if (settings.TransitionSettings.IsMeasurablePrecursor(SequenceMassCalc.GetMZ(precursorMass, adduct)))
                             {
-                                var libKey = new LibKey(Target, adduct, IonMobilityAndCCS.EMPTY);
-                                foreach (var ionMobility in settings.GetIonMobilities(libKey, null)) // Add a node for every ion mobility conformation
-                                {
-                                    yield return new TransitionGroup(this, adduct, ionMobility, labelType);
-                                }
+                                yield return new TransitionGroup(this, adduct, labelType, 0);
                             }
                         }
                     }

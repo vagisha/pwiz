@@ -89,7 +89,7 @@ namespace pwiz.SkylineTestUtil
         /// Developers that want to see such tests execute within the IDE can add their machine name to the SmallMoleculeDevelopers
         /// list below (partial matches suffice, so name carefully!)
         /// </summary>
-        private static string[] SmallMoleculeDevelopers = {"BSPRATT", "TOBIASR"}; 
+        private static string[] SmallMoleculeDevelopers = {"BSPRATT"}; 
         protected bool RunSmallMoleculeTestVersions
         {
             get { return GetBoolValue("RunSmallMoleculeTestVersions", false) || SmallMoleculeDevelopers.Any(smd => Environment.MachineName.Contains(smd)); }
@@ -100,11 +100,31 @@ namespace pwiz.SkylineTestUtil
         /// <summary>
         /// Determines whether or not to add a special multiple CCS node to each document for test purposes. 
         /// </summary>
-        public static bool TestMultipleConformers
+        private bool? _testMultiCCS;
+        public bool TestMultiCCS
         {
-            get => Settings.Default.TestMultipleConformers;
-            set => Settings.Default.TestMultipleConformers =  value;
+            get
+            {
+                if (_testMultiCCS.HasValue)
+                {
+                    if (Settings.Default.TestMultiCCS != _testMultiCCS.Value)
+                        _testMultiCCS = Settings.Default.TestMultiCCS;  // Probably changed by IsPauseForScreenShots, honor that
+                }
+                else
+                {
+                    var defaultValue = SmallMoleculeDevelopers.Any(smd => Environment.MachineName.Contains(smd));
+                    _testMultiCCS = GetBoolValue("TestMultiCCS", defaultValue);
+                    Settings.Default.TestMultiCCS = _testMultiCCS.Value; // Communicate this value to Skyline via Settings.Default
+                }
+                return _testMultiCCS.Value;
+            }
+            set
+            {
+                // Communicate this value to Skyline via Settings.Default
+                Settings.Default.TestMultiCCS = (_testMultiCCS = value).Value;
+            }
         }
+
         #endregion Multiple conformers test support
 
 
@@ -324,7 +344,7 @@ namespace pwiz.SkylineTestUtil
 
             #region Multiple conformers test support
             // Support for testing multiple conformers without a lot of test sets available
-            TestMultipleConformers = GetBoolValue("TestMultipleConformers", true); // false); // TODO(bspratt) this should default false normally
+            TestMultiCCS = GetBoolValue("TestMultiCCS", true); // false); // TODO(bspratt) this should default false normally
             #endregion Multiple conformers test support
 
             STOPWATCH.Restart();

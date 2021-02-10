@@ -68,6 +68,11 @@ namespace pwiz.Skyline.Model.IonMobility
             get { return Name == IonMobilityLibrary.NONE.Name; }
         }
 
+        public static bool IsNullOrEmpty(IonMobilityLibrarySpec lib)
+        {
+            return lib == null || lib.IsNone;
+        }
+
         public bool Equals(IonMobilityLibrarySpec other)
         {
             if (ReferenceEquals(null, other)) return false;
@@ -395,10 +400,10 @@ namespace pwiz.Skyline.Model.IonMobility
             // N.B. not comparing Status members, which exist only for the benefit of audit logging
             if (!Equals(other.FilePath, FilePath))
                 return false;
-            if (!Equals(Count, other.Count))
-                return false;
-            if (Count <= 0)
-                return true; // Both not yet in memory
+            if (!Equals(Count, other.Count) && Count >= 0 && other.Count >= 0)
+                return false; // Both in memory but different sizes
+            if (Count < 0 || other.Count < 0)
+                return true; // One or both yet in memory
             if (!LibKeyIndex.AreEquivalent(_database.DictLibrary, other._database.DictLibrary))
                 return false;
             return true;

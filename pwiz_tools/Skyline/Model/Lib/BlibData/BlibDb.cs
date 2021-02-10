@@ -536,8 +536,8 @@ namespace pwiz.Skyline.Model.Lib.BlibData
 
                                 if (convertingToSmallMolecules)
                                 {
-                                        if (smallMoleculeConversionMap.TryGetValue(
-                                            peptideModSeq.GetLibKey(group.PrecursorAdduct, group.IonMobility), out newLibKey))
+                                    if (smallMoleculeConversionMap.TryGetValue(
+                                        peptideModSeq.GetLibKey(group.PrecursorAdduct, nodeGroup.IonMobilityAndCCS), out newLibKey))
                                     {
                                         precursorAdduct = newLibKey.Adduct;
                                         smallMoleculeAttributes = newLibKey.SmallMoleculeLibraryAttributes;

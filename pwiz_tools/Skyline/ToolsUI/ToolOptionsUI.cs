@@ -72,8 +72,8 @@ namespace pwiz.Skyline.ToolsUI
 
             var pingPep = new Peptide(@"PING");
             var peptide = new PeptideDocNode(pingPep);
-            var precursor = new TransitionGroupDocNode(new TransitionGroup(pingPep, Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY, IsotopeLabelType.light),
-                new TransitionDocNode[0]);
+            var precursor = new TransitionGroupDocNode(new TransitionGroup(pingPep, Adduct.SINGLY_PROTONATED, IsotopeLabelType.light, 0),
+                new TransitionDocNode[0], IonMobilityAndCCS.EMPTY);  // CONSIDER(bspratt) Prosit ion mobility support?
             _pingInput = new PrositIntensityModel.PeptidePrecursorNCE(peptide, precursor, IsotopeLabelType.light, 32);
             _settingsNoMod = settings.ChangePeptideModifications(
                 pm => new PeptideModifications(new StaticMod[0], new TypedModifications[0]));

@@ -556,8 +556,8 @@ namespace pwiz.Skyline.SettingsUI
             else if (null != pepInfo.Key.LibraryKey.Target)
             {
                 var peptide = pepInfo.Key.LibraryKey.CreatePeptideIdentityObj();
-                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, pepInfo.Adduct, pepInfo.IonMobilityAndCCS,
-                                                      IsotopeLabelType.light, true, null), null);
+                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, pepInfo.Adduct,
+                    IsotopeLabelType.light, true, null, 0), null, pepInfo.Key.IonMobility);
                 if (pepInfo.Key.IsSmallMoleculeKey)
                 {
                     mods = null;
@@ -590,7 +590,7 @@ namespace pwiz.Skyline.SettingsUI
                 var precursorMono = new TypedMass(precursor, MassType.Monoisotopic);
                 var precursorAverage = new TypedMass(precursor, MassType.Average);
                 var peptide = new Peptide(new CustomMolecule(precursorMono, precursorAverage, precursor.ToString(CultureInfo.CurrentCulture)));
-                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, Adduct.EMPTY, IonMobilityAndCCS.EMPTY,  IsotopeLabelType.light, true, null), null);
+                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, Adduct.EMPTY,  IsotopeLabelType.light, true, null, 0), null, IonMobilityAndCCS.EMPTY);
                 mods = new ExplicitMods(peptide, new ExplicitMod[0], new TypedExplicitModifications[0]);
             }
         }
@@ -778,7 +778,7 @@ namespace pwiz.Skyline.SettingsUI
                                 TransitionChromInfo transitionChromInfo;
                                 var chromData = libraryChromGroup.ChromDatas[iChromData];
                                 GraphSpectrum.MakeChromatogramInfo(SignedMz.ZERO, libraryChromGroup, chromData, out chromatogramInfo, out transitionChromInfo);
-                                var nodeGroup = new TransitionGroupDocNode(transitionGroupDocNode.TransitionGroup, new TransitionDocNode[0]);
+                                var nodeGroup = new TransitionGroupDocNode(transitionGroupDocNode.TransitionGroup, new TransitionDocNode[0], transitionGroupDocNode.IonMobilityAndCCS);
                                 var color =
                                     GraphChromatogram.COLORS_LIBRARY[iChromData%GraphChromatogram.COLORS_LIBRARY.Count];
                                 var graphItem = new ChromGraphItem(nodeGroup, null, chromatogramInfo, iChromData == iChromDataPrimary ? transitionChromInfo : null, null,

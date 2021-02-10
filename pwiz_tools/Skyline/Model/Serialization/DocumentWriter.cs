@@ -494,9 +494,12 @@ namespace pwiz.Skyline.Model.Serialization
                 writer.WriteAttribute(ATTR.calc_neutral_mass, node.GetPrecursorIonPersistentNeutralMass());
             }
             writer.WriteAttribute(ATTR.precursor_mz, SequenceMassCalc.PersistentMZ(node.PrecursorMz));
-            if (DocumentFormat >= DocumentFormat.MULTIPLE_CONFORMERS) // Format supports per-precursor ion mobility library values for multiple conformers?
+            if (DocumentFormat >= DocumentFormat.MULTIPLE_CONFORMERS) // Format puts ion mobility on par with adduct to support multiple conformers?
             {
-                WriteIonMobilityAttributes(writer, node.IonMobilityAndCCS);
+                if (node.ExplicitValues.IonMobilityAndCCS.IsEmpty) // Don't accidentally declare explicit IM values as being library-derived
+                {
+                    WriteIonMobilityAttributes(writer, node.IonMobilityAndCCS);
+                }
             }
             WriteExplicitTransitionGroupValuesAttributes(writer, node.ExplicitValues);
 

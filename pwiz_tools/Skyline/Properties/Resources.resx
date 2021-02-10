@@ -8483,6 +8483,9 @@ Go to the Peptide Settings Prediction tab to fix.</value>
   <data name="EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct_and_label_type_already_exists_" xml:space="preserve">
     <value>A precursor with that adduct and label type already exists.</value>
   </data>
+  <data name="EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct__label_type__and_ion_mobility_already_exists_" xml:space="preserve">
+    <value>A precursor with that adduct, label type, and ion mobility already exists.</value>
+  </data>
   <data name="SkylineWindow_FindIonMobilityLibrary_Find_Ion_Mobility_Library" xml:space="preserve">
     <value>Find Ion Mobility Library</value>
   </data>

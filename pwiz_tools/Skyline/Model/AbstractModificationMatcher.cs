@@ -468,10 +468,11 @@ namespace pwiz.Skyline.Model
                     {
                         var isotopeLabelType = key.Adduct.HasIsotopeLabels ? IsotopeLabelType.heavy : IsotopeLabelType.light;
                         var nodes = new List<TransitionGroupDocNode>();
+                        var conformer = 0;
                         foreach (var ionMobility in ionMobilities)
                         {
-                            var group = new TransitionGroup(peptide, key.Adduct, ionMobility, isotopeLabelType);
-                            var node = new TransitionGroupDocNode(group, Annotations.EMPTY, Settings, null, libInfo,
+                            var group = new TransitionGroup(peptide, key.Adduct, isotopeLabelType, conformer++);
+                            var node = new TransitionGroupDocNode(group, Annotations.EMPTY, Settings, null, ionMobility, libInfo,
                                 ExplicitTransitionGroupValues.EMPTY, null, null, false);
                             SpectrumPeaksInfo spectrum;
                             if (Settings.PeptideSettings.Libraries.TryLoadSpectrum(key, out spectrum))
@@ -681,9 +682,9 @@ namespace pwiz.Skyline.Model
             if (!crosslinkLibraryKey.Adduct.IsEmpty)
             {
                 nodeGroupMatched = new[] { new TransitionGroupDocNode(
-                    new TransitionGroup(mainPeptide.Peptide, crosslinkLibraryKey.Adduct, crosslinkLibraryKey.IonMobility, IsotopeLabelType.light),
+                    new TransitionGroup(mainPeptide.Peptide, crosslinkLibraryKey.Adduct, IsotopeLabelType.light, 0),
                     Annotations.EMPTY,
-                    Settings, newMods, null,  ExplicitTransitionGroupValues.EMPTY, null, null, true)};
+                    Settings, newMods, crosslinkLibraryKey.IonMobility, null,  ExplicitTransitionGroupValues.EMPTY, null, null, true)};
                 crosslinkedPeptide = (PeptideDocNode)crosslinkedPeptide.ChangeChildren( nodeGroupMatched );
             }
 

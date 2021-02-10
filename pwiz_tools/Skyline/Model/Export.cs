@@ -3203,12 +3203,12 @@ namespace pwiz.Skyline.Model
             var windowIM = 0.4;
             if (Document.Settings.TransitionSettings.IonMobilityFiltering != null)
             {
-                var result = Document.Settings.GetIonMobilityFilter(nodePep, nodeTranGroup, nodeTran, null, null, _oneOverK0UpperLimit);
+                var result = Document.Settings.GetIonMobilityFilter(nodePep, nodeTranGroup, nodeTran, null, _oneOverK0UpperLimit);
                 if (result.HasIonMobilityValue)
                 {
                     ionMobility = result.IonMobility.Mobility.Value;
                     windowIM = Document.Settings.TransitionSettings.IonMobilityFiltering.FilterWindowWidthCalculator
-                        .WidthAt(ionMobility.Value, _oneOverK0UpperLimit);
+                        .WidthAt(ionMobility.Value, _oneOverK0UpperLimit) ?? 0;
                 }
             }
             if (!ionMobility.HasValue)

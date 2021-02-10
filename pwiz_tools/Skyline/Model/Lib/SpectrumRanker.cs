@@ -1004,8 +1004,9 @@ namespace pwiz.Skyline.Model.Lib
         {
             var peptide = new Peptide(TargetInfoObj.LookupSequence);
             var transitionGroup = new TransitionGroup(peptide, TargetInfoObj.TransitionGroupDocNode.PrecursorAdduct,
-                TargetInfoObj.TransitionGroupDocNode.IonMobilityAndCCS, labelType);
-            var transitionGroupDocNode = new TransitionGroupDocNode(transitionGroup, Annotations.EMPTY, settings, TargetInfoObj.LookupMods, null, 
+                labelType, 0);
+            var transitionGroupDocNode = new TransitionGroupDocNode(transitionGroup, Annotations.EMPTY, settings, TargetInfoObj.LookupMods,
+                TargetInfoObj.TransitionGroupDocNode.IonMobilityAndCCS, null,
                 ExplicitTransitionGroupValues.EMPTY, null, null, false);
             var children = transitionGroupDocNode.GetTransitions(settings, TargetInfoObj.LookupMods,
                 transitionGroupDocNode.PrecursorMz, null, null, null, FragmentFilterObj.UseFilter).Cast<DocNode>().ToList();

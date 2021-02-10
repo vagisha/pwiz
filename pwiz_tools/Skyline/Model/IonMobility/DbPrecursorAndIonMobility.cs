@@ -248,8 +248,12 @@ namespace pwiz.Skyline.Model.IonMobility
             {
                 PeptideModifiedSequence = string.Empty;
                 var smallMoleculeLibraryAttributes = target.Molecule.GetSmallMoleculeLibraryAttributes();
-                MoleculeName = smallMoleculeLibraryAttributes.MoleculeName ?? string.Empty;
-                ChemicalFormula = smallMoleculeLibraryAttributes.ChemicalFormula ?? string.Empty;
+                MoleculeName = string.IsNullOrEmpty(smallMoleculeLibraryAttributes.MoleculeName) ? 
+                    target.Molecule.InvariantName : 
+                    smallMoleculeLibraryAttributes.MoleculeName;
+                ChemicalFormula = smallMoleculeLibraryAttributes.ChemicalFormula ??
+                                  smallMoleculeLibraryAttributes.ChemicalFormulaOrMassesString ??
+                                  string.Empty;
                 InChiKey = smallMoleculeLibraryAttributes.InChiKey ?? string.Empty;
                 OtherKeys = smallMoleculeLibraryAttributes.OtherKeys ?? string.Empty;
             }

@@ -302,6 +302,8 @@ namespace pwiz.SkylineTestFunctional
                     dlg.Message);
                 dlg.OkDialog(); // Dismiss the warning
             });
+            AssertEx.AreEqual(doc, SkylineWindow.Document); // Should be no change
+
             RunUI(() =>
             {
                 editMoleculeDlg.FormulaBox.Formula = "[M+H]";
@@ -321,6 +323,8 @@ namespace pwiz.SkylineTestFunctional
                      TransitionGroup.MAX_PRECURSOR_CHARGE), dlg.Message);
                 dlg.OkDialog(); // Dismiss the warning
             });
+            AssertEx.AreEqual(doc, SkylineWindow.Document); // Should be no change
+
             RunUI(() => editMoleculeDlg.Adduct = Adduct.FromChargeProtonated(-(TransitionGroup.MAX_PRECURSOR_CHARGE + 1)));
             RunDlg<MessageDlg>(editMoleculeDlg.OkDialog, dlg =>
             {
@@ -334,6 +338,7 @@ namespace pwiz.SkylineTestFunctional
                      TransitionGroup.MAX_PRECURSOR_CHARGE), dlg.Message);
                 dlg.OkDialog(); // Dismiss the warning
             });
+            AssertEx.AreEqual(doc, SkylineWindow.Document); // Should be no change
 
             // Restore
             RunUI(() =>
@@ -351,15 +356,18 @@ namespace pwiz.SkylineTestFunctional
                 Assert.AreEqual(.5*massAverage + AminoAcidFormulas.ProtonMass, double.Parse(editMoleculeDlg.FormulaBox.AverageText), .001);
             });
             OkDialog(editMoleculeDlg, editMoleculeDlg.OkDialog);
-            var newdoc = WaitForDocumentChange(doc);
-            Assert.AreEqual(massAverage, newdoc.MoleculeTransitionGroups.ElementAt(0).CustomMolecule.AverageMass, massPrecisionTolerance);
-            Assert.AreEqual(massMono, newdoc.MoleculeTransitionGroups.ElementAt(0).CustomMolecule.MonoisotopicMass, massPrecisionTolerance);
-            Assert.IsNotNull(newdoc.Molecules.ElementAt(0).CustomMolecule.Formula); // Molecule and children share base molecule 
-            Assert.AreEqual(.5 * massMono + BioMassCalc.MassProton, newdoc.MoleculeTransitionGroups.ElementAt(0).PrecursorMz, .001);
 
-            Assert.IsFalse(newdoc.MoleculeTransitionGroups.ElementAt(0).EqualsId(peptideDocNode));  // Changing the adduct changes the Id node
+            var newdoc = WaitForDocumentChange(doc);
+            var transitionGroupDocNode = newdoc.MoleculeTransitionGroups.ElementAt(0);
+            AssertEx.AreEqual(massAverage, transitionGroupDocNode.CustomMolecule.AverageMass, massPrecisionTolerance);
+            AssertEx.AreEqual(massMono, transitionGroupDocNode.CustomMolecule.MonoisotopicMass, massPrecisionTolerance);
+            AssertEx.IsNotNull(newdoc.Molecules.ElementAt(0).CustomMolecule.Formula); // Molecule and children share base molecule 
+            AssertEx.AreEqual(Adduct.M_PLUS_2H, transitionGroupDocNode.PrecursorAdduct);
+            AssertEx.AreEqual(.5 * massMono + BioMassCalc.MassProton, transitionGroupDocNode.PrecursorMz, .001);
+
+            Assert.IsFalse(transitionGroupDocNode.EqualsId(peptideDocNode));  // Changing the adduct changes the Id node
             // Verify that CE overrides work
-            Assert.AreEqual(TESTVALUES_GROUP, newdoc.MoleculeTransitionGroups.ElementAt(0).ExplicitValues);
+            Assert.AreEqual(TESTVALUES_GROUP, transitionGroupDocNode.ExplicitValues);
             Assert.IsNull(newdoc.Molecules.ElementAt(0).ExplicitRetentionTime);  // Not set yet
 
             // Verify that tree selection doesn't change just because we changed an ID object
@@ -443,7 +451,7 @@ namespace pwiz.SkylineTestFunctional
             double driftTimeMax = 1000.0;
             var centerDriftTime = newdoc.Settings.GetIonMobilityFilter(
                 newdoc.Molecules.First(), newdoc.MoleculeTransitionGroups.First(), newdoc.MoleculeTransitions.First(), 
-                null, null, driftTimeMax);
+                null,  driftTimeMax);
             Assert.AreEqual(TESTVALUES_GROUP.IonMobility.Value, centerDriftTime.IonMobilityAndCCS.IonMobility.Mobility.Value, .0001);
             Assert.AreEqual(TESTVALUES_TRAN.IonMobilityHighEnergyOffset.Value, centerDriftTime.HighEnergyIonMobilityOffset ?? 0, .0001);
             Assert.AreEqual(0.156, centerDriftTime.IonMobilityExtractionWindowWidth??0, .0001);
@@ -782,8 +790,8 @@ namespace pwiz.SkylineTestFunctional
             });
             RunDlg<MessageDlg>(moleculeDlg.OkDialog, dlg =>
             {
-                // Trying to exit the dialog should cause a warning about adduct and label conflict
-                Assert.AreEqual(Resources.EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct_and_label_type_already_exists_, dlg.Message);
+                // Trying to exit the dialog should cause a warning about adduct + label + IM conflict
+                Assert.AreEqual(Resources.EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct__label_type__and_ion_mobility_already_exists_, dlg.Message);
                 dlg.OkDialog(); // Dismiss the warning
             });
             RunUI(() =>

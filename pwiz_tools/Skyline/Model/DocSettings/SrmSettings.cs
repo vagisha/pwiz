@@ -949,7 +949,7 @@ namespace pwiz.Skyline.Model.DocSettings
             return false;
         }
 
-        static IonMobilityAndCCS[] CCS_VALUES_EMPTY = { IonMobilityAndCCS.EMPTY };
+        public static IonMobilityAndCCS[] CCS_VALUES_EMPTY = { IonMobilityAndCCS.EMPTY };
 
         /// <summary>
         /// Returns an array of ion mobility values, guaranteed to contain at least IonMobilityAndCCS.EMPTY.
@@ -988,38 +988,24 @@ namespace pwiz.Skyline.Model.DocSettings
         public IonMobilityFilter GetIonMobilityFilter(PeptideDocNode nodePep,
             TransitionGroupDocNode nodeGroup,
             TransitionDocNode nodeTran,
-            LibraryIonMobilityInfo libraryIonMobilityInfo,
             IIonMobilityFunctionsProvider instrumentInfo, // For converting CCS to IM if needed
             double ionMobilityMax)
         {
-            if (nodeGroup.ExplicitValues.CollisionalCrossSectionSqA.HasValue && instrumentInfo != null && instrumentInfo.ProvidesCollisionalCrossSectionConverter)
+            var ccs = nodeGroup.ExplicitValues.CollisionalCrossSectionSqA ?? nodeGroup.IonMobilityAndCCS.CollisionalCrossSectionSqA;
+            var im = nodeGroup.ExplicitValues.IonMobility.HasValue ? 
+                IonMobilityValue.GetIonMobilityValue(nodeGroup.ExplicitValues.IonMobility.Value, nodeGroup.ExplicitValues.IonMobilityUnits) :
+                nodeGroup.IonMobilityAndCCS.IonMobility;
+            var canConvertCCS = instrumentInfo != null && instrumentInfo.ProvidesCollisionalCrossSectionConverter;
+            if (canConvertCCS && ccs.HasValue)
             {
-                // Use the explicitly specified CCS value if provided, and if we know how to convert to IM
-                var im = instrumentInfo.IonMobilityFromCCS(nodeGroup.ExplicitValues.CollisionalCrossSectionSqA.Value,
-                    nodeGroup.PrecursorMz, nodeGroup.TransitionGroup.PrecursorCharge);
-                var imAndCCS = IonMobilityAndCCS.GetIonMobilityAndCCS(im,
-                    nodeGroup.ExplicitValues.CollisionalCrossSectionSqA,ExplicitTransitionValues.Get(nodeTran).IonMobilityHighEnergyOffset ?? 0);
-                // Now get the window width
-                var windowIM = TransitionSettings.IonMobilityFiltering.FilterWindowWidthCalculator.WidthAt(imAndCCS.IonMobility.Mobility.Value, ionMobilityMax);
-                return IonMobilityFilter.GetIonMobilityFilter(imAndCCS, windowIM);
+                // Use the specified CCS value if provided, and if we know how to convert to IM
+                im = instrumentInfo.IonMobilityFromCCS(ccs.Value, nodeGroup.PrecursorMz, nodeGroup.TransitionGroup.PrecursorCharge);
             }
-            else if (nodeGroup.ExplicitValues.IonMobility.HasValue)
-            {
-                // Use the explicitly specified IM value
-                var imAndCCS = IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.GetIonMobilityValue(nodeGroup.ExplicitValues.IonMobility, nodeGroup.ExplicitValues.IonMobilityUnits),
-                    nodeGroup.ExplicitValues.CollisionalCrossSectionSqA,
-                    ExplicitTransitionValues.Get(nodeTran).IonMobilityHighEnergyOffset ?? 0);
-                // Now get the window width
-                var windowIM = TransitionSettings.IonMobilityFiltering.FilterWindowWidthCalculator.WidthAt(imAndCCS.IonMobility.Mobility.Value, ionMobilityMax);
-                return IonMobilityFilter.GetIonMobilityFilter(imAndCCS, windowIM);
-            }
-            else
-            {
-                // Use library values
-                return GetIonMobilityHelper(nodePep, nodeGroup,
-                    instrumentInfo,
-                    libraryIonMobilityInfo, ionMobilityMax);
-            }
+            var imAndCCS = IonMobilityAndCCS.GetIonMobilityAndCCS(im,
+                ccs, ExplicitTransitionValues.Get(nodeTran).IonMobilityHighEnergyOffset);
+            // Now get the window width
+            var windowIM = TransitionSettings.IonMobilityFiltering.FilterWindowWidthCalculator.WidthAt(imAndCCS.IonMobility.Mobility, ionMobilityMax);
+            return IonMobilityFilter.GetIonMobilityFilter(imAndCCS, windowIM);
         }
 
         /// <summary>
@@ -1060,6 +1046,7 @@ namespace pwiz.Skyline.Model.DocSettings
             var libraries = PeptideSettings.Libraries;
             foreach (var typedSequence in GetTypedSequences(sequence, mods, adduct))
             {
+                // For each conformer of this ion (GetLibraryIonMobilities returns CCS_VALUES_EMPTY if no ion mobility info found)
                 foreach (var ionMobility in GetLibraryIonMobilities(typedSequence.ModifiedSequence, typedSequence.Adduct))
                 {
                     var key = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct, ionMobility);
@@ -1355,18 +1342,7 @@ namespace pwiz.Skyline.Model.DocSettings
             {
                 var targetIons = // Reduce multiple conformers to a single entry each
                     targetIonList.Select(ion => ion.ChangeIonMobilityAndCCS(IonMobilityAndCCS.EMPTY)).ToHashSet();
-                var dict = new Dictionary<LibKey, IonMobilityAndCCS[]>();
-                if (imFiltering.IonMobilityLibrary != null && !imFiltering.IonMobilityLibrary.IsNone)
-                {
-                    foreach (var ion in targetIons)
-                    {
-                        var ims = imFiltering.GetIonMobilitiesInfoFromLibrary(ion);
-                        if (ims != null)
-                        {
-                            dict.Add(ion, ims.ToArray());
-                        }
-                    }
-                }
+                var dict = imFiltering.GetIonMobilitiesInfoFromLibrary(targetIons);
                 var map = LibKeyMap<IonMobilityAndCCS[]>.FromDictionary(dict); // Use LibKeyMap for more robust ion matching (mod mass precision etc)
                 if (dict.Count < targetIons.Count && // Any ions still unaccounted for?
                     imFiltering.UseSpectralLibraryIonMobilityValues) // Should we try spectral libraries
@@ -2457,6 +2433,7 @@ namespace pwiz.Skyline.Model.DocSettings
             DiffTransitions = true;
             DiffTransitionProps = true;
             DiffResults = true;
+            DiffIonMobilityLibraryValues = true;
         }
 
         public SrmSettingsDiff(SrmSettingsDiff diff, SrmSettingsDiff diffUnion)
@@ -2465,6 +2442,7 @@ namespace pwiz.Skyline.Model.DocSettings
             DiffPeptideProps = diff.DiffPeptideProps || diffUnion.DiffPeptideProps;
             DiffTransitionGroups = diff.DiffTransitionGroups || diffUnion.DiffTransitionGroups;
             DiffTransitionGroupProps = diff.DiffTransitionGroupProps || diffUnion.DiffTransitionGroupProps;
+            DiffIonMobilityLibraryValues = diff.DiffIonMobilityLibraryValues || diffUnion.DiffIonMobilityLibraryValues;
             DiffTransitions = diff.DiffTransitions || diffUnion.DiffTransitions;
             DiffTransitionProps = diff.DiffTransitionProps || diffUnion.DiffTransitionProps;
             DiffResults = diff.DiffResults || diffUnion.DiffResults;
@@ -2532,9 +2510,9 @@ namespace pwiz.Skyline.Model.DocSettings
             // Figure out whether precursor charges differ for determining
             // both peptide and transition group changes.
             bool precursorsDiff = !ArrayUtil.EqualsDeep(newTran.Filter.PeptidePrecursorCharges,
-                                                        oldTran.Filter.PeptidePrecursorCharges) ||
+                                      oldTran.Filter.PeptidePrecursorCharges) ||
                                   !ArrayUtil.EqualsDeep(newTran.Filter.SmallMoleculePrecursorAdducts,
-                                                        oldTran.Filter.SmallMoleculePrecursorAdducts) ||
+                                      oldTran.Filter.SmallMoleculePrecursorAdducts) ||
                                   // Also changing auto-select could change precursors
                                   newTran.Filter.AutoSelect != oldTran.Filter.AutoSelect ||
                                   // And changing DIA isolation scheme could change precursors
@@ -2542,7 +2520,7 @@ namespace pwiz.Skyline.Model.DocSettings
 
             // Background proteome uniqueness constraints - only considered a change if constraint type
             // changes, or if constraint is non-None and background proteome or digestion enzyme changes
-            var uniquenessConstraintChange = 
+            var uniquenessConstraintChange =
                 !Equals(newPep.Filter.PeptideUniqueness, oldPep.Filter.PeptideUniqueness) ||
                 (!Equals(newPep.Filter.PeptideUniqueness, PeptideFilter.PeptideUniquenessConstraint.none) &&
                  (!newPep.BackgroundProteome.Equals(oldPep.BackgroundProteome) ||
@@ -2550,19 +2528,20 @@ namespace pwiz.Skyline.Model.DocSettings
 
             // Change peptides if enzyme, digestion or filter settings changed
             DiffPeptides = !newPep.Enzyme.Equals(oldPep.Enzyme) ||
-                                  !newPep.DigestSettings.Equals(oldPep.DigestSettings) ||
-                                  !newPep.Filter.Equals(oldPep.Filter) ||
-                                  uniquenessConstraintChange ||
-                                  // If precursors differ, and peptide picks depend on the library
-                                  (precursorsDiff && newPep.Libraries.HasLibraries && newPep.Libraries.Pick != PeptidePick.filter) ||
-                                  // If variable modifications changed
-                                  newPep.Modifications.MaxVariableMods != oldPep.Modifications.MaxVariableMods ||
-                                  !ArrayUtil.EqualsDeep(newPep.Modifications.VariableModifications.ToArray(),
-                                                        oldPep.Modifications.VariableModifications.ToArray());
+                           !newPep.DigestSettings.Equals(oldPep.DigestSettings) ||
+                           !newPep.Filter.Equals(oldPep.Filter) ||
+                           uniquenessConstraintChange ||
+                           // If precursors differ, and peptide picks depend on the library
+                           (precursorsDiff && newPep.Libraries.HasLibraries &&
+                            newPep.Libraries.Pick != PeptidePick.filter) ||
+                           // If variable modifications changed
+                           newPep.Modifications.MaxVariableMods != oldPep.Modifications.MaxVariableMods ||
+                           !ArrayUtil.EqualsDeep(newPep.Modifications.VariableModifications.ToArray(),
+                               oldPep.Modifications.VariableModifications.ToArray());
 
             // Peptide standard types can change with iRT calculator
             DiffPeptideProps = !ReferenceEquals(newPep.Prediction.RetentionTime,
-                                                oldPep.Prediction.RetentionTime);
+                oldPep.Prediction.RetentionTime);
 
             var oldLib = oldPep.Libraries;
             var newLib = newPep.Libraries;
@@ -2585,10 +2564,10 @@ namespace pwiz.Skyline.Model.DocSettings
                     // or the peptide ranking ID has changed, or the peptide count limit has change,
                     // or the picking algorithm relies on the libraries, and the libraries have changed
                     DiffPeptides = (!oldLib.HasLibraries ||
-                        newLib.Pick != oldLib.Pick ||
-                        !Equals(newLib.RankId, oldLib.RankId) ||
-                        !Equals(newLib.PeptideCount, oldLib.PeptideCount) ||
-                        (newLib.Pick != PeptidePick.filter && diffLibraries));
+                                    newLib.Pick != oldLib.Pick ||
+                                    !Equals(newLib.RankId, oldLib.RankId) ||
+                                    !Equals(newLib.PeptideCount, oldLib.PeptideCount) ||
+                                    (newLib.Pick != PeptidePick.filter && diffLibraries));
                 }
             }
 
@@ -2596,7 +2575,7 @@ namespace pwiz.Skyline.Model.DocSettings
             var oldMods = oldPep.Modifications;
             var newMods = newPep.Modifications;
             bool diffStaticMods = !StaticMod.EquivalentImplicitMods(newMods.StaticModifications,
-                                           oldMods.StaticModifications);
+                oldMods.StaticModifications);
             bool diffHeavyMods = false;
             using (var enumNewHeavyMods = newMods.GetHeavyModifications().GetEnumerator())
             {
@@ -2608,17 +2587,19 @@ namespace pwiz.Skyline.Model.DocSettings
                         diffHeavyMods = true;
                         break;
                     }
+
                     var newTypedMods = enumNewHeavyMods.Current;
                     if (newTypedMods == null || // ReSharper
                         !Equals(newTypedMods.LabelType, oldTypedMods.LabelType) ||
                         !StaticMod.EquivalentImplicitMods(newTypedMods.Modifications,
-                                                          oldTypedMods.Modifications))
+                            oldTypedMods.Modifications))
                     {
                         // If label types or implicit modifications differ
                         diffHeavyMods = true;
                         break;
                     }
                 }
+
                 // If not different yet, then make sure nothing was added
                 if (!diffHeavyMods)
                     diffHeavyMods = enumNewHeavyMods.MoveNext();
@@ -2631,8 +2612,12 @@ namespace pwiz.Skyline.Model.DocSettings
 
             // Change transition groups if precursor charges or heavy group
             // existence changed, or if the IsolationScheme range changed
-            var isolationRangesNew = newTran.FullScan.IsolationScheme == null ? null : newTran.FullScan.IsolationScheme.PrespecifiedIsolationWindows;
-            var isolationRangesOld = oldTran.FullScan.IsolationScheme == null ? null : oldTran.FullScan.IsolationScheme.PrespecifiedIsolationWindows;
+            var isolationRangesNew = newTran.FullScan.IsolationScheme == null
+                ? null
+                : newTran.FullScan.IsolationScheme.PrespecifiedIsolationWindows;
+            var isolationRangesOld = oldTran.FullScan.IsolationScheme == null
+                ? null
+                : oldTran.FullScan.IsolationScheme.PrespecifiedIsolationWindows;
             bool diffInstrumentRange = newTran.Instrument.MinMz != oldTran.Instrument.MinMz ||
                                        newTran.Instrument.MaxMz != oldTran.Instrument.MaxMz ||
                                        !Equals(isolationRangesNew, isolationRangesOld);
@@ -2649,14 +2634,16 @@ namespace pwiz.Skyline.Model.DocSettings
             // of precursor m/z values, as
             bool enrichmentsChanged = !Equals(newTran.FullScan.IsotopeEnrichments, oldTran.FullScan.IsotopeEnrichments);
             DiffTransitionGroupProps = diffStaticMods || diffHeavyMods ||
-                                 !newTran.Prediction.PrecursorMassType.Equals(oldTran.Prediction.PrecursorMassType) ||
-                                 // Or changes to MS1 filtering that change the expected isotope distribution
-                                 !newTran.FullScan.PrecursorMassAnalyzer.Equals(oldTran.FullScan.PrecursorMassAnalyzer) ||
-                                 !Equals(newTran.FullScan.PrecursorRes, oldTran.FullScan.PrecursorRes) ||
-                                 !Equals(newTran.FullScan.PrecursorResMz, oldTran.FullScan.PrecursorResMz) ||
-                                 // Or isotope enrichments
-                                 enrichmentsChanged
-                                 ;
+                                       !newTran.Prediction.PrecursorMassType.Equals(
+                                           oldTran.Prediction.PrecursorMassType) ||
+                                       // Or changes to MS1 filtering that change the expected isotope distribution
+                                       !newTran.FullScan.PrecursorMassAnalyzer.Equals(oldTran.FullScan
+                                           .PrecursorMassAnalyzer) ||
+                                       !Equals(newTran.FullScan.PrecursorRes, oldTran.FullScan.PrecursorRes) ||
+                                       !Equals(newTran.FullScan.PrecursorResMz, oldTran.FullScan.PrecursorResMz) ||
+                                       // Or isotope enrichments
+                                       enrichmentsChanged
+                ;
 
             if (!DiffTransitionGroupProps && libraryChange)
             {
@@ -2673,18 +2660,19 @@ namespace pwiz.Skyline.Model.DocSettings
                               !newTran.Libraries.Equals(oldTran.Libraries) ||
                               // Or libraries changed, and picking based on libraries
                               (libraryChange && DiffTransitionGroupProps &&
-                                    newTran.Libraries.Pick != TransitionLibraryPick.none) ||
+                               newTran.Libraries.Pick != TransitionLibraryPick.none) ||
                               // If instrument min or max m/z changed
                               diffInstrumentRange ||
                               newTran.Instrument.IsDynamicMin != oldTran.Instrument.IsDynamicMin ||
                               // If loss modifications changed
                               newPep.Modifications.MaxNeutralLosses != oldPep.Modifications.MaxNeutralLosses ||
                               !ArrayUtil.EqualsDeep(newPep.Modifications.NeutralLossModifications.ToArray(),
-                                                    oldPep.Modifications.NeutralLossModifications.ToArray()) ||
+                                  oldPep.Modifications.NeutralLossModifications.ToArray()) ||
                               // MS1 filtering changed select peaks
                               newTran.FullScan.PrecursorIsotopes != oldTran.FullScan.PrecursorIsotopes ||
                               newTran.FullScan.PrecursorIsotopeFilter != oldTran.FullScan.PrecursorIsotopeFilter ||
-                              (newTran.FullScan.PrecursorIsotopes != FullScanPrecursorIsotopes.None && enrichmentsChanged) ||
+                              (newTran.FullScan.PrecursorIsotopes != FullScanPrecursorIsotopes.None &&
+                               enrichmentsChanged) ||
                               !Equals(newTran.FullScan.PrecursorRes, oldTran.FullScan.PrecursorRes) ||
                               !Equals(newTran.FullScan.PrecursorResMz, oldTran.FullScan.PrecursorResMz);
 
@@ -2696,14 +2684,21 @@ namespace pwiz.Skyline.Model.DocSettings
 
             // Ion mobility filtering changes may require us to add or remove TransitionGroups in case of multiple conformers,
             // or at least update ion mobility values in TransitionGroupDocNodes. Note we don't care about window width here,
-            // that's an extraction time concern
-            // CONSIDER - force reimport of results when IM values change? (i.e. set DiffResults)
-            DiffIonMobilityLibraryValues = 
-                !Equals(newTran.IonMobilityFiltering.IonMobilityLibrary, oldTran.IonMobilityFiltering.IonMobilityLibrary) ||
-                !Equals(newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues, oldTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues) ||
-                (newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues && diffLibraries);
-            // A change in ion mobility library can mean a change in TransitionGroupDocNode values, or even creation/deletion of TransitionGroup IDs
+            // that's a chromatogram extraction time concern
+            // CONSIDER - force reimport of results when IM values or window change? (i.e. set DiffResults)
+            DiffIonMobilityLibraryValues = !Equals(newTran.IonMobilityFiltering.IonMobilityLibrary, oldTran.IonMobilityFiltering.IonMobilityLibrary) &&
+                                           newTran.IonMobilityFiltering.IonMobilityLibrary.IsUsable; // Wait for library load
+            if (!Equals(newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues, oldTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues))
+            {
+                DiffIonMobilityLibraryValues |= !newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues ||
+                                                newLib.HasLibraries && newLib.IsLoaded;
+            }
+            if (newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues && diffLibraries)
+            {
+                DiffIonMobilityLibraryValues |= newLib.HasLibraries && newLib.IsLoaded;
+            }
             DiffTransitionGroupProps |= DiffIonMobilityLibraryValues;
+            DiffTransitionGroups |= DiffIonMobilityLibraryValues; // We may need to add or remove transition groups depending on IM library contents
 
             // Any change in modifications or fragment mass-type forces a recalc
             // of transition m/z values, as

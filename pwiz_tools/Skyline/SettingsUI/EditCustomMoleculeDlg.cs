@@ -396,7 +396,12 @@ namespace pwiz.Skyline.SettingsUI
             get { return _resultAdduct; }
         }
 
-        public void SetResult(CustomMolecule mol, Adduct adduct)
+        public IonMobilityAndCCS ResultExplicitIonMobility
+        {
+            get { return ResultExplicitTransitionGroupValues.IonMobilityAndCCS; }
+        }
+
+        public void SetResultIon(CustomMolecule mol, Adduct adduct)
         {
             _resultCustomMolecule = mol;
             _resultAdduct = adduct;
@@ -681,8 +686,8 @@ namespace pwiz.Skyline.SettingsUI
             }
             if (_usageMode == UsageMode.precursor)
             {
-                // Only the adduct should be changing
-                SetResult(_resultCustomMolecule, Adduct);
+                // Only the adduct should be changing (and with that, possibly the ion mobility value)
+                SetResultIon(_resultCustomMolecule, Adduct);
             }
             else if (!string.IsNullOrEmpty(_formulaBox.NeutralFormula))
             {
@@ -693,7 +698,7 @@ namespace pwiz.Skyline.SettingsUI
                     {
                         name = _formulaBox.NeutralFormula; // Clip off any adduct description
                     }
-                    SetResult(new CustomMolecule(_formulaBox.NeutralFormula, name), Adduct);
+                    SetResultIon(new CustomMolecule(_formulaBox.NeutralFormula, name), Adduct);
                 }
                 catch (InvalidDataException x)
                 {
@@ -703,7 +708,7 @@ namespace pwiz.Skyline.SettingsUI
             }
             else
             {
-                SetResult(new CustomMolecule(monoMass, averageMass, textName.Text), Adduct);
+                SetResultIon(new CustomMolecule(monoMass, averageMass, textName.Text), Adduct);
             }
             // Did user change the list of heavy labels?
             if (_driverLabelType != null)
@@ -738,22 +743,25 @@ namespace pwiz.Skyline.SettingsUI
             }
 
             // See if this combination of charge and label and ion mobility would conflict with any existing transition groups
-            if (_existingIds != null && _existingIds.Any(t =>
+            var conflict = _existingIds == null ? null :
+                _existingIds.FirstOrDefault(t =>
+                {
+                    var transitionGroup = t as TransitionGroupDocNode;
+                    var ionMobility = transitionGroup?.IonMobilityAndCCS;
+                    return transitionGroup != null && Equals(transitionGroup.LabelType, IsotopeLabelType) &&
+                           Equals(transitionGroup.PrecursorAdduct.AsFormula(),
+                               Adduct.AsFormula()) && // Compare AsFormula so proteomic and non-proteomic protonation are seen as same thing
+                           (Equals(ionMobility.CollisionalCrossSectionSqA, CollisionalCrossSectionSqA) ||
+                            (Equals(ionMobility.IonMobility.Mobility, IonMobility) && Equals(ionMobility.IonMobility.Units, IonMobilityUnits))) &&
+                           !ReferenceEquals(transitionGroup.TransitionGroup, _initialId);
+                }) as TransitionGroupDocNode;
+            if (conflict != null)
             {
-                var groupDocNode = t as TransitionGroupDocNode;
-                return groupDocNode != null && Equals(groupDocNode.LabelType, IsotopeLabelType) &&
-                       Equals(groupDocNode.PrecursorAdduct.AsFormula(),
-                           Adduct
-                               .AsFormula()) && // Compare AsFormula so proteomic and non-proteomic protonation are seen as same thing
-                       (Equals(groupDocNode.IonMobilityAndCCS.CollisionalCrossSectionSqA, CollisionalCrossSectionSqA) ||
-                        (Equals(groupDocNode.IonMobilityAndCCS.IonMobility.Mobility, IonMobility) &&
-                         Equals(groupDocNode.IonMobilityAndCCS.IonMobility.Units, IonMobilityUnits))) &&
-                       !ReferenceEquals(groupDocNode.TransitionGroup, _initialId);
-            }))
-            {
+                var detail = conflict.IonMobilityAndCCS.IsEmpty
+                    ? Resources.EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct_and_label_type_already_exists_
+                    : Resources.EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct__label_type__and_ion_mobility_already_exists_;
                 helper.ShowTextBoxError(textName,
-                    Resources
-                        .EditCustomMoleculeDlg_OkDialog_A_precursor_with_that_adduct_and_label_type_already_exists_,
+                    detail,
                     textName.Text);
                 return;
             }
@@ -761,10 +769,10 @@ namespace pwiz.Skyline.SettingsUI
             // See if this would conflict with any existing transitions
             if (_existingIds != null && (_existingIds.Any(t =>
             {
-                var transitionDocNode = t as TransitionDocNode;
-                return transitionDocNode != null && (Equals(transitionDocNode.Adduct.AsFormula(), Adduct.AsFormula()) &&
-                                              Equals(transitionDocNode.CustomIon, ResultCustomMolecule)) &&
-                       !ReferenceEquals(transitionDocNode.Transition, _initialId);
+                var transition = t as TransitionDocNode;
+                return transition != null && Equals(transition.Adduct.AsFormula(), Adduct.AsFormula()) &&
+                       Equals(transition.CustomIon, ResultCustomMolecule) &&
+                       !ReferenceEquals(transition.Transition, _initialId);
             })))
             {
                 helper.ShowTextBoxError(textName,

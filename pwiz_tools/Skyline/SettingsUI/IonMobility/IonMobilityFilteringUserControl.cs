@@ -77,7 +77,7 @@ namespace pwiz.Skyline.SettingsUI.IonMobility
             UpdateIonMobilityFilterWindowWidthControls();
 
             _driverIonMobilityLib = new SettingsListComboDriver<IonMobilityLibrary>(comboIonMobilityLibrary, Settings.Default.IonMobilityLibraryList);
-            var hasLib = _ionMobilityFiltering.IonMobilityLibrary != null && !_ionMobilityFiltering.IonMobilityLibrary.IsNone;
+            var hasLib = !IonMobilityLibrarySpec.IsNullOrEmpty(_ionMobilityFiltering.IonMobilityLibrary);
             var libName = (_ionMobilityFiltering.IonMobilityLibrary == null ? null : _ionMobilityFiltering.IonMobilityLibrary.Name);
             _driverIonMobilityLib.LoadList(libName);
 

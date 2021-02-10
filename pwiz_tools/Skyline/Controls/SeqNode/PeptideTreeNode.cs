@@ -522,7 +522,7 @@ namespace pwiz.Skyline.Controls.SeqNode
             TransitionDocNode[] transitions = DocNode.GetMatchingTransitions(
                 tranGroup, DocSettings, mods);
 
-            var nodeGroup = new TransitionGroupDocNode(tranGroup, transitions);
+            var nodeGroup = new TransitionGroupDocNode(tranGroup, transitions, IonMobilityAndCCS.EMPTY);
             return nodeGroup.ChangeSettings(DocSettings, DocNode, mods, SrmSettingsDiff.ALL);
         }
 

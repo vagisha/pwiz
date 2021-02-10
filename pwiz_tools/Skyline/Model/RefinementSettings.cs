@@ -585,7 +585,7 @@ namespace pwiz.Skyline.Model
             var listGroups = new List<TransitionGroupDocNode>();
             foreach (TransitionGroupDocNode nodeGroup in nodePep.Children)
             {
-                if (acceptedCharges != null && !acceptedCharges.Contains((nodeGroup.TransitionGroup.PrecursorAdduct, nodeGroup.TransitionGroup.IonMobility)))
+                if (acceptedCharges != null && !acceptedCharges.Contains((nodeGroup.TransitionGroup.PrecursorAdduct, nodeGroup.LibraryIonMobility)))
                     continue;
 
                 if (!AddLabelType && RefineLabelType != null && Equals(RefineLabelType, nodeGroup.TransitionGroup.LabelType))
@@ -650,12 +650,15 @@ namespace pwiz.Skyline.Model
                 {
                     // CONSIDER: This is a lot like some code in PeptideDocNode.ChangeSettings
                     Debug.Assert(RefineLabelType != null);  // Keep ReSharper from warning
+                    var conformerID =
+                        nodePep.TransitionGroups.Count(t => t.TransitionGroup.IsConformer(nodePep.Peptide,
+                            nodeGroup.TransitionGroup.PrecursorAdduct,
+                            RefineLabelType, nodeGroup.TransitionGroup.DecoyMassShift));
                     var tranGroup = new TransitionGroup(nodePep.Peptide,
                                                         nodeGroup.TransitionGroup.PrecursorAdduct,
-                                                        nodeGroup.TransitionGroup.IonMobility,
                                                         RefineLabelType,
                                                         false,
-                                                        nodeGroup.TransitionGroup.DecoyMassShift);
+                                                        nodeGroup.TransitionGroup.DecoyMassShift, conformerID);
                     var settings = document.Settings;
 //                    string sequence = nodePep.Peptide.Sequence;
                     TransitionDocNode[] transitions = nodePep.GetMatchingTransitions(
@@ -665,6 +668,7 @@ namespace pwiz.Skyline.Model
                                                                     Annotations.EMPTY,
                                                                     settings,
                                                                     explicitMods,
+                                                                    nodeGroup.LibraryIonMobility,
                                                                     nodeGroup.LibInfo,
                                                                     nodeGroup.ExplicitValues,
                                                                     null,   // results
@@ -1038,11 +1042,11 @@ namespace pwiz.Skyline.Model
 
                             var precursorCharge = transitionGroupDocNode.TransitionGroup.PrecursorAdduct.AdductCharge * (invertCharges ? -1 : 1);
                             var isotopeLabelType = transitionGroupDocNode.TransitionGroup.LabelType;
-                            var ionMobility = transitionGroupDocNode.TransitionGroup.IonMobility;
+                            var ionMobility = transitionGroupDocNode.LibraryIonMobility;
                             Adduct adduct;
                             ConvertToSmallMolecule(mode, document, mol, out adduct, precursorCharge, ionMobility, isotopeLabelType, precursorMap);
 
-                            var newTransitionGroup = new TransitionGroup(newPeptide, adduct, transitionGroupDocNode.TransitionGroup.IonMobility, isotopeLabelType);
+                            var newTransitionGroup = new TransitionGroup(newPeptide, adduct, isotopeLabelType, transitionGroupDocNode.TransitionGroup.ConformerID);
                             // Deal with library info - remove now if we can't use it due to charge swap or loss of molecule ID, otherwise clean it up later
                             SpectrumHeaderInfo libInfo;
                             if (canConvertLibraries && transitionGroupDocNode.HasLibInfo)
@@ -1058,7 +1062,7 @@ namespace pwiz.Skyline.Model
                             var resultsNew = ConvertTransitionGroupChromInfoLibraryInfoToSmallMolecules(transitionGroupDocNode, mode, invertChargesMode);
                             var newTransitionGroupDocNode = new TransitionGroupDocNode(newTransitionGroup,
                                 transitionGroupDocNode.Annotations.Merge(note), document.Settings,
-                                null, libInfo, transitionGroupDocNode.ExplicitValues, resultsNew, null,
+                                null, transitionGroupDocNode.LibraryIonMobility, libInfo, transitionGroupDocNode.ExplicitValues, resultsNew, null,
                                 transitionGroupDocNode.AutoManageChildren);
                             var mzShiftPrecursor = invertCharges ? 2.0 * BioMassCalc.MassProton : 0;  // We removed hydrogen rather than added
                             var mzShiftFragment = invertCharges ? -2.0 * BioMassCalc.MassElectron : 0; // We will move proton masses to the fragment and use charge-only adducts
@@ -1153,7 +1157,7 @@ namespace pwiz.Skyline.Model
                 foreach (var kvp in precursorMap)
                 {
                     var im = document.Settings.TransitionSettings.IonMobilityFiltering.GetIonMobilityFilter(kvp.Key, 0, null);
-                    if (im != null)
+                    if (!IonMobilityAndCCS.IsNullOrEmpty(im))
                     {
                         mapped.Add(new PrecursorIonMobilities(kvp.Value.Target, kvp.Value.Adduct, im));
                     }
@@ -1463,8 +1467,7 @@ namespace pwiz.Skyline.Model
                 }
 
                 var decoyGroup = new TransitionGroup(decoyPeptide, transGroup.PrecursorAdduct,
-                                                        transGroup.IonMobility,
-                                                        transGroup.LabelType, false, precursorMassShift);
+                    transGroup.LabelType, false, precursorMassShift, transGroup.ConformerID);
 
                 var decoyNodeTranList = nodeGroupPrimary != null
                     ? decoyGroup.GetMatchingTransitions(document.Settings, nodeGroupPrimary, mods)
@@ -1474,6 +1477,7 @@ namespace pwiz.Skyline.Model
                                                                 Annotations.EMPTY,
                                                                 document.Settings,
                                                                 mods,
+                                                                nodeGroup.LibraryIonMobility,
                                                                 nodeGroup.LibInfo,
                                                                 nodeGroup.ExplicitValues,
                                                                 nodeGroup.Results,

@@ -1242,11 +1242,11 @@ namespace pwiz.Skyline.Model.Serialization
         {
             var list = new List<TransitionGroupDocNode>();
             while (reader.IsStartElement(EL.precursor))
-                list.Add(ReadTransitionGroupXml(reader, peptide, mods));
+                list.Add(ReadTransitionGroupXml(reader, peptide, mods, list));
             return list.ToArray();
         }
 
-        private TransitionGroupDocNode ReadTransitionGroupXml(XmlReader reader, Peptide peptide, ExplicitMods mods)
+        private TransitionGroupDocNode ReadTransitionGroupXml(XmlReader reader, Peptide peptide, ExplicitMods mods, List<TransitionGroupDocNode> siblings)
         {
             var precursorCharge = reader.GetIntAttribute(ATTR.charge);
             var precursorAdduct = Adduct.FromChargeProtonated(precursorCharge);  // Read integer charge
@@ -1281,7 +1281,10 @@ namespace pwiz.Skyline.Model.Serialization
                     Assume.IsTrue(Equals(ionString, moleculeWithAdduct), @"Expected precursor ion formula to match parent molecule with adduct applied");
                 }
             }
-            var group = new TransitionGroup(peptide, precursorAdduct, ionMobilityAndCCS, typedMods.LabelType, false, decoyMassShift);
+
+            var conformerID = siblings.Count(sib =>
+                sib.TransitionGroup.IsConformer(peptide, precursorAdduct, typedMods.LabelType, decoyMassShift));
+            var group = new TransitionGroup(peptide, precursorAdduct, typedMods.LabelType, false, decoyMassShift, conformerID);
             var children = new TransitionDocNode[0];    // Empty until proven otherwise
             bool autoManageChildren = reader.GetBoolAttribute(ATTR.auto_manage_children, true);
             double? precursorConcentration = reader.GetNullableDoubleAttribute(ATTR.precursor_concentration);
@@ -1295,6 +1298,7 @@ namespace pwiz.Skyline.Model.Serialization
                                                   Annotations.EMPTY,
                                                   Settings,
                                                   mods,
+                                                  ionMobilityAndCCS,
                                                   null,
                                                   explicitTransitionGroupValues,
                                                   null,
@@ -1306,13 +1310,13 @@ namespace pwiz.Skyline.Model.Serialization
                 reader.ReadStartElement();
                 var annotations = ReadTargetAnnotations(reader, AnnotationDef.AnnotationTarget.precursor);
                 var libInfo = ReadTransitionGroupLibInfo(reader);
-                var ionMobility = ReadIonMobilityAttributes(reader);
                 var results = ReadTransitionGroupResults(reader);
 
                 nodeGroup = new TransitionGroupDocNode(group,
                                                   annotations,
                                                   Settings,
                                                   mods,
+                                                  ionMobilityAndCCS,
                                                   libInfo,
                                                   explicitTransitionGroupValues,
                                                   results,
@@ -1391,7 +1395,7 @@ namespace pwiz.Skyline.Model.Serialization
                     else
                     {
                         // No existing group matches, so create a new one
-                        curGroup = new TransitionGroup(peptide, info.PrecursorAdduct, IonMobilityAndCCS.EMPTY,  IsotopeLabelType.light);
+                        curGroup = new TransitionGroup(peptide, info.PrecursorAdduct,  IsotopeLabelType.light, 0);
                         curList = new List<TransitionDocNode>();
                         listGroups.Add(curGroup);
                         mapGroupToList.Add(curGroup, curList);
@@ -1414,7 +1418,7 @@ namespace pwiz.Skyline.Model.Serialization
             foreach (TransitionGroup group in listGroups)
             {
                 list.Add(new TransitionGroupDocNode(group, Annotations.EMPTY,
-                    Settings, mods, null,  ExplicitTransitionGroupValues.EMPTY, null, mapGroupToList[group].ToArray(), true));
+                    Settings, mods, IonMobilityAndCCS.EMPTY, null,  ExplicitTransitionGroupValues.EMPTY, null, mapGroupToList[group].ToArray(), true));
             }
             return list.ToArray();
         }

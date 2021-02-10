@@ -70,7 +70,6 @@ namespace pwiz.Skyline.Model.Results
         private readonly bool _isWatersFile;
         private readonly bool _isWatersMse;
         private readonly bool _isAgilentMse;
-        private readonly bool _isIonMobilityFiltered;
         private readonly bool _isElectronIonizationMse; // All ions, data MS1 only, but produces just fragments
         private readonly IEnumerable<MsInstrumentConfigInfo> _configInfoList;
         private readonly IIonMobilityFunctionsProvider _ionMobilityFunctionsProvider;
@@ -107,34 +106,13 @@ namespace pwiz.Skyline.Model.Results
                 ? document.Molecules
                 : document.Molecules.Where(p => retentionTimePredictor.IsFirstPassPeptide(p))).ToArray();
             
-            // If we're using bare measured ion mobility values from spectral libraries, go get those now
-            // TODO(bspratt): Should be queried out of the libraries as needed, as with RT not bulk copied all at once
-            var libraryIonMobilityInfo = document.Settings.GetIonMobilities(moleculesThisPass.SelectMany(
-                    node => node.TransitionGroups.Select(nodeGroup => nodeGroup.GetLibKey(document.Settings, node))).ToArray(), msDataFileUri);
             var ionMobilityMax = maxObservedIonMobilityValue ?? 0;
 
-            // TIC and Base peak are meaningless with FAIMS, where we can't know the actual overall ion counts -also can't reliably share times with any ion mobility scheme
-            if (instrumentInfo != null && instrumentInfo.IonMobilityUnits != eIonMobilityUnits.none)
-            {
-                if (libraryIonMobilityInfo != null && !libraryIonMobilityInfo.IsEmpty)
-                {
-                    _isIonMobilityFiltered = true;
-                }
-                else
-                {
-                    foreach (var pair in moleculesThisPass.SelectMany(
-                        node => node.TransitionGroups.Select(nodeGroup => new PeptidePrecursorPair(node, nodeGroup))))
-                    {
-                        var ionMobility = document.Settings.GetIonMobilityFilter(
-                            pair.NodePep, pair.NodeGroup, null, libraryIonMobilityInfo, _ionMobilityFunctionsProvider, ionMobilityMax);
-                        _isIonMobilityFiltered = ionMobility.HasIonMobilityValue;
-                        if (_isIonMobilityFiltered)
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
+            // TIC and Base peak are meaningless with FAIMS, where we can't know the actual overall ion counts
+            // also can't reliably share times with any ion mobility scheme
+            var isIonMobilityFiltered = instrumentInfo != null &&
+                                        instrumentInfo.IonMobilityUnits != eIonMobilityUnits.none &&
+                                        moleculesThisPass.Any(m => m.TransitionGroups.Any(tg => !tg.IonMobilityAndCCS.IsEmpty));
 
             if (EnabledMs || EnabledMsMs)
             {
@@ -143,7 +121,7 @@ namespace pwiz.Skyline.Model.Results
                     _isHighAccMsFilter = !Equals(_fullScan.PrecursorMassAnalyzer,
                         FullScanMassAnalyzerType.qit);
 
-                    if (!firstPass && !_isIonMobilityFiltered)
+                    if (!firstPass && !isIonMobilityFiltered)
                     {
                         if (gce?.TicChromatogramIndex == null)
                         {
@@ -187,7 +165,7 @@ namespace pwiz.Skyline.Model.Results
                 bool canSchedule = !firstPass && CanSchedule(document, retentionTimePredictor);
                 // TODO: Figure out a way to turn off time sharing on first SIM scan so that
                 //       times can be shared for MS1 without SIM scans
-                _isSharedTime = !canSchedule && !_isIonMobilityFiltered;
+                _isSharedTime = !canSchedule && !isIonMobilityFiltered;
 
                 int filterCount = 0;
                 foreach (var nodePep in moleculesThisPass)
@@ -199,8 +177,7 @@ namespace pwiz.Skyline.Model.Results
 
                         double? minTime = _minTime, maxTime = _maxTime;
                         var ionMobilityFilter = document.Settings.GetIonMobilityFilter(
-                            nodePep, nodeGroup, null, libraryIonMobilityInfo, _ionMobilityFunctionsProvider, ionMobilityMax);
-                        var ionMobility = ionMobilityFilter.IonMobility;
+                            nodePep, nodeGroup, null, _ionMobilityFunctionsProvider, ionMobilityMax);
 
                         ExplicitPeakBounds peakBoundaries = null;
                         if (_fullScan.RetentionTimeFilterType != RetentionTimeFilterType.none)

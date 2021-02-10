@@ -565,8 +565,10 @@ namespace pwiz.SkylineTest
 
         private static void CheckImportSimilarity<T>(IEnumerable<T> originals, IEnumerable<T> imported, Action<T, T> check)
         {
-            var origArray = originals.ToArray();
-            var importArray = imported.ToArray();
+            // ReSharper disable PossibleNullReferenceException
+            var origArray = originals.Where(n => !(n as DocNode).IsSpecialTestDocNode).ToArray();
+            var importArray = imported.Where(n => !(n as DocNode).IsSpecialTestDocNode).ToArray();
+            // ReSharper restore PossibleNullReferenceException
             Assert.AreEqual(origArray.Length, importArray.Length);
             for (int i = 0; i < origArray.Length; i++)
                 check(origArray[i], importArray[i]);

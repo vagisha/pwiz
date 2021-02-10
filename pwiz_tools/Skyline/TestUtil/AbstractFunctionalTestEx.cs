@@ -88,7 +88,7 @@ namespace pwiz.SkylineTestUtil
             foreach (var nodeGroup in (doc ?? SkylineWindow.Document).MoleculeTransitionGroups)
             {
                 if (nodeGroup.HasLibInfo && nodeGroup.Transitions.Any() && nodeGroup.Transitions.All(nodeTran => !nodeTran.HasLibInfo))
-                    Assert.Fail("Inconsistent library information");
+                    AssertEx.Fail("Inconsistent library information");
             }
         }
 
@@ -167,7 +167,7 @@ namespace pwiz.SkylineTestUtil
             if (expectedErrorMessage != null)
             {
                 var dlg = WaitForOpenForm<MessageDlg>();
-                Assert.IsTrue(dlg.DetailMessage.Contains(expectedErrorMessage));
+                AssertEx.IsTrue(dlg.DetailMessage.Contains(expectedErrorMessage));
                 dlg.CancelDialog();
             }
             else if (lockMassParameters == null)
@@ -228,9 +228,9 @@ namespace pwiz.SkylineTestUtil
             });
             var librarySettingsFinal = SkylineWindow.Document.Settings.PeptideSettings.Libraries;
             var libraries = librarySettingsFinal.Libraries;
-            Assert.IsTrue(librarySettingsFinal.IsLoaded, string.Format("Libraries not loaded: {0}", librarySettingsFinal.IsNotLoadedExplained));
-            Assert.IsTrue(libraries.Count > libIndex, string.Format("Library count {0} does not support the index {1}.", libraries.Count, libIndex));
-            Assert.AreEqual(expectedSpectra, libraries[libIndex].Keys.Count());
+            AssertEx.IsTrue(librarySettingsFinal.IsLoaded, string.Format("Libraries not loaded: {0}", librarySettingsFinal.IsNotLoadedExplained));
+            AssertEx.IsTrue(libraries.Count > libIndex, string.Format("Library count {0} does not support the index {1}.", libraries.Count, libIndex));
+            AssertEx.AreEqual(expectedSpectra, libraries[libIndex].Keys.Count());
         }
 
         public static void AddLibrary(LibrarySpec libSpec, Library lib)
@@ -458,14 +458,14 @@ PauseTest();
                 {
                     configureToolsDlg.RemoveAllTools();
                     configureToolsDlg.InstallZipTool(zipInstallerPath);
-                    Assert.AreEqual(toolName, configureToolsDlg.textTitle.Text);
-                    Assert.AreEqual(toolPath, configureToolsDlg.textCommand.Text);
-                    Assert.AreEqual(toolArguments, configureToolsDlg.textArguments.Text);
-                    Assert.AreEqual(toolInitialDirectory, configureToolsDlg.textInitialDirectory.Text);
-                    Assert.AreEqual(toolOutputToImmediateWindow ? CheckState.Checked : CheckState.Unchecked, configureToolsDlg.cbOutputImmediateWindow.CheckState);
-                    Assert.AreEqual(toolReport, configureToolsDlg.comboReport.SelectedItem);
+                    AssertEx.AreEqual(toolName, configureToolsDlg.textTitle.Text);
+                    AssertEx.AreEqual(toolPath, configureToolsDlg.textCommand.Text);
+                    AssertEx.AreEqual(toolArguments, configureToolsDlg.textArguments.Text);
+                    AssertEx.AreEqual(toolInitialDirectory, configureToolsDlg.textInitialDirectory.Text);
+                    AssertEx.AreEqual(toolOutputToImmediateWindow ? CheckState.Checked : CheckState.Unchecked, configureToolsDlg.cbOutputImmediateWindow.CheckState);
+                    AssertEx.AreEqual(toolReport, configureToolsDlg.comboReport.SelectedItem);
                     string toolDir = configureToolsDlg.ToolDir;
-                    Assert.IsTrue(Directory.Exists(toolDir));
+                    AssertEx.IsTrue(Directory.Exists(toolDir));
                     configureToolsDlg.OkDialog();
                 });
             }
@@ -499,6 +499,7 @@ PauseTest();
         {
             WaitForGraphs();
             var graphChromatogram = GetGraphChrom(graphName);
+PauseTest();
             // Wait as long as 2 seconds for mouse move to produce a highlight point
             bool overHighlight = false;
             const int sleepCycles = 20;
@@ -528,7 +529,7 @@ PauseTest();
             var graphChromatogram = GetGraphChrom(graphName);
             WaitForConditionUI(() => SkylineWindow.GraphFullScan != null && SkylineWindow.GraphFullScan.IsLoaded);
             if (!graphChromatogram.TestFullScanSelection(x, y, paneKey))
-                Assert.IsTrue(graphChromatogram.TestFullScanSelection(x, y, paneKey));
+                AssertEx.IsTrue(graphChromatogram.TestFullScanSelection(x, y, paneKey));
         }
 
         private static GraphChromatogram GetGraphChrom(string graphName)
@@ -572,7 +573,7 @@ PauseTest();
                 () => proteomeDlg.AddFastaFile(TestFilesDirs[0].GetTestPath(fastaFile)),
                 messageDlg =>
                 {
-                    Assert.AreEqual(
+                    AssertEx.AreEqual(
                         string.Format(Resources.BuildBackgroundProteomeDlg_AddFastaFile_The_added_file_included__0__repeated_protein_sequences__Their_names_were_added_as_aliases_to_ensure_the_protein_list_contains_only_one_copy_of_each_sequence_,
                         repeats), messageDlg.Message);
                     messageDlg.OkDialog();

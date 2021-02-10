@@ -120,7 +120,7 @@ namespace pwiz.Skyline.Model.Lib
             ModifiedSequence = modifiedSequence;
             UnmodifiedSequence = GetUnmodifiedSequence(modifiedSequence, null);
             Charge = charge;
-            IonMobility = ionMobility;
+            IonMobility = ionMobility ?? IonMobilityAndCCS.EMPTY;
         }
 
         private PeptideLibraryKey()
@@ -343,7 +343,7 @@ namespace pwiz.Skyline.Model.Lib
             PreferredKey = SmallMoleculeLibraryAttributes.GetPreferredKey() ??
                            SmallMoleculeLibraryAttributes.MoleculeName ?? String.Empty;
             _adduct = adduct;
-            IonMobility = ionMobility;
+            IonMobility = ionMobility ?? IonMobilityAndCCS.EMPTY;
         }
 
         public MoleculeLibraryKey(SmallMoleculeLibraryAttributes smallMoleculeLibraryAttributes, Adduct adduct, IonMobilityAndCCS ionMobility) 
@@ -484,7 +484,7 @@ namespace pwiz.Skyline.Model.Lib
         public PrecursorLibraryKey(double mz, IonMobilityAndCCS ionMobility, double? retentionTime)
         {
             Mz = mz;
-            IonMobility = ionMobility;
+            IonMobility = ionMobility ?? IonMobilityAndCCS.EMPTY;
             RetentionTime = retentionTime;
         }
 
@@ -556,7 +556,7 @@ namespace pwiz.Skyline.Model.Lib
             PeptideLibraryKeys = ImmutableList.ValueOf(peptideLibraryKeys);
             Crosslinks = ImmutableList.ValueOf(crosslinks);
             Charge = charge;
-            IonMobility = ionMobility;
+            IonMobility = ionMobility ?? IonMobilityAndCCS.EMPTY;
         }
 
         public CrosslinkLibraryKey(LibraryKeyProto libraryKeyProto)

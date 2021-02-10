@@ -154,10 +154,8 @@ namespace pwiz.Skyline.Model
         // Note these lead with zzz in hopes of placing them last in any sorting tests
         public static string TestingMultiCCSAnnotationString = @"zzzSpecialMultiCCSTestNode";
 
-        public bool IsSpecialMultiCCSTestDocNode
-        {
-            get { return Note != null && Note.Contains(TestingMultiCCSAnnotationString); }
-        }
+        public bool IsSpecialTestDocNode => Note != null && Note.Contains(TestingMultiCCSAnnotationString);
+
         #endregion Multiple conformers test support
 
         /// <summary>
@@ -183,7 +181,11 @@ namespace pwiz.Skyline.Model
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return Equals(obj.Id, Id) && Equals(obj.Annotations, Annotations);
+            if (!Equals(obj.Id, Id))
+                return false;
+            if (!Equals(obj.Annotations, Annotations))
+                return false;
+            return true;
         }
 
         public override bool Equals(object obj)
@@ -708,8 +710,6 @@ namespace pwiz.Skyline.Model
         /// <summary>
         /// Creates a clone of the current node with a list of new children added
         /// at the end of its child list.
-        /// Special case: if the last member of the child list is our special nonproteomic
-        /// test node, ensure that it remains the last member.
         /// </summary>
         /// <param name="childrenAdd">New children to add</param>
         /// <returns>A new parent node with the children at the end of its child list</returns>
@@ -719,13 +719,6 @@ namespace pwiz.Skyline.Model
 
             List<DocNode> childrenNew = new List<DocNode>(Children);
             List<int> nodeCountStack = new List<int>(_nodeCountStack);
-
-            #region Multiple conformers test support
-            // Support for multiple conformers work - most tests have a special node added to see if it breaks anything
-            bool hasSpecialTestNode = childrenNew.Any() && childrenNew.Last().IsSpecialMultiCCSTestDocNode;
-            if (hasSpecialTestNode)
-                childrenNew.RemoveAt(childrenNew.Count - 1);
-            #endregion Multiple conformers test support
  
             foreach (DocNode childAdd in childrenAdd)
             {
@@ -733,13 +726,6 @@ namespace pwiz.Skyline.Model
                 AddCounts(childAdd, nodeCountStack);
             }
 
-            #region Multiple conformers test support
-             if (hasSpecialTestNode)
-            {
-                childrenNew.Add(Children.Last()); // Restor ethe special test node, at the end
-            }
-            #endregion Multiple conformers test support
- 
             return ChangeChildren(childrenNew, nodeCountStack);
         }
 
@@ -1357,10 +1343,13 @@ namespace pwiz.Skyline.Model
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            var equal = base.Equals(obj) 
-                && ArrayUtil.EqualsDeep(obj.Children, Children)
-                && AutoManageChildren == obj.AutoManageChildren;
-            return equal; // For debugging convenience
+            if (!base.Equals(obj))
+                return false;
+            if (!ArrayUtil.EqualsDeep(obj.Children, Children))
+                return false;
+            if (!AutoManageChildren == obj.AutoManageChildren)
+                return false;
+            return true;
         }
 
         public override bool Equals(object obj)

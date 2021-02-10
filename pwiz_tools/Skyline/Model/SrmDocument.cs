@@ -384,7 +384,14 @@ namespace pwiz.Skyline.Model
         public int MoleculeGroupCount { get { return GetCount((int)Level.MoleculeGroups); } }
         public int MoleculeCount { get { return GetCount((int)Level.Molecules); } }
         public int MoleculeTransitionGroupCount { get { return GetCount((int)Level.TransitionGroups); } }
+
+        public int MoleculeTransitionGroupCountIgnoringMultipleConformers => 
+            Molecules.Sum(m => m.TransitionGroupsIgnoringMultipleConformers.Count());
+
         public int MoleculeTransitionCount { get { return GetCount((int)Level.Transitions); } }
+
+        public int MoleculeTransitionCountIgnoringMultipleConformers =>
+            Molecules.Sum(m => m.TransitionGroupsIgnoringMultipleConformers.Sum(tg => tg.Transitions.Count()));
 
         // Convenience functions for ignoring non-proteomic (CustomIon) nodes - that is, getting only peptides
         public int PeptideGroupCount { get { return PeptideGroups.Count(); } } 
@@ -483,6 +490,19 @@ namespace pwiz.Skyline.Model
             }
         }
 
+       
+        /// <summary>
+        /// Return all <see cref="TransitionGroupDocNode"/> of any kind except those that are multiple conformers,
+        /// i.e. same parent molecule and adduct as a sibling node, but different IM
+        /// </summary>
+        public IEnumerable<TransitionGroupDocNode> MoleculeTransitionGroupsIgnoringMultipleConformers
+        {
+            get
+            {
+                return Molecules.SelectMany(node => node.TransitionGroupsIgnoringMultipleConformers);
+            }
+        }
+
         /// <summary>
         /// Return all <see cref="TransitionGroupDocNode"/> whose members are peptide precursors
         /// </summary>
@@ -502,6 +522,31 @@ namespace pwiz.Skyline.Model
                     node => node.TransitionGroups.Select(nodeGroup => new PeptidePrecursorPair(node, nodeGroup)));
             }
         }
+
+        /// <summary>
+        /// Return number of <see cref="TransitionGroupDocNode"/> that with the magic extra multi-CCS test node indicator
+        /// </summary>
+        public int SpecialTestTransitionGroupsCount
+        {
+            get
+            {
+                return MoleculeTransitionGroups.Count(t => t.IsSpecialTestDocNode);
+            }
+        }
+
+
+        /// <summary>
+        /// Return number of <see cref="TransitionGroupDocNode"/> that with the magic extra multi-CCS test node indicator
+        /// </summary>
+        public int SpecialTestHeavyTransitionGroupsCount
+        {
+            get
+            {
+                return MoleculeTransitionGroups.Count(t => t.IsSpecialTestDocNode && !t.IsLight);
+            }
+        }
+
+
 
         public IEnumerable<PeptidePrecursorPair> PeptidePrecursorPairs
         {
@@ -533,6 +578,18 @@ namespace pwiz.Skyline.Model
         }
 
         /// <summary>
+        /// Return a list of <see cref="TransitionDocNode"/> of any kind, except those with parent transition group
+        /// that represents a multiple conformer (i.e. a second or more use of an adduct with the same molecule, and different IM)
+        /// </summary>
+        public IEnumerable<TransitionDocNode> MoleculeTransitionsIgnoringMultipleConformers
+        {
+            get
+            {
+                return MoleculeTransitionGroupsIgnoringMultipleConformers.SelectMany(node => node.Children.Cast<TransitionDocNode>());
+            }
+        }
+
+        /// <summary>
         /// Return a list of <see cref="TransitionDocNode"/> that are in peptides
         /// </summary>
         public IEnumerable<TransitionDocNode> PeptideTransitions
@@ -540,6 +597,25 @@ namespace pwiz.Skyline.Model
             get
             {
                 return MoleculeTransitions.Where(t => !t.Transition.Group.IsCustomIon);
+            }
+        }
+
+        /// <summary>
+        /// Return number of <see cref="TransitionDocNode"/> that with the magic extra multi-CCS test node indicator
+        /// </summary>
+        public int SpecialTestTransitionsCount
+        {
+            get
+            {
+                return MoleculeTransitions.Count(t => t.IsSpecialTestDocNode);
+            }
+        }
+
+        public int SpecialTestHeavyTransitionsCount
+        {
+            get
+            {
+                return MoleculeTransitionGroups.Where(t => t.IsSpecialTestDocNode).Sum(t => t.TransitionCount);
             }
         }
 
@@ -1499,75 +1575,91 @@ namespace pwiz.Skyline.Model
         }
 
         #region Multiple conformers test support
+
         /// <summary>
         /// For automated test of multiple conformers in tests that aren't originally designed to test that at all
         /// Modifies the last-in-list transition group to include multiple conformers
         /// </summary>
-        public void CreateMultiCCSTestPeptideGroupDocNode(PeptideGroupDocNode[] existingPeptideGroupDocNodes)
+        public SrmDocument AddMultipleConformerTestLibrary()
         {
-            var lastPeptideGroup = existingPeptideGroupDocNodes.Last();
-            var peptides = lastPeptideGroup.Children.ToList();
-            if (!peptides.Any())
+            if (!Properties.Settings.Default.TestMultiCCS)
             {
-                return;
+                return this;
             }
 
-            if (!(lastPeptideGroup.Children.Last() is PeptideDocNode lastPeptide))
+            if (!IonMobilityLibrarySpec.IsNullOrEmpty(Settings.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary))
             {
-                return;
+                return this; // Don't interfere with existing IM tests
             }
 
-            var transitionGroups = lastPeptide.Children.ToList();
-            if (!transitionGroups.Any())
+            if (!MoleculeTransitionGroups.Any())
             {
-                return;
+                return this;
             }
 
-            if (!(transitionGroups.Last() is TransitionGroupDocNode lastTransitionGroupDocNode))
+            // Find last TransitionGroup in document, and create an ion mobility library with multiple conformers for it
+            var lastPeptide = Molecules.Last();
+            var transitionGroups = lastPeptide.TransitionGroups.ToList();
+            var lastTransitionGroupDocNode = transitionGroups.Last();
+            var target = lastTransitionGroupDocNode.GetLibKey(Settings, lastPeptide).Target;
+            var adduct = lastTransitionGroupDocNode.PrecursorAdduct;
+            var ccsTestValue = 200;
+            var imTestValue = 20;
+            var heOffsetTestValue = -.02;
+            var imPrecursors = new List<ValidatingIonMobilityPrecursor>
             {
-                return;
-            }
+                new ValidatingIonMobilityPrecursor(target, adduct,
+                    ccsTestValue*.5, imTestValue*.5, heOffsetTestValue*.5, eIonMobilityUnits.drift_time_msec),
+                new ValidatingIonMobilityPrecursor(target, adduct,
+                    ccsTestValue, imTestValue, heOffsetTestValue, eIonMobilityUnits.drift_time_msec)
+            };
+            var lib = IonMobilityLibrary.CreateFromList(@"test", Directory.GetCurrentDirectory(), imPrecursors);
+            var newSettings = Settings.ChangeTransitionSettings(
+                Settings.TransitionSettings.ChangeIonMobilityFiltering(
+                    Settings.TransitionSettings.IonMobilityFiltering.ChangeLibrary(lib).
+                        ChangeFilterWindowWidthCalculator(new IonMobilityWindowWidthCalculator(40))));
+            var newDoc = ChangeSettings(newSettings); // This should result in the creation of a new multiple conformer precursor
 
-            // If last transition group doesn't have an ion mobility value, add one
-            var mobility = lastTransitionGroupDocNode.IonMobilityAndCCS;
-            if (mobility.IsEmpty)
-            {
-                mobility = IonMobilityAndCCS.GetIonMobilityAndCCS(IonMobilityValue.GetIonMobilityValue(10, eIonMobilityUnits.drift_time_msec),
-                    100, -.001);
-                lastTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(null, null, Settings, mobility);
-                transitionGroups[transitionGroups.Count - 1] = lastTransitionGroupDocNode;
-            }
-
-            // Append a sibling transition group with slightly different ion mobility - i.e. a multiple conformer
-            var newMobility = IonMobilityAndCCS.GetIonMobilityAndCCS(mobility.IonMobility.Mobility+0.5,
-                mobility.IonMobility.Units,
-                mobility.CollisionalCrossSectionSqA.HasValue ? mobility.CollisionalCrossSectionSqA.Value+1 : mobility.CollisionalCrossSectionSqA, -0.6);
-            var newTransitionGroupDocNode = lastTransitionGroupDocNode.DeepCopyTransitionGroup(null, null, Settings, newMobility, TestingMultiCCSAnnotationString);
-            transitionGroups.Add(newTransitionGroupDocNode);
-
-            // And update the tree
-            peptides[peptides.Count - 1] = (PeptideDocNode)lastPeptide.ChangeChildren(transitionGroups);
-            existingPeptideGroupDocNodes[existingPeptideGroupDocNodes.Length-1] = (PeptideGroupDocNode)lastPeptideGroup.ChangeChildren(peptides);
+            // Now tag newly created node and its children as being magic test nodes by setting their Notes
+            lastPeptide = newDoc.Molecules.Last(m => m.Children.Any());
+            transitionGroups = lastPeptide.TransitionGroups.ToList();
+            var index = transitionGroups.Count - 1;
+            var newTransitionGroup = transitionGroups[index];
+            newTransitionGroup = (TransitionGroupDocNode)newTransitionGroup.ChangeAnnotations(
+                newTransitionGroup.Annotations.ChangeNote(TestingMultiCCSAnnotationString));
+            var transitions = newTransitionGroup.Children.Select(
+                t => t.ChangeAnnotations(t.Annotations.ChangeNote(TestingMultiCCSAnnotationString))).ToList();
+            newTransitionGroup = (TransitionGroupDocNode)newTransitionGroup.ChangeChildren(transitions);
+            transitionGroups[index] = newTransitionGroup;
+            lastPeptide = (PeptideDocNode)lastPeptide.ChangeChildren(transitionGroups.Select(tg => tg as DocNode).ToList());
+            var pathPeptide = newDoc.GetPathTo((int)Level.Molecules, newDoc.Molecules.Count() - 1);
+            newDoc = (SrmDocument)newDoc.ReplaceChild(pathPeptide.Parent, lastPeptide);
+            return newDoc;
         }
+
+        private SrmDocument AddAllWithOptionalTestNodes(IEnumerable<DocNode> childrenAdd)
+        {
+            return ((SrmDocument)AddAll(childrenAdd)).AddMultipleConformerTestLibrary();
+        }
+
+        private SrmDocument AddAllWithOptionalTestNodes(IdentityPath path, IEnumerable<DocNode> childrenAdd)
+        {
+            return ((SrmDocument)AddAll(path, childrenAdd)).AddMultipleConformerTestLibrary();
+        }
+
+        private DocNodeParent InsertAllWithOptionalTestNodes(IdentityPath path, IEnumerable<DocNode> childrenAdd, bool after = false)
+        {
+            return ((SrmDocument)InsertAll(path, childrenAdd, after)).AddMultipleConformerTestLibrary();
+        }
+
         #endregion Multiple conformers test support
- 
+
         public SrmDocument AddPeptideGroups(IEnumerable<PeptideGroupDocNode> peptideGroupsNew,
             bool peptideList, IdentityPath to, out IdentityPath firstAdded, out IdentityPath nextAdd)
         {
             // For multiple add operations, make the next addtion at the same location by default
             nextAdd = to;
             var peptideGroupsAdd = peptideGroupsNew.ToArray();
-
-            #region Multiple conformers test support
-            // Code for the purpose of testing multiple conformers - normally used only in automated test
-            // Ensures that every non-empty document has a multi-CCS node in order to maximize testing of this new (as of Nov 2020) functionality
-            if (Properties.Settings.Default.TestMultipleConformers &&  // Special test mode?
-                peptideGroupsAdd.Any()) // Will resulting document be non-empty?
-            {
-                CreateMultiCCSTestPeptideGroupDocNode(peptideGroupsAdd);
-            }
-            #endregion Multiple conformers test support
-
 
             // If there are no new groups to add, as in the case where already added
             // FASTA sequences are pasted, just return this, and a null path.  Callers
@@ -1581,7 +1673,7 @@ namespace pwiz.Skyline.Model
 
             // Add to the end, if no insert node
             if (to == null || to.Depth < (int)Level.MoleculeGroups)
-                return (SrmDocument) AddAll(peptideGroupsAdd);
+                return AddAllWithOptionalTestNodes(peptideGroupsAdd);
             
             IdentityPath pathGroup = to.GetPathTo((int)Level.MoleculeGroups);
 
@@ -1619,15 +1711,15 @@ namespace pwiz.Skyline.Model
                 // If no peptide was in the selection path, add to the end of the list
                 DocNode docNew;
                 if (last < (int)Level.Molecules)
-                    docNew = AddAll(to, listAdd);
+                    docNew = AddAllWithOptionalTestNodes(to, listAdd);
                     // If one of the peptides was selected, insert before it
                 else if (last == (int)Level.Molecules)
-                    docNew = InsertAll(to, listAdd);
-                    // Otherise, insert after the peptide of the child that was selected
+                    docNew = InsertAllWithOptionalTestNodes(to, listAdd);
+                    // Otherwise, insert after the peptide of the child that was selected
                 else
                 {
                     nextAdd = FindNextInsertNode(to, (int) Level.Molecules);
-                    docNew = InsertAll(to.GetPathTo((int)Level.Molecules), listAdd, true);
+                    docNew = InsertAllWithOptionalTestNodes(to.GetPathTo((int)Level.Molecules), listAdd, true);
                 }
 
                 // Change the selection path to point to the first peptide pasted.
@@ -1636,12 +1728,12 @@ namespace pwiz.Skyline.Model
             }
                 // Insert the new groups before a selected group
             else if (last == (int)Level.MoleculeGroups)
-                return (SrmDocument)InsertAll(pathGroup, peptideGroupsAdd);
+                return (SrmDocument)InsertAllWithOptionalTestNodes(pathGroup, peptideGroupsAdd);
                 // Or after, if a group child is selected
             else
             {
                 nextAdd = FindNextInsertNode(to, (int)Level.MoleculeGroups);
-                return (SrmDocument)InsertAll(pathGroup, peptideGroupsAdd, true);
+                return (SrmDocument)InsertAllWithOptionalTestNodes(pathGroup, peptideGroupsAdd, true);
             }
         }
 
@@ -2033,18 +2125,13 @@ namespace pwiz.Skyline.Model
             else
             {
                 var children = documentReader.Children;
-                #region Multiple conformers test support
-                // Code for the purpose of testing multiple conformers - normally used only in automated test
-                if (Properties.Settings.Default.TestSmallMolecules && children.Any() && !children.Any(p => p.IsNonProteomic)) // Make sure there's a custom ion node present in any non-empty document
-                {
-                    CreateMultiCCSTestPeptideGroupDocNode(children);
-                }
-                #endregion Multiple conformers test support
 
                 // Make sure peptide standards lists are up to date
                 Settings = Settings.CachePeptideStandards(new PeptideGroupDocNode[0], children);
 
-                SetChildren(UpdateResultsSummaries(children, new Dictionary<int, PeptideDocNode>()));
+                var childrenUpdated = UpdateResultsSummaries(children, new Dictionary<int, PeptideDocNode>());
+
+                SetChildren(childrenUpdated);
 
                 IsProteinMetadataPending = CalcIsProteinMetadataPending(); // Background loaders are about to kick in, they need this info.
             }
@@ -2519,24 +2606,26 @@ namespace pwiz.Skyline.Model
             var linesExpected = textExpected.Split('\n');
             var linesActual = textActual.Split('\n');
             int lineNumber;
+            var nl = Environment.NewLine;
             for (lineNumber = 0; lineNumber < linesExpected.Length && lineNumber < linesActual.Length; lineNumber++)
             {
-                var lineExpected = linesExpected[lineNumber];
-                var lineActual = linesActual[lineNumber];
+                var whitespace = new[] {' ', '\t', '\r'};
+                var lineExpected = linesExpected[lineNumber].Trim(whitespace);
+                var lineActual = linesActual[lineNumber].Trim(whitespace);
                 if (!Equals(lineExpected, lineActual))
                 {
-                    return $@"Expected XML representation of document does not match actual at line {lineNumber}\n" +
-                           $@"Expected line:\n{lineExpected}\n" +
-                           $@"Actual line:\n{lineActual}\n" +
-                           $@"Expected full document:\n{textExpected}\n" +
-                           $@"Actual full document:\n{textActual}\n";
+                    return $@"Expected XML representation of document does not match actual at line {lineNumber}{nl}" +
+                           $@"Expected line:{nl}{lineExpected}{nl}" +
+                           $@"Actual line:{nl}{lineActual}{nl}" +
+                           $@"Expected full document:{nl}{textExpected}{nl}" +
+                           $@"Actual full document:{nl}{textActual}{nl}";
                 }
             }
             if (lineNumber < linesExpected.Length || lineNumber < linesActual.Length)
             {
-                return @"Expected XML representation of document is not the same length as actual\n"+
-                       $@"Expected full document:\n{textExpected}\n"+
-                       $@"Actual full document:\n{textActual}\n";
+                return @"Expected XML representation of document is not the same length as actual{nl}"+
+                       $@"Expected full document:{nl}{textExpected}{nl}"+
+                       $@"Actual full document:{nl}{textActual}{nl}";
             }
 
             return @"Expected document does not match actual, but the difference does not appear in the XML representation. Difference may be in a library instead.";
@@ -2570,6 +2659,10 @@ namespace pwiz.Skyline.Model
             {
                 return (base.GetHashCode()*397) ^ Settings.GetHashCode();
             }
+        }
+        public override string ToString() // For debugging convenience, not user-facing
+        {
+            return string.Format(@"SrmDocument {0},{1},{2},{3}", MoleculeGroupCount, MoleculeCount, MoleculeTransitionGroupCount, MoleculeTransitionCount);
         }
 
         #endregion

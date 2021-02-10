@@ -258,8 +258,8 @@ namespace pwiz.Skyline.Model
                     .ToArray();
                 _setPepIndexes = new HashSet<int>(_peptides.Select(pep => pep.PeptideNode.Peptide.GlobalIndex));
                 TransitionCount = _peptides.Sum(pep => isPrecursorLimited
-                        ? pep.PeptideNode.TransitionGroups.Count(exporter.PassesPolarityFilter)
-                        : pep.PeptideNode.TransitionGroups.Sum(tg => tg.Transitions.Count(exporter.PassesPolarityFilter)));
+                        ? pep.PeptideNode.TransitionGroupsIgnoringMultipleConformers.Count(exporter.PassesPolarityFilter)
+                        : pep.PeptideNode.TransitionGroupsIgnoringMultipleConformers.Sum(tg => tg.Transitions.Count(exporter.PassesPolarityFilter)));
             }
 
             public int TransitionCount { get; private set; }
@@ -323,7 +323,7 @@ namespace pwiz.Skyline.Model
                         NextFile(fileIterator);
                     }
 
-                    foreach (TransitionGroupDocNode group in peptide.TransitionGroups.Where(PassesPolarityFilter))
+                    foreach (TransitionGroupDocNode group in peptide.TransitionGroupsIgnoringMultipleConformers.Where(PassesPolarityFilter))
                     {
                         // Skip precursors with too few transitions.
                         int groupTransitions = group.Children.Count;
@@ -354,12 +354,12 @@ namespace pwiz.Skyline.Model
 
         private int CalcTransitionCount(PeptideGroupDocNode nodePepGroup)
         {
-            return CalcTransitionCount(IsPrecursorLimited ? nodePepGroup.TransitionGroupCount : nodePepGroup.TransitionCount);
+            return CalcTransitionCount(IsPrecursorLimited ? nodePepGroup.TransitionGroupCountIgnoringMultipleConformers : nodePepGroup.TransitionCountIgnoringMultipleConformers);
         }
 
         private int CalcTransitionCount(PeptideDocNode nodePep)
         {
-            return CalcTransitionCount(IsPrecursorLimited ? nodePep.TransitionGroupCount : nodePep.TransitionCount);
+            return CalcTransitionCount(IsPrecursorLimited ? nodePep.TransitionGroupCountIgnoringMultipleConformers : nodePep.TransitionCountIgnoringMultipleConformers);
         }
 
         private int CalcTransitionCount(int transitionNodes)
@@ -388,7 +388,7 @@ namespace pwiz.Skyline.Model
                 foreach (PeptideDocNode nodePep in nodePepGroup.Molecules.Where(PassesPolarityFilter))
                 {
                     var peptideSchedule = new PeptideSchedule(nodePep, maxInstrumentTrans);
-                    foreach (TransitionGroupDocNode nodeTranGroup in nodePep.TransitionGroups.Where(PassesPolarityFilter))
+                    foreach (TransitionGroupDocNode nodeTranGroup in nodePep.TransitionGroupsIgnoringMultipleConformers.Where(PassesPolarityFilter))
                     {
                         double timeWindow;
                         double retentionTime = predict.PredictRetentionTime(Document, nodePep, nodeTranGroup, SchedulingReplicateIndex,
@@ -1118,7 +1118,7 @@ namespace pwiz.Skyline.Model
                     var seq = requiredPeptide.PeptideGroupNode;
                     var peptide = requiredPeptide.PeptideNode;
 
-                    foreach (var group in peptide.TransitionGroups.Where(exporter.PassesPolarityFilter))
+                    foreach (var group in peptide.TransitionGroupsIgnoringMultipleConformers.Where(exporter.PassesPolarityFilter))
                     {
                         if (exporter.IsolationList)
                         {
