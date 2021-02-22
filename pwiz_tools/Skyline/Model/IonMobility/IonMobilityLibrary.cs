@@ -224,10 +224,56 @@ namespace pwiz.Skyline.Model.IonMobility
             return persistPath;
         }
 
+        // For use in creating a hashset of non-redundant precursors+CCS values
+        // Considers two precursors equal if molecule and adduct agree, and
+        // CCS values agree (unless ion mobility units disagree, i.e. we have values for drift and for 1/K0)
+        private class IonAndCCSComparer : IEqualityComparer<LibraryKey>
+        {
+            public bool Equals(LibraryKey x, LibraryKey y)
+            {
+                if (x == null || y == null)
+                {
+                    return x == null && y == null;
+                }
+
+                if (Equals(x.Adduct, y.Adduct) && Equals(x.Target, y.Target))
+                {
+                    // Same ion
+                    if (x.IonMobility.CollisionalCrossSectionSqA.HasValue || y.IonMobility.CollisionalCrossSectionSqA.HasValue)
+                    {
+                        // Consider equal if CCS matches, and IM units match (so we don't admit IM conflicts)
+                        return Equals(x.IonMobility.CollisionalCrossSectionSqA, y.IonMobility.CollisionalCrossSectionSqA) && 
+                               Equals(x.IonMobility.IonMobility.Units, y.IonMobility.IonMobility.Units);
+                    }
+                    if (x.IonMobility.IonMobility.HasValue || y.IonMobility.IonMobility.HasValue)
+                    {
+                        return Equals(x.IonMobility.IonMobility, y.IonMobility.IonMobility);
+                    }
+                }
+
+                return false;
+            }
+
+            public int GetHashCode(LibraryKey obj)
+            {
+                var result =  obj.Target.GetHashCode();
+                result = (result * 397) ^ obj.Adduct.GetHashCode();
+                if (obj.IonMobility.CollisionalCrossSectionSqA.HasValue)
+                {
+                    result = (result * 397) ^ obj.IonMobility.CollisionalCrossSectionSqA.GetHashCode();
+                }
+                else
+                {
+                    result = (result * 397) ^ obj.IonMobility.IonMobility.GetHashCode();
+                }
+                return result;
+            }
+        }
+
         public static LibKeyIndex FlatListToLibKeyIndex(IEnumerable<ValidatingIonMobilityPrecursor> mobilitiesFlat)
         {
-            // Put the list into a dict for performance reasons
-            var ionMobilities = new HashSet<LibraryKey>();
+            // Put the list into a hash for performance reasons
+            var ionMobilities = new HashSet<LibraryKey>(new IonAndCCSComparer());
             foreach (var item in mobilitiesFlat)
             {
                 ionMobilities.Add(item.Precursor);
@@ -403,9 +449,19 @@ namespace pwiz.Skyline.Model.IonMobility
             if (!Equals(Count, other.Count) && Count >= 0 && other.Count >= 0)
                 return false; // Both in memory but different sizes
             if (Count < 0 || other.Count < 0)
-                return true; // One or both yet in memory
+                return true; // One or both not yet in memory
             if (!LibKeyIndex.AreEquivalent(_database.DictLibrary, other._database.DictLibrary))
                 return false;
+            foreach (var entry in _database.DictLibrary)
+            {
+                var libKey = entry.LibraryKey;
+                var mobilities = GetIonMobilityInfo(libKey);
+                var otherMobilities = other.GetIonMobilityInfo(libKey);
+                if (mobilities.Count != otherMobilities.Count || mobilities.Any(m => !otherMobilities.Contains(m)))
+                {
+                    return false;
+                }
+            }
             return true;
         }
 

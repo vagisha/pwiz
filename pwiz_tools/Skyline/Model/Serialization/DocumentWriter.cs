@@ -211,8 +211,8 @@ namespace pwiz.Skyline.Model.Serialization
             writer.WriteAttributeNullable(ATTR.ccs, ionMobilityAndCCS.CollisionalCrossSectionSqA);
             if (ionMobilityAndCCS.HasIonMobilityValue)
             {
-                writer.WriteAttributeNullable(ATTR.ion_mobility, ionMobilityAndCCS.IonMobility.Mobility);
-                writer.WriteAttributeNullable(ATTR.ion_mobility_high_energy_offset, ionMobilityAndCCS.HighEnergyIonMobilityValueOffset);
+                WriteIonMobilityAttributeNullable(writer, ATTR.ion_mobility, ionMobilityAndCCS.IonMobility.Mobility);
+                WriteIonMobilityAttributeNullable(writer, ATTR.ion_mobility_high_energy_offset, ionMobilityAndCCS.HighEnergyIonMobilityValueOffset);
                 writer.WriteAttribute(ATTR.ion_mobility_type, ionMobilityAndCCS.IonMobility.Units.ToString());
             }
         }
@@ -633,6 +633,14 @@ namespace pwiz.Skyline.Model.Serialization
             }
         }
 
+        private static void WriteIonMobilityAttributeNullable(XmlWriter writer, string attr, double? value)
+        {
+            if (value.HasValue)
+            {
+                writer.WriteAttribute(attr, Math.Round(value.Value, 5));
+            }
+        }
+
         private static void WriteTransitionGroupChromInfo(XmlWriter writer, TransitionGroupChromInfo chromInfo)
         {
             if (chromInfo.OptimizationStep != 0)
@@ -644,9 +652,9 @@ namespace pwiz.Skyline.Model.Serialization
             writer.WriteAttributeNullable(ATTR.ccs, chromInfo.IonMobilityInfo.CollisionalCrossSection);
             if (chromInfo.IonMobilityInfo.IonMobilityUnits != eIonMobilityUnits.none)
             {
-                writer.WriteAttributeNullable(ATTR.ion_mobility_ms1, chromInfo.IonMobilityInfo.IonMobilityMS1);
-                writer.WriteAttributeNullable(ATTR.ion_mobility_fragment, chromInfo.IonMobilityInfo.IonMobilityFragment);
-                writer.WriteAttributeNullable(ATTR.ion_mobility_window, chromInfo.IonMobilityInfo.IonMobilityWindow);
+                WriteIonMobilityAttributeNullable(writer, ATTR.ion_mobility_ms1, chromInfo.IonMobilityInfo.IonMobilityMS1);
+                WriteIonMobilityAttributeNullable(writer, ATTR.ion_mobility_fragment, chromInfo.IonMobilityInfo.IonMobilityFragment);
+                WriteIonMobilityAttributeNullable(writer, ATTR.ion_mobility_window, chromInfo.IonMobilityInfo.IonMobilityWindow);
                 writer.WriteAttribute(ATTR.ion_mobility_type, chromInfo.IonMobilityInfo.IonMobilityUnits.ToString());
             }
             writer.WriteAttributeNullable(ATTR.fwhm, chromInfo.Fwhm);
@@ -920,8 +928,8 @@ namespace pwiz.Skyline.Model.Serialization
                 writer.WriteAttribute(ATTR.retention_time, chromInfo.RetentionTime);
                 writer.WriteAttribute(ATTR.start_time, chromInfo.StartRetentionTime);
                 writer.WriteAttribute(ATTR.end_time, chromInfo.EndRetentionTime);
-                writer.WriteAttributeNullable(ATTR.ion_mobility, chromInfo.IonMobility.IonMobility.Mobility);
-                writer.WriteAttributeNullable(ATTR.ion_mobility_window, chromInfo.IonMobility.IonMobilityExtractionWindowWidth);
+                WriteIonMobilityAttributeNullable(writer, ATTR.ion_mobility, chromInfo.IonMobility.IonMobility.Mobility);
+                WriteIonMobilityAttributeNullable(writer, ATTR.ion_mobility_window, chromInfo.IonMobility.IonMobilityExtractionWindowWidth);
                 writer.WriteAttribute(ATTR.area, chromInfo.Area);
                 writer.WriteAttribute(ATTR.background, chromInfo.BackgroundArea);
                 writer.WriteAttribute(ATTR.height, chromInfo.Height);

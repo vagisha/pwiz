@@ -142,7 +142,6 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             WaitForClosedForm(importPeptideSearchDlg);
             WaitForDocumentChangeLoaded(doc, 15 * 60 * 1000); // 15 minutes
             var doc1 = WaitForDocumentLoaded(400000);
-
             AssertEx.IsDocumentState(doc1, null, 1, 40, 54, 162);
             loadStopwatch.Stop();
             DebugLog.Info("load time = {0}", loadStopwatch.ElapsedMilliseconds);

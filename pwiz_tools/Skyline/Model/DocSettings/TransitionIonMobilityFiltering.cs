@@ -195,7 +195,7 @@ namespace pwiz.Skyline.Model.DocSettings
             IIonMobilityFunctionsProvider ionMobilityFunctionsProvider, double ionMobilityRangeMax)
         {
             var ionMobility = GetIonMobilityFilter(ion, mz, ionMobilityFunctionsProvider);
-            if (ionMobility != null)
+            if (ionMobility != null && ! ionMobility.IsEmpty)
             {
                 double? ionMobilityWindowWidth;
                 if (ionMobility.IonMobility.HasValue)
@@ -850,6 +850,8 @@ namespace pwiz.Skyline.Model.DocSettings
         {
             if (!(obj is IonMobilityAndCCS other))
                 return 1;
+            if (ReferenceEquals(this, other))
+                return 0;
             var val = IonMobility.CompareTo(other.IonMobility);
             if (val != 0)
                 return val;
@@ -1221,10 +1223,9 @@ namespace pwiz.Skyline.Model.DocSettings
             var other = obj as IonMobilityFilter;
             if (other == null)
                 return 1;
+            if (ReferenceEquals(this, other))
+                return 0;
             var val = IonMobilityAndCCS.CompareTo(other.IonMobilityAndCCS);
-            if (val != 0)
-                return val;
-            val = Nullable.Compare(CollisionalCrossSectionSqA, other.CollisionalCrossSectionSqA);
             if (val != 0)
                 return val;
             return Nullable.Compare(IonMobilityExtractionWindowWidth, other.IonMobilityExtractionWindowWidth);

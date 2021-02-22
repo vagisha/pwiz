@@ -1964,6 +1964,11 @@ namespace pwiz.Skyline.Model.Results
             if (c != 0)
                 return c;
 
+            // Watch for multiple conformers
+            c = IonMobilityFilter.CompareTo(key.IonMobilityFilter);
+            if (c != 0)
+                return c;
+
             // Order by scan-type source, product m/z, extraction width
             c = CompareSource(key);
             if (c != 0)
@@ -1975,8 +1980,6 @@ namespace pwiz.Skyline.Model.Results
             if (c != 0)
                 return c;
             return ExtractionWidth.CompareTo(key.ExtractionWidth);
-
-            // CONSIDER(bspratt) - we're currently ignoring ion mobility for comparison
         }
 
         public int ComparePrecursors(ChromKey key)

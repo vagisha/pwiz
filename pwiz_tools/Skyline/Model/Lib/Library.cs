@@ -988,6 +988,14 @@ namespace pwiz.Skyline.Model.Lib
             {
                 return entry.OriginalIndex;
             }
+            if (!IonMobilityAndCCS.IsNullOrEmpty(key.IonMobility))
+            {
+                // Possibly it failed to match on ion mobility - try again ignoring IM
+                foreach (var entry in _libraryEntries.Index.ItemsMatching(key, LibKeyIndex.LibraryMatchType.ion))
+                {
+                    return entry.OriginalIndex;
+                }
+            }
             return -1;
         }
 

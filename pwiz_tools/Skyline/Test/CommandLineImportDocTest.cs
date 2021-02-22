@@ -109,10 +109,11 @@ namespace pwiz.SkylineTest
             var doc2 = ResultsUtil.DeserializeDocument(docPersistPath2);
             var docImported2 = ResultsUtil.DeserializeDocument(lastDocPath);
             // One protein should get merged
-            int groups2 = docImported.MoleculeGroupCount + docImported2.MoleculeTransitionGroupCount - 1;
+            int groups2 = docImported.MoleculeGroupCount + docImported2.MoleculeTransitionGroupCountIgnoringSpecialTestNodes - 1;
             int mols = docImported.MoleculeCount + docImported2.MoleculeCount;
-            int trans = docImported.MoleculeTransitionCount + docImported2.MoleculeTransitionCount;
-            AssertEx.IsDocumentState(doc2, null, groups2, mols, trans);
+            int precursors = docImported.MoleculeTransitionGroupCount + docImported2.MoleculeTransitionGroupCountIgnoringSpecialTestNodes - 1;
+            int trans = docImported.MoleculeTransitionCountIgnoringSpecialTestNodes + docImported2.MoleculeTransitionCountIgnoringSpecialTestNodes;
+            AssertEx.IsDocumentState(doc2, null, groups2, mols, precursors, trans);
             Assert.AreEqual(doc.MeasuredResults, doc2.MeasuredResults);
             Assert.AreEqual(startCacheLen, new FileInfo(cachePersistPath).Length);
 
@@ -163,7 +164,8 @@ namespace pwiz.SkylineTest
             AssertEx.IsDocumentState(docAdd, null,
                 doc.PeptideGroupCount + docAdded.PeptideGroupCount,
                 doc.PeptideCount + docAdded.PeptideCount,
-                doc.PeptideTransitionCount + docAdded.PeptideTransitionCount);
+                doc.PeptideTransitionGroupCount + docAdded.MoleculeTransitionGroupCountIgnoringSpecialTestNodes,
+                doc.PeptideTransitionCount + docAdded.MoleculeTransitionCountIgnoringSpecialTestNodes);
 
             Assert.AreEqual(3, docAdded.Settings.MeasuredResults.Chromatograms.Count);
             var chromatograms = docAdd.Settings.MeasuredResults.Chromatograms;

@@ -398,10 +398,11 @@ namespace pwiz.Skyline.Model
                     // Watch for multiple conformers
                     nodeGroups = nodeGroupChild.IonMobilityAndCCS.IsEmpty ?
                         new [] { nodeGroupChild } :
-                        (TransitionGroupDocNode[]) nodePepMod.Children.Where(node => Equals(nodeGroupChild.TransitionGroup.LabelType,
-                                                                                         ((TransitionGroupDocNode) node).TransitionGroup.LabelType) &&
-                                                                                     Equals(nodeGroupChild.TransitionGroup.PrecursorAdduct,
-                                                                                         ((TransitionGroupDocNode)node).TransitionGroup.PrecursorAdduct)).ToArray();
+                        nodePepMod.Children.Where(node => Equals(nodeGroupChild.TransitionGroup.LabelType,
+                                                              ((TransitionGroupDocNode) node).TransitionGroup.LabelType) &&
+                                                          Equals(nodeGroupChild.TransitionGroup.PrecursorAdduct,
+                                                              ((TransitionGroupDocNode)node).TransitionGroup.PrecursorAdduct))
+                            .Select(n => (TransitionGroupDocNode)n).ToArray();
                     return true;
                 }
             }

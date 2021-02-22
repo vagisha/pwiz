@@ -126,7 +126,10 @@ namespace pwiz.Skyline.Model.Lib
 
         public bool TryGetValue(LibKey key, out TItem value)
         {
-            foreach (TItem matchingValue in ItemsMatching(key.LibraryKey, LibKeyIndex.LibraryMatchType.mobility))
+            foreach (TItem matchingValue in ItemsMatching(key.LibraryKey,
+                IonMobilityAndCCS.IsNullOrEmpty(key.LibraryKey.IonMobility) ?
+                    LibKeyIndex.LibraryMatchType.ion : // Match on moleclue and adduct
+                    LibKeyIndex.LibraryMatchType.mobility)) // // Match on moleclue and adduct and ion mobility
             {
                 value = matchingValue;
                 return true;

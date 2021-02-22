@@ -80,6 +80,7 @@ namespace pwiz.SkylineTestData.Results
                 System.Console.Write(MSG_SKIPPING_SMALLMOLECULE_TEST_VERSION);
                 return;
             }
+            TestMultiCCS = false; // This test already deals with ion mobility, adding that extra node with a random IM values doesn't make sense
 
             var testFilesDir = new TestFilesDir(TestContext, ZIP_FILE);
 
@@ -111,7 +112,7 @@ namespace pwiz.SkylineTestData.Results
                     float tolerance = (float)document.Settings.TransitionSettings.Instrument.MzMatchTolerance;
                     var results = document.Settings.MeasuredResults;
                     foreach (var pair in document.MoleculePrecursorPairs)
-                    {
+                    { 
                         ChromatogramGroupInfo[] chromGroupInfo;
                         Assert.IsTrue(results.TryLoadChromatogram(0, pair.NodePep, pair.NodeGroup,
                             tolerance, true, out chromGroupInfo));

@@ -271,7 +271,7 @@ namespace pwiz.SkylineTest
                     foreach (var nodeTran in nodePep.TransitionGroups.SelectMany(g => g.Transitions))
                     {
                         if (!nodeTran.HasLibInfo)
-                            Assert.Fail("Missing library info from {0} - {1}", nodePep, nodeTran.GetDisplayText(new DisplaySettings(
+                            AssertEx.Fail("Missing library info from {0} - {1}", nodePep, nodeTran.GetDisplayText(new DisplaySettings(
                                 new NormalizedValueCalculator(docAfter), 
                                 nodePep, false, 0, NormalizeOption.RatioToFirstStandard(docAfter.Settings))));
                     }

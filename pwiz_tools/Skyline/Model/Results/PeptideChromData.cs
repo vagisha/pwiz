@@ -972,7 +972,8 @@ namespace pwiz.Skyline.Model.Results
             if (nodeGroup1 == null || nodeGroup2 == null)
                 return false;
             return Equals(nodeGroup1.TransitionGroup.PrecursorAdduct, nodeGroup2.TransitionGroup.PrecursorAdduct) &&
-                   ReferenceEquals(nodeGroup1.TransitionGroup.LabelType, nodeGroup2.TransitionGroup.LabelType);
+                   ReferenceEquals(nodeGroup1.TransitionGroup.LabelType, nodeGroup2.TransitionGroup.LabelType) &&
+                   Equals(nodeGroup1.TransitionGroup.ConformerID, nodeGroup2.TransitionGroup.ConformerID);
         }
     }
 

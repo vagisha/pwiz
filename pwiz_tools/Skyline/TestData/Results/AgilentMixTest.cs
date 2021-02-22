@@ -29,7 +29,7 @@ namespace pwiz.SkylineTestData.Results
     /// Summary description for AgilentMixTest
     /// </summary>
     [TestClass]
-    public class AgilentMixTest : AbstractUnitTest
+    public class AgilentMixTest : AbstractUnitTestEx
     {
         private const string ZIP_FILE = @"TestData\Results\AgilentMix.zip";
 
@@ -51,7 +51,6 @@ namespace pwiz.SkylineTestData.Results
         public void AgilentFormatsTest()
         {
             var testFilesDir = new TestFilesDir(TestContext, ZIP_FILE);
-
             string docPath;
             SrmDocument doc = InitAgilentDocument(testFilesDir, out docPath);
 
@@ -68,8 +67,9 @@ namespace pwiz.SkylineTestData.Results
                 Assert.IsTrue(docContainer.SetDocument(docResults, doc, true));
                 docContainer.AssertComplete();
                 docResults = docContainer.Document;
+WriteDocument(docResults, "c:\\tmp\\multi.sky");
                 AssertResult.IsDocumentResultsState(docResults, replicateName,
-                    doc.PeptideCount, doc.PeptideTransitionGroupCount, 0, doc.PeptideTransitionCount, 0);
+                    doc.PeptideCount, doc.MoleculeTransitionGroupCountIgnoringSpecialTestNodes, 0, doc.MoleculeTransitionCountIgnoringSpecialTestNodes, 0);
             }
 
             testFilesDir.Dispose();

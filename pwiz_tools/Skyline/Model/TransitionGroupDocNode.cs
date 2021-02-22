@@ -1094,6 +1094,7 @@ namespace pwiz.Skyline.Model
                         if (!TransitionDocNode.IsValidIsotopeTransition(tran, isotopeDist))
                             continue;
                         var massH = settingsNew.RecalculateTransitionMass(mods, nodeTransition, isotopeDist);
+
                         var quantInfo = TransitionDocNode.TransitionQuantInfo.GetTransitionQuantInfo(nodeTransition.ComplexFragmentIon, isotopeDist,
                             Transition.CalcMass(massH, losses), transitionRanks).UseValuesFrom(nodeTransition.QuantInfo);
                         if (!ReferenceEquals(quantInfo.LibInfo, nodeTransition.LibInfo))

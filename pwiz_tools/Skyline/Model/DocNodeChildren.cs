@@ -24,6 +24,8 @@ namespace pwiz.Skyline.Model
                 _indexes = new Dictionary<Identity, int>(_itemCount, IDENTITY_EQUALITY_COMPARER);
                 for (int i = 0; i < _itemCount; i++)
                 {
+if (_indexes.ContainsKey(_items[i].Id))
+Console.Write("foo!");
                     _indexes.Add(_items[i].Id, i);
                 }
             }

@@ -93,7 +93,6 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
                     }
                 }
             }
-
             Stopwatch loadStopwatch = new Stopwatch();
             loadStopwatch.Start();
             var manageResults = ShowDialog<ManageResultsDlg>(SkylineWindow.ManageResults);
@@ -111,19 +110,19 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
 
             var doc1 = WaitForDocumentLoaded(400000);
             AssertEx.IsDocumentState(doc1, null, 19, 19, 28, 607);
-             
+
             var chroms0 = doc0.Settings.MeasuredResults.Chromatograms[chromIndex];
             // Original file was saved before we had a sense of ion mobility type
             chroms0 = chroms0.ChangeMSDataFileInfos(chroms0.MSDataFileInfos.Select(m => m.ChangeIonMobilityUnits(eIonMobilityUnits.drift_time_msec)).ToList());
             var chroms1 = doc1.Settings.MeasuredResults.Chromatograms[chromIndex];
-            Assert.AreEqual(StripPathInfo(chroms0), StripPathInfo(chroms1));
+            AssertEx.AreEqual(StripPathInfo(chroms0), StripPathInfo(chroms1));
 
             int intensityIndex = 0;
             var results1 = doc1.Settings.MeasuredResults;
             foreach (var pair in doc1.PeptidePrecursorPairs)
             {
                 ChromatogramGroupInfo[] chromGroupInfo;
-                Assert.IsTrue(results1.TryLoadChromatogram(chromIndex, pair.NodePep, pair.NodeGroup,
+                AssertEx.IsTrue(results1.TryLoadChromatogram(chromIndex, pair.NodePep, pair.NodeGroup,
                     tolerance, true, out chromGroupInfo));
                 foreach (var chromGroup in chromGroupInfo)
                 {

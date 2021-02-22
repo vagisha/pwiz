@@ -43,6 +43,7 @@ using pwiz.Skyline.Model.Tools;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
 using pwiz.Skyline.ToolsUI;
+using pwiz.Skyline.Util;
 using ZedGraph;
 
 namespace pwiz.SkylineTestUtil
@@ -723,5 +724,30 @@ namespace pwiz.SkylineTestUtil
                 renameDlg.OkDialog();
             });
         }
+
+        /// <summary>
+        /// Look for a suitable match in the current document, failing that create one.
+        /// Does not alter the current document if nodes are created. 
+        /// </summary>
+        public static PeptidePrecursorPair FindOrCreateNodes(string seq, Adduct adduct)
+        {
+            var result = SkylineWindow.Document.PeptidePrecursorPairs.FirstOrDefault(pair =>
+                pair.NodePep.IsProteomic &&
+                pair.NodePep.Target.Sequence.Equals(seq) &&
+                pair.NodeGroup.PrecursorAdduct.Equals(adduct));
+            if (result?.NodePep == null)
+            {
+                var targ = new Target(seq);
+                var pep = new Peptide(targ);
+                var nodePep = new PeptideDocNode(pep);
+                var group = new TransitionGroup(pep, adduct, IsotopeLabelType.light, 0);
+                var nodeGroup = new TransitionGroupDocNode(group, new TransitionDocNode[0], IonMobilityAndCCS.EMPTY).
+                    ChangePrecursorMz(SkylineWindow.Document.Settings, null);
+                nodePep = ((PeptideDocNode)nodePep.ChangeChildren(new[]{nodeGroup})).UpdateIonMobilityValues(SkylineWindow.Document.Settings);
+                result = new PeptidePrecursorPair(nodePep, (TransitionGroupDocNode)nodePep.Children.FirstOrDefault());
+            }
+            return result;
+        }
+
     }
 }

@@ -1473,8 +1473,16 @@ namespace pwiz.Skyline.Model
                     ? decoyGroup.GetMatchingTransitions(document.Settings, nodeGroupPrimary, mods)
                     : GetDecoyTransitions(nodeGroup, decoyGroup, shiftMass, randomShift);
 
+                var annotations = Annotations.EMPTY;
+                #region Multiple conformers test support
+                if (nodeGroup.IsSpecialTestDocNode)
+                {
+                    annotations = annotations.NoteAsSpecialTestNode();
+                }
+                #endregion Multiple conformers test support
+
                 var nodeGroupDecoy = new TransitionGroupDocNode(decoyGroup,
-                                                                Annotations.EMPTY,
+                                                                annotations,
                                                                 document.Settings,
                                                                 mods,
                                                                 nodeGroup.LibraryIonMobility,
@@ -1483,6 +1491,7 @@ namespace pwiz.Skyline.Model
                                                                 nodeGroup.Results,
                                                                 decoyNodeTranList,
                                                                 false);
+
                 decoyNodeTranGroupList.Add(nodeGroupDecoy);
 
                 if (primaryPrecursor == null)

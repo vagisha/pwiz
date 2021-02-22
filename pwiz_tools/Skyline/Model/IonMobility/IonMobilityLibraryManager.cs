@@ -36,15 +36,15 @@ namespace pwiz.Skyline.Model.IonMobility
             return @"IonMobilityLibraryManager : GetIonMobilityLibrary(document) not usable and not none";
         }
 
-        private readonly Dictionary<string, IonMobilityLibrary> _loadedIonMobilityeLibraries =
+        private readonly Dictionary<string, IonMobilityLibrary> _loadedIonMobilityLibraries =
             new Dictionary<string, IonMobilityLibrary>();
 
         // For use on container shutdown, clear caches to restore minimal memory footprint
         public override void ClearCache()
         {
-            lock (_loadedIonMobilityeLibraries)
+            lock (_loadedIonMobilityLibraries)
             {
-                _loadedIonMobilityeLibraries.Clear();
+                _loadedIonMobilityLibraries.Clear();
             }
         }
 
@@ -86,7 +86,8 @@ namespace pwiz.Skyline.Model.IonMobility
 
             if (ionMobilityFilteringNew == null ||
                 !ReferenceEquals(document.Id, container.Document.Id) ||
-                (Equals(ionMobilityFiltering, ionMobilityFilteringNew)))
+                (Equals(ionMobilityFiltering, ionMobilityFilteringNew) &&
+                 Equals(ionMobilityFiltering.IonMobilityLibrary.IsUsable, ionMobilityFilteringNew.IonMobilityLibrary.IsUsable)))
             {
                 // Loading was cancelled or document changed
                 EndProcessing(document);
@@ -108,14 +109,14 @@ namespace pwiz.Skyline.Model.IonMobility
         private IonMobilityLibrary LoadIonMobilityLibrary(IDocumentContainer container, IonMobilityLibrary dtLib)
         {
             // TODO: Something better than locking for the entire load
-            lock (_loadedIonMobilityeLibraries)
+            lock (_loadedIonMobilityLibraries)
             {
                 IonMobilityLibrary libResult;
-                if (!_loadedIonMobilityeLibraries.TryGetValue(dtLib.Name, out libResult))
+                if (!_loadedIonMobilityLibraries.TryGetValue(dtLib.Name, out libResult))
                 {
                     libResult = dtLib.Initialize(new LoadMonitor(this, container, dtLib));
                     if (libResult != null)
-                        _loadedIonMobilityeLibraries.Add(libResult.Name, libResult);
+                        _loadedIonMobilityLibraries.Add(libResult.Name, libResult);
                 }
                 return libResult;
             }

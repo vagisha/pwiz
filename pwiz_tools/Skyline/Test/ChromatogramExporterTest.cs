@@ -25,6 +25,7 @@ using pwiz.Skyline.Model;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.IO;
 using pwiz.Skyline.Model.Results;
+using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.SkylineTestUtil;
 
@@ -62,6 +63,7 @@ namespace pwiz.SkylineTest
         [TestMethod]
         public void ChromatogramExportTest()
         {
+            Settings.Default.TestMultiCCS = false; // Don't add the magic test node   TODO(bspratt) include IM values in chromatogram output
             var testFilesDir = new TestFilesDir(TestContext, TEST_ZIP_PATH);
             string chromExportDoc = testFilesDir.GetTestPath("ChromToExport.sky");
             string fileExpected1 = testFilesDir.GetTestPathLocale(EXPORT_1);

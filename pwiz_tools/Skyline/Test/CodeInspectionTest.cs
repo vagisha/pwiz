@@ -52,6 +52,16 @@ namespace pwiz.SkylineTest
         [TestMethod]
         public void CodeInspection()
         {
+            // Looking for forgotten PauseTest() calls that will mess up automated tests
+            AddTextInspection(@"*.cs", // Examine files with this mask
+                Inspection.Forbidden, // This is a test for things that should NOT be in such files
+                Level.Error, // Any failure is treated as an error, and overall test fails
+                new[] { @"TestFunctional.cs", @"AuditLogTutorialTest.cs" }, // Only these files should contain this
+                string.Empty, // No file content required for inspection
+                @"^\s*PauseTest\(", // Forbidden pattern (uncommented PauseTest)
+                true, // Pattern is not a regular expression
+                @"This appears to be temporary debugging code that should not be checked in."); // Explanation for prohibition, appears in report
+
             // Looking for non-standard image scaling
             AddTextInspection(@"*.Designer.cs", // Examine files with this mask
                 Inspection.Forbidden, // This is a test for things that should NOT be in such files
@@ -170,7 +180,7 @@ namespace pwiz.SkylineTest
             // Sanity check - are there any names in TestRunnerLib\TestRunnerFormLookup.csv that we didn't find in forms search?
             foreach (var name in declaredForms)
             {
-                if (!foundForms.Contains(name) && 
+                if (!foundForms.Contains(name) &&
                     !FormNamesNotExpectedInTutorialTests.Contains(name) && // Known exclusion?
                     !foundForms.Any(f => name.EndsWith("." + f))) // Or perhaps lookup list declares parent.child
                 {
@@ -304,7 +314,7 @@ namespace pwiz.SkylineTest
                                     var why = patternDetails.Reason;
                                     var result = patternDetails.FailureType == Level.Error ? errors : warnings;
                                     result.Add(@"Found prohibited use of");
-                                    result.Add(@"""" + pattern.PatternString.Replace("\n","\\n") + @"""");
+                                    result.Add(@"""" + pattern.PatternString.Replace("\n", "\\n") + @"""");
                                     result.Add("(" + why + ") at");
                                     result.Add(filename + "(" + lineNum + @")");
                                     result.Add(line);
@@ -348,7 +358,7 @@ namespace pwiz.SkylineTest
                                 patternDetails.FailureType == Level.Error ? errors : warnings;
 
                             result.Add(@"Did not find required use of");
-                            result.Add(@"""" + requirement.Key.PatternString.Replace("\n","\\n") + @"""");
+                            result.Add(@"""" + requirement.Key.PatternString.Replace("\n", "\\n") + @"""");
                             if (multiLinePatternFaultLocations.TryGetValue(requirement.Key, out var lineNumber))
                             {
                                 result.Add("(" + why + ") at");
@@ -422,21 +432,21 @@ namespace pwiz.SkylineTest
         {
             public string Cue; // If non-empty, pattern only applies to files containing this cue
             public string Reason; // Note to show on failure
-            public string[] IgnoredDirectories; // Don't flag on hits in these directories
+            public string[] IgnoredFileMasks; // Don't flag on hits in files that contain these strings in their full paths
             public Level FailureType;  // Is failure an error, or just a warning?
 
-            public PatternDetails(string cue,string reason, string[] ignoredDirectories, Level failureType)
+            public PatternDetails(string cue, string reason, string[] ignoredFileMasks, Level failureType)
             {
                 Cue = cue;
                 Reason = reason;
-                IgnoredDirectories = ignoredDirectories;
+                IgnoredFileMasks = ignoredFileMasks;
                 FailureType = failureType;
             }
 
             public bool IgnorePath(string path)
             {
                 return string.IsNullOrEmpty(path) ||
-                       IgnoredDirectories != null && IgnoredDirectories.Any(d => path.ToLowerInvariant().Contains(d.ToLowerInvariant()));
+                       IgnoredFileMasks != null && IgnoredFileMasks.Any(d => path.ToLowerInvariant().Contains(d.ToLowerInvariant()));
             }
         }
         private readonly Dictionary<string, Dictionary<Pattern, PatternDetails>> forbiddenPatternsByFileMask = new Dictionary<string, Dictionary<Pattern, PatternDetails>>();

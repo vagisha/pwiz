@@ -123,7 +123,7 @@ namespace pwiz.Skyline.Model.Prosit
                 info.SpectrumPeaks = SpectrumPeaks;
                 info.Key = new LibKey(
                     Settings.GetModifiedSequence(peptide.Target, PeptidePrecursorNCE.LabelType, peptide.ExplicitMods, SequenceModFormatType.lib_precision),
-                    precursor.PrecursorCharge, info.IonMobility);
+                    precursor.PrecursorCharge, precursor.IonMobilityAndCCS);
                 info.Label = precursor.LabelType;
                 info.PrecursorMz = precursor.PrecursorMz;
                 info.RetentionTime = null;

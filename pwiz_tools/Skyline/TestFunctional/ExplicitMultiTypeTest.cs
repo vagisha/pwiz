@@ -174,7 +174,6 @@ namespace pwiz.SkylineTestFunctional
             // Make sure both heavy types have precursor m/z value that match the original
             var docModMatch = WaitForDocumentChange(docMultiType);
             var peptideMatch = (PeptideDocNode)docModMatch.FindNode(pathPeptide);
-PauseTest();
             AssertPrecursorMzAreEqaul(peptideExplicit, 1, peptideMatch, 1);
             AssertPrecursorMzAreEqaul(peptideExplicit, 1, peptideMatch, 2);
 

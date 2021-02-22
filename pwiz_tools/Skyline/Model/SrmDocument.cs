@@ -388,6 +388,14 @@ namespace pwiz.Skyline.Model
         public int MoleculeTransitionGroupCountIgnoringMultipleConformers => 
             Molecules.Sum(m => m.TransitionGroupsIgnoringMultipleConformers.Count());
 
+        #region Multiple conformers test support
+        public IEnumerable<TransitionGroupDocNode> MoleculeTransitionGroupsIgnoringSpecialTestNodes => MoleculeTransitionGroups.Where(tg => !tg.IsSpecialTestDocNode);
+        public int MoleculeTransitionGroupCountIgnoringSpecialTestNodes => MoleculeTransitionGroupsIgnoringSpecialTestNodes.Count();
+        public IEnumerable<TransitionDocNode> MoleculeTransitionsIgnoringSpecialTestNodes => MoleculeTransitions.Where(t => !t.IsSpecialTestDocNode);
+        public int MoleculeTransitionCountIgnoringSpecialTestNodes =>
+            Molecules.Sum(m => m.TransitionGroups.Where(tg => !tg.IsSpecialTestDocNode).Sum(tg => tg.TransitionCount));
+        #endregion Multiple conformers test support
+
         public int MoleculeTransitionCount { get { return GetCount((int)Level.Transitions); } }
 
         public int MoleculeTransitionCountIgnoringMultipleConformers =>
@@ -600,6 +608,8 @@ namespace pwiz.Skyline.Model
             }
         }
 
+        #region Multiple conformers test support
+
         /// <summary>
         /// Return number of <see cref="TransitionDocNode"/> that with the magic extra multi-CCS test node indicator
         /// </summary>
@@ -618,6 +628,7 @@ namespace pwiz.Skyline.Model
                 return MoleculeTransitionGroups.Where(t => t.IsSpecialTestDocNode).Sum(t => t.TransitionCount);
             }
         }
+        #endregion Multiple conformers test support
 
         public HashSet<Target> GetRetentionTimeStandards()
         {
@@ -1611,7 +1622,7 @@ namespace pwiz.Skyline.Model
         {
             if (!Properties.Settings.Default.TestMultiCCS)
             {
-                return this;
+                return this; // Special test nodes are not wanted right now
             }
 
             if (!IonMobilityLibrarySpec.IsNullOrEmpty(Settings.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary))
@@ -1640,7 +1651,11 @@ namespace pwiz.Skyline.Model
                 new ValidatingIonMobilityPrecursor(target, adduct,
                     ccsTestValue, imTestValue, heOffsetTestValue, eIonMobilityUnits.drift_time_msec)
             };
-            var lib = IonMobilityLibrary.CreateFromList(@"test", Directory.GetCurrentDirectory(), imPrecursors);
+
+            var docDir = string.IsNullOrEmpty(Properties.Settings.Default.LibraryDirectory)
+                ? Directory.GetCurrentDirectory()
+                : Properties.Settings.Default.LibraryDirectory;
+            var lib = IonMobilityLibrary.CreateFromList(@"test_"+DateTime.Now.Ticks, docDir, imPrecursors);
             var newSettings = Settings.ChangeTransitionSettings(
                 Settings.TransitionSettings.ChangeIonMobilityFiltering(
                     Settings.TransitionSettings.IonMobilityFiltering.ChangeLibrary(lib).
@@ -1648,14 +1663,16 @@ namespace pwiz.Skyline.Model
             var newDoc = ChangeSettings(newSettings); // This should result in the creation of a new multiple conformer precursor
 
             // Now tag newly created node and its children as being magic test nodes by setting their Notes
-            lastPeptide = newDoc.Molecules.Last(m => m.Children.Any());
+            lastPeptide = newDoc.Molecules.LastOrDefault(m => m.Children.Any());
+            if (lastPeptide == null)
+            {
+                return this; // No change
+            }
             transitionGroups = lastPeptide.TransitionGroups.ToList();
             var index = transitionGroups.Count - 1;
             var newTransitionGroup = transitionGroups[index];
-            newTransitionGroup = (TransitionGroupDocNode)newTransitionGroup.ChangeAnnotations(
-                newTransitionGroup.Annotations.ChangeNote(TestingMultiCCSAnnotationString));
-            var transitions = newTransitionGroup.Children.Select(
-                t => t.ChangeAnnotations(t.Annotations.ChangeNote(TestingMultiCCSAnnotationString))).ToList();
+            newTransitionGroup = (TransitionGroupDocNode)newTransitionGroup.NoteAsSpecialTestNode();
+            var transitions = newTransitionGroup.Children.Select(t => t.NoteAsSpecialTestNode()).ToList();
             newTransitionGroup = (TransitionGroupDocNode)newTransitionGroup.ChangeChildren(transitions);
             transitionGroups[index] = newTransitionGroup;
             lastPeptide = (PeptideDocNode)lastPeptide.ChangeChildren(transitionGroups.Select(tg => tg as DocNode).ToList());

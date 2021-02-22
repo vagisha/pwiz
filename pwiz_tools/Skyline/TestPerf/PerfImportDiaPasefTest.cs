@@ -172,7 +172,6 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
         {
             // Verify reports working for CCS
             var row = 0;
-PauseTest();
             var documentGrid = EnableDocumentGridIonMobilityResultsColumns();
             var imPrecursor = 1.1732;
             CheckDocumentResultsGridFieldByName(documentGrid, "PrecursorResult.IonMobilityMS1", row, imPrecursor, msg);

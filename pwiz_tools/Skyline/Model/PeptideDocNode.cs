@@ -718,7 +718,7 @@ namespace pwiz.Skyline.Model
         }
 
         /// <summary>
-        /// Use this for enumerating the document for things like output formats that don't specify ion mobility values
+        /// Use this for enumerating the document for things like SRM input or output formats that don't specify ion mobility values
         /// and thus expect only once occurrence of a molecule+adduct combination
         /// </summary>
         public IEnumerable<TransitionGroupDocNode> TransitionGroupsIgnoringMultipleConformers
@@ -902,7 +902,7 @@ namespace pwiz.Skyline.Model
                 nodeResult = nodeResult.ChangeExplicitMods(explicitMods);
             nodeResult = nodeResult.UpdateModifiedSequence(settingsNew);
             var needsIonMobilityUpdate = diff.DiffIonMobilityLibraryValues;
-            var newSettingsFilterIM = settingsNew.TransitionSettings.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues ||
+            var newSettingsHasIonMobilityFiltering = settingsNew.TransitionSettings.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues ||
                                       !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsNone;
 
             if (diff.DiffPeptideProps)
@@ -949,7 +949,7 @@ namespace pwiz.Skyline.Model
                             : null;
 
                         nodeGroups = ImmutableList.Singleton(new TransitionGroupDocNode(tranGroup, transitions, IonMobilityAndCCS.EMPTY));
-                        needsIonMobilityUpdate |= newSettingsFilterIM;  // That empty CCS value may be incorrect
+                        needsIonMobilityUpdate |= newSettingsHasIonMobilityFiltering;  // That empty CCS value may be incorrect
 
                         // If not recursing, then ChangeSettings will not be called on nodeGroup.  So, make
                         // sure its precursor m/z is set correctly.
@@ -1055,124 +1055,145 @@ namespace pwiz.Skyline.Model
 
             if (needsIonMobilityUpdate)
             {
-                // Some complexity here:
-                //   more than one transition group may exist with the same ion but different ion mobility ("multiple conformers")
-                //   multiple conformers may arise from multiple nodes with different explicit IM values, or from multiple entries in .imsdb file
-                //   the change here might be from no IM to multi-IM, or IM to multi-IM, or IM removal, etc
-                var currentChildren = nodeResult.TransitionGroups.ToArray(); // Transition groups per current settings
-
-                var blockedOnIMSDB = newSettingsFilterIM &&
-                                     !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsNone &&
-                                     !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsUsable;
-                var blockedOnBlib = newSettingsFilterIM &&
-                                    settingsNew.TransitionSettings.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues &&
-                                    settingsNew.PeptideSettings.Libraries.HasLibraries && !settingsNew.PeptideSettings.Libraries.IsLoaded;
-                if (!(blockedOnIMSDB || blockedOnBlib)) // Put this off if library load state isn't what we need, we'll catch it on library load event instead
-                {
-                    // Ion mobility filtering, add or remove nodes for multiple conformers if needed
-                    // Cases to consider:
-                    //   Multi-conformer retreats to single conformer: multi-IM nodes go away
-                    //   Single conformer goes multi: multi-IM nodes added
-                    //   IM library value no longer can be found: single IM value goes away, multi-IM nodes go away
-                    //   IM library changes, one or more nodes get updated IM value, possibly some added or removed to accomodate number of IM values
-                    //   No change
-
-                    var currentChildrenDictLibKeyAndMZ =
-                        currentChildren.ToDictionary(n => n, 
-                            n => new LibKeyLabelMZ(n.GetLibKey(settingsNew, nodeResult), n.LabelType, n.PrecursorMz.RawValue));
-                    var currentChildrenByLibKeyMzPair = 
-                        currentChildrenDictLibKeyAndMZ.ToLookup(kvp=> kvp.Value, kvp => kvp.Key);
-                    var targetIons = currentChildrenByLibKeyMzPair.Select(item => item.Key).Distinct().ToArray();
-                    var imDict = settingsNew.GetIonMobilities(targetIons.Select(i => i.LibKey), null).GetIonMobilityDict();
-
-                    // Work through the current nodes, preserving order.
-                    var newChildren = new List<DocNode>();
-                    var obsoleteChildren = new HashSet<TransitionGroupDocNode>();
-                    foreach (var node in currentChildren)
-                    {
-                        if (newChildren.Contains(node) || obsoleteChildren.Contains(node))
-                        {
-                            continue; // Already handled
-                        }
-                        var libKeyAndMz = currentChildrenDictLibKeyAndMZ[node];
-
-                        // If any node with this label and MZ has explicit IM values, ignore library values 
-                        var siblings = currentChildrenByLibKeyMzPair[libKeyAndMz].ToList();
-                        if (siblings.Any(s => !IonMobilityAndCCS.IsNullOrEmpty(s.ExplicitValues.IonMobilityAndCCS)))
-                        {
-                            foreach (var sib in siblings)
-                            {
-                                if (!IonMobilityAndCCS.IsNullOrEmpty(sib.ExplicitValues.IonMobilityAndCCS))
-                                {
-                                    newChildren.Add(sib); 
-                                }
-                                else
-                                {
-                                    obsoleteChildren.Add(sib);
-                                }
-                            }
-                            continue;
-                        }
-
-                        if (imDict.TryGetValue(libKeyAndMz.LibKey, out var mobilities))
-                        {
-                            // Update ion mobility value(s)
-                            Array.Sort(mobilities);
-                            var newConformerID = GetUniqueConformerID(siblings);
-
-                            foreach (var mobility in mobilities)
-                            {
-                                var existing = siblings.FirstOrDefault(sib => mobility.Equals(sib.LibraryIonMobility));
-                                if (existing != null)
-                                {
-                                    newChildren.Add(existing);
-                                    siblings.Remove(existing); // This has been handled
-                                }
-                                else
-                                {
-                                    // A new IM value, try to reuse an existing node with an IM value that's no longer valid
-                                    existing = siblings.FirstOrDefault(sib => !mobilities.Contains(sib.LibraryIonMobility));
-                                    if (existing != null)
-                                    {
-                                        newChildren.Add(existing.ChangeLibraryIonMobility(mobility));
-                                        siblings.Remove(existing); // This has been used
-                                    }
-                                    else
-                                    {
-                                        // Create a new node
-                                        var newNode = node.DeepCopyTransitionGroup(
-                                            null, // Not changing parent molecule
-                                            null, // Not changing adduct etc
-                                            settingsNew, mobility, newConformerID++);
-                                        newChildren.Add(newNode);
-                                    }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            // No library ion mobility
-                            newChildren.Add(node.ChangeLibraryIonMobility(IonMobilityAndCCS.EMPTY));
-                        }
-
-                        // Any remaining siblings are no longer needed
-                        foreach (var sib in siblings)
-                        {
-                            obsoleteChildren.Add(sib);
-                        }
-                    }
-
-                    if (currentChildren.Length != newChildren.Count ||
-                        newChildren.Any(c => !currentChildren.Contains(c)))
-                    {
-                        nodeResult = (PeptideDocNode)nodeResult.ChangeChildren(newChildren);
-                    }
-                }
-
-            } // End if diff.DiffIonMobilityLibraryValues
+                nodeResult = nodeResult.UpdateIonMobilityValues(settingsNew);
+            } 
 
             if (diff.DiffResults || ChangedResults(nodeResult))
                 nodeResult = nodeResult.UpdateResults(settingsNew /*, diff*/);
+
+            return nodeResult;
+        }
+
+        public PeptideDocNode UpdateIonMobilityValues(SrmSettings settingsNew)
+        {
+            // Some complexity here:
+            //   more than one transition group may exist with the same ion but different ion mobility ("multiple conformers")
+            //   multiple conformers may arise from multiple nodes with different explicit IM values, or from multiple entries in .imsdb file
+            //   the change here might be from no IM to multi-IM, or IM to multi-IM, or IM removal, etc
+            var nodeResult = this;
+
+            var hasIonMobilityFiltering = settingsNew.TransitionSettings.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues ||
+                !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsNone;
+
+            var currentChildren = nodeResult.TransitionGroups.ToArray(); // Transition groups per current settings
+
+            var blockedOnIMSDB = hasIonMobilityFiltering &&
+                                 !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsNone &&
+                                 !settingsNew.TransitionSettings.IonMobilityFiltering.IonMobilityLibrary.IsUsable;
+            var blockedOnBlib = hasIonMobilityFiltering &&
+                                settingsNew.TransitionSettings.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues &&
+                                settingsNew.PeptideSettings.Libraries.HasLibraries &&
+                                !settingsNew.PeptideSettings.Libraries.IsLoaded;
+            if (!(blockedOnIMSDB || blockedOnBlib)) // Put this off if library load state isn't what we need, we'll catch it on library load event instead
+            {
+                // Ion mobility filtering, add or remove nodes for multiple conformers if needed
+                // Cases to consider:
+                //   Multi-conformer retreats to single conformer: multi-IM nodes go away
+                //   Single conformer goes multi: multi-IM nodes added
+                //   IM library value no longer can be found: single IM value goes away, multi-IM nodes go away
+                //   IM library changes, one or more nodes get updated IM value, possibly some added or removed to accomodate number of IM values
+                //   No change
+
+                var currentChildrenDictLibKeyAndMZ =
+                    currentChildren.ToDictionary(n => n,
+                        n => new LibKeyLabelMZ(n.GetLibKey(settingsNew, nodeResult), n.LabelType, n.PrecursorMz.RawValue));
+                var currentChildrenByLibKeyMzPair =
+                    currentChildrenDictLibKeyAndMZ.ToLookup(kvp => kvp.Value, kvp => kvp.Key);
+                var targetIons = currentChildrenByLibKeyMzPair.Select(item => item.Key).Distinct().ToArray();
+                var imDict = settingsNew.GetIonMobilities(targetIons.Select(i => i.LibKey), null).GetIonMobilityDict();
+
+                // Work through the current nodes, preserving order.
+                var newChildren = new List<DocNode>();
+                var obsoleteChildren = new HashSet<TransitionGroupDocNode>();
+                foreach (var node in currentChildren)
+                {
+                    if (newChildren.Contains(node) || obsoleteChildren.Contains(node))
+                    {
+                        continue; // Already handled
+                    }
+
+                    var libKeyAndMz = currentChildrenDictLibKeyAndMZ[node];
+
+                    // If any node with this label and MZ has explicit IM values, ignore library values 
+                    var siblings = currentChildrenByLibKeyMzPair[libKeyAndMz].ToList();
+                    if (siblings.Any(s => !IonMobilityAndCCS.IsNullOrEmpty(s.ExplicitValues.IonMobilityAndCCS)))
+                    {
+                        foreach (var sib in siblings)
+                        {
+                            if (!IonMobilityAndCCS.IsNullOrEmpty(sib.ExplicitValues.IonMobilityAndCCS))
+                            {
+                                newChildren.Add(sib);
+                            }
+                            else
+                            {
+                                obsoleteChildren.Add(sib);
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    if (imDict.TryGetValue(libKeyAndMz.LibKey, out var mobilities))
+                    {
+                        // Update ion mobility value(s)
+                        Array.Sort(mobilities);
+                        var newConformerID = GetUniqueConformerID(siblings);
+
+                        foreach (var mobility in mobilities)
+                        {
+                            var existing = siblings.FirstOrDefault(sib => mobility.Equals(sib.LibraryIonMobility));
+                            if (existing != null)
+                            {
+                                newChildren.Add(existing);
+                                siblings.Remove(existing); // This has been handled
+                            }
+                            else
+                            {
+                                // A new IM value, try to reuse an existing node with an IM value that's no longer valid
+                                existing = siblings.FirstOrDefault(sib => !mobilities.Contains(sib.LibraryIonMobility));
+                                if (existing != null)
+                                {
+                                    newChildren.Add(existing.ChangeLibraryIonMobility(mobility));
+                                    siblings.Remove(existing); // This has been used
+                                }
+                                else
+                                {
+                                    // Create a new node
+                                    var newNode = node.DeepCopyTransitionGroup(
+                                        null, // Not changing parent molecule
+                                        null, // Not changing adduct etc
+                                        settingsNew, mobility, newConformerID++);
+                                    newChildren.Add(newNode);
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // No library ion mobility
+                        newChildren.Add(node.ChangeLibraryIonMobility(IonMobilityAndCCS.EMPTY));
+                    }
+
+                    // Any remaining siblings are no longer needed
+                    foreach (var sib in siblings)
+                    {
+                        obsoleteChildren.Add(sib);
+                    }
+                }
+
+                if (currentChildren.Length != newChildren.Count ||
+                    newChildren.Any(c => !currentChildren.Contains(c)))
+                {
+    var what = newChildren.Select(n => n as TransitionGroupDocNode).
+        Select(n => new KeyValuePair<LibKeyLabelMZ, int>(
+            new LibKeyLabelMZ(n.GetLibKey(settingsNew, nodeResult), n.LabelType, n.PrecursorMz.RawValue),n.TransitionGroup.ConformerID)).ToArray();
+    if (what.Length != what.Distinct().Count())
+    {
+Console.Write("huh");
+    }
+                    nodeResult = (PeptideDocNode) nodeResult.ChangeChildren(newChildren);
+                }
+            }
 
             return nodeResult;
         }
@@ -1192,7 +1213,7 @@ namespace pwiz.Skyline.Model
 
             public LibKeyLabelMZ(LibKey libKey, IsotopeLabelType isotopeLabelType, double mz)
             {
-                LibKey = libKey;
+                LibKey = libKey.ChangeIonMobilityAndCCS(IonMobilityAndCCS.EMPTY);
                 IsotopeLabelType = isotopeLabelType;
                 MZ = mz;
             }

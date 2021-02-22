@@ -998,45 +998,16 @@ namespace pwiz.Skyline.Model.DocSettings
                 // Use the specified CCS value if provided, and if we know how to convert to IM
                 im = instrumentInfo.IonMobilityFromCCS(ccs.Value, nodeGroup.PrecursorMz, nodeGroup.TransitionGroup.PrecursorCharge);
             }
-            var imAndCCS = IonMobilityAndCCS.GetIonMobilityAndCCS(im,
-                ccs, ExplicitTransitionValues.Get(nodeTran).IonMobilityHighEnergyOffset);
+
+            var highEnergyOffset = nodeTran == null ||  nodeTran.IsMs1
+                ? nodeGroup.IonMobilityAndCCS.HighEnergyIonMobilityValueOffset
+                : ExplicitTransitionValues.Get(nodeTran).IonMobilityHighEnergyOffset ?? nodeGroup.IonMobilityAndCCS.HighEnergyIonMobilityValueOffset;
+            var imAndCCS = IonMobilityAndCCS.GetIonMobilityAndCCS(im, ccs, highEnergyOffset);
             // Now get the window width
             var windowIM = TransitionSettings.IonMobilityFiltering.FilterWindowWidthCalculator.WidthAt(imAndCCS.IonMobility.Mobility, ionMobilityMax);
             return IonMobilityFilter.GetIonMobilityFilter(imAndCCS, windowIM);
         }
-
-        /// <summary>
-        /// Made public for testing purposes only: exercises library but doesn't handle explicitly set drift times.
-        /// Use GetIonMobility() instead.
-        /// </summary>
-        public IonMobilityFilter GetIonMobilityHelper(PeptideDocNode nodePep, TransitionGroupDocNode nodeGroup,
-            IIonMobilityFunctionsProvider ionMobilityFunctionsProvider,
-            LibraryIonMobilityInfo libraryIonMobilityInfo,
-            double ionMobilityMax)
-        {
-            foreach (var typedSequence in GetTypedSequences(nodePep.Target, nodePep.ExplicitMods, nodeGroup.PrecursorAdduct))
-            {
-                var chargedPeptide = new LibKey(typedSequence.ModifiedSequence, typedSequence.Adduct, IonMobilityAndCCS.EMPTY);
-
-                var result = TransitionSettings.IonMobilityFiltering.GetIonMobilityFilter(chargedPeptide, nodeGroup.PrecursorMz,  ionMobilityFunctionsProvider, ionMobilityMax);
-                if (result != null && result.HasIonMobilityValue)
-                    return result;
-
-                if (libraryIonMobilityInfo != null)
-                {
-                    var imAndCCS = libraryIonMobilityInfo.GetLibraryMeasuredIonMobilityAndCCS(chargedPeptide, nodeGroup.PrecursorMz, ionMobilityFunctionsProvider);
-                    if (imAndCCS.IonMobility.HasValue && TransitionSettings.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues)
-                    {
-                        var ionMobilityWindow = TransitionSettings.IonMobilityFiltering.FilterWindowWidthCalculator.WidthAt(imAndCCS.IonMobility.Mobility.Value, ionMobilityMax);
-                        return IonMobilityFilter.GetIonMobilityFilter(imAndCCS, ionMobilityWindow);
-                    }
-                }
-            }
-            return IonMobilityFilter.EMPTY;
-        }
-
-
-
+        
         public bool TryGetRetentionTimes(Target sequence, Adduct adduct, ExplicitMods mods, MsDataFileUri filePath,
             out IsotopeLabelType type, out double[] retentionTimes)
         {
@@ -1755,9 +1726,6 @@ namespace pwiz.Skyline.Model.DocSettings
 
         public SrmSettings ConnectIonMobilityLibrary(Func<IonMobilityLibrary, IonMobilityLibrary> findIonMobilityLibSpec)
         {
-            if (TransitionSettings.IonMobilityFiltering.IonMobilityLibrary == null)
-                return this;
-
             var ionMobilityLibrary = TransitionSettings.IonMobilityFiltering.IonMobilityLibrary;
             if (ionMobilityLibrary == null || ionMobilityLibrary.IsNone)
                 return this;
@@ -2673,7 +2641,7 @@ namespace pwiz.Skyline.Model.DocSettings
                               !Equals(newTran.FullScan.PrecursorRes, oldTran.FullScan.PrecursorRes) ||
                               !Equals(newTran.FullScan.PrecursorResMz, oldTran.FullScan.PrecursorResMz);
 
-            // If the library loded state has changed, make sure the library properties are up to date,
+            // If the library loaded state has changed, make sure the library properties are up to date,
             // but avoid changing the chosen transitions.
             // CONSIDER: The way library transition ranking is currently implemented makes this too slow
             //            if (!DiffTransitionGroupProps && libraryChange && newLib.IsLoaded && !oldLib.IsLoaded)
@@ -2685,6 +2653,8 @@ namespace pwiz.Skyline.Model.DocSettings
             // CONSIDER - force reimport of results when IM values or window change? (i.e. set DiffResults)
             DiffIonMobilityLibraryValues = !Equals(newTran.IonMobilityFiltering.IonMobilityLibrary, oldTran.IonMobilityFiltering.IonMobilityLibrary) &&
                                            newTran.IonMobilityFiltering.IonMobilityLibrary.IsUsable; // Wait for library load
+            DiffIonMobilityLibraryValues |= libraryChange && newLib.IsLoaded &&
+                                            newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues;
             if (!Equals(newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues, oldTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues))
             {
                 DiffIonMobilityLibraryValues |= !newTran.IonMobilityFiltering.UseSpectralLibraryIonMobilityValues ||

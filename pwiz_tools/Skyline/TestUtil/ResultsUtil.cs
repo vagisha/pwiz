@@ -91,8 +91,10 @@ namespace pwiz.SkylineTestUtil
             {
                 SrmDocument result = (SrmDocument)xmlSerializer.Deserialize(reader);
 
+                #region Multiple conformer testing
                 // For automated test of multiple conformers in tests that aren't originally designed to test that at all
                 result = result.AddMultipleConformerTestLibrary();
+                #endregion Multiple conformer testing
 
                 return result;
             }
@@ -328,12 +330,6 @@ namespace pwiz.SkylineTestUtil
             AssertComplete();
             docResults = Document;
 
-            // Adjust expected counts in the case of tests automatically adding multi-conformer nodes
-            tranGroups += doc.SpecialTestTransitionGroupsCount - doc.SpecialTestHeavyTransitionGroupsCount;
-            tranGroupsHeavy += doc.SpecialTestHeavyTransitionGroupsCount;
-            transitions += doc.SpecialTestTransitionsCount - doc.SpecialTestHeavyTransitionsCount;
-            transitionsHeavy += doc.SpecialTestHeavyTransitionsCount;
-
             // Check the result state of the most recently added chromatogram set.
             var chroms = measuredResults.Chromatograms;
             AssertResult.IsDocumentResultsState(docResults, chroms[chroms.Count - 1].Name,
@@ -390,7 +386,7 @@ namespace pwiz.SkylineTestUtil
             int transitionsHeavyActual = 0;
             int tranGroupsActual = 0;
             int tranGroupsHeavyActual = 0;
-            foreach (var nodeGroup in document.MoleculeTransitionGroups.Where(nodeGroup => ( nodeGroup.Results != null && !nodeGroup.Results[index].IsEmpty)))
+            foreach (var nodeGroup in document.MoleculeTransitionGroupsIgnoringSpecialTestNodes.Where(nodeGroup => ( nodeGroup.Results != null && !nodeGroup.Results[index].IsEmpty)))
             {
                 foreach (var chromInfo in nodeGroup.Results[index])
                 {

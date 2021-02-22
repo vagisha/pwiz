@@ -69,7 +69,7 @@ namespace pwiz.Skyline.Model.Optimization
 
         public override string ToString()  // For debugging
         {
-            var mobility = PrecursorIonMobility.IsEmpty ? string.Empty : $@"(IM {PrecursorIonMobility})";
+            var mobility = IonMobilityAndCCS.IsNullOrEmpty(PrecursorIonMobility) ? string.Empty : $@"(IM {PrecursorIonMobility})";
             if (PeptideModSeq.IsProteomic)
               return !string.IsNullOrEmpty(FragmentIon)
                     ? string.Format(@"{0} (charge {1}); {2} (charge {3}){4}", PeptideModSeq, PrecursorAdduct, FragmentIon, ProductAdduct, mobility)

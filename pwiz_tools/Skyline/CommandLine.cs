@@ -1083,7 +1083,15 @@ namespace pwiz.Skyline
 
             // First look for the file name in the document directory
             string filePath = PathEx.FindExistingRelativeFile(documentPath, ionMobilityLibSpec.FilePath);
-            if (filePath != null)
+            if (filePath == null)
+            {
+                // Does it perhaps actually still exist in the original location?
+                if (File.Exists(ionMobilityLibSpec.FilePath))
+                {
+                    return ionMobilityLibSpec;
+                }
+            }
+            else
             {
                 try
                 {
@@ -1092,7 +1100,7 @@ namespace pwiz.Skyline
 // ReSharper disable once EmptyGeneralCatchClause
                 catch
                 {
-                    //Todo: should this fail silenty or report an error
+                    //Todo: should this fail silently or report an error
                 }
             }
 
