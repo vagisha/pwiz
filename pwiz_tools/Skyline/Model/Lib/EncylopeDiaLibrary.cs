@@ -384,10 +384,18 @@ namespace pwiz.Skyline.Model.Lib
 
         protected override SpectrumPeaksInfo.MI[] ReadSpectrum(ElibSpectrumInfo info)
         {
-            return ReadSpectrum(info, info.BestFileId);
+            return ReadSpectrum(info, null);
         }
 
-        private SpectrumPeaksInfo.MI[] ReadSpectrum(ElibSpectrumInfo info, int sourceFileId)
+        /// <summary>
+        /// Reads the spectrum for a particular file.
+        /// If sourceFileId is null, then return the "best" spectrum.
+        /// The "best" spectrum is a hybrid where the intensities of the quantitative transitions are read
+        /// from the PeptideQuants table and the intensities of the other transitions are read from the Entries table
+        /// of the highest scoring file.
+        /// If sourceFileId has a value, then return a "redundant" spectrum where the intensities are read from the Entries table.
+        /// </summary>
+        private SpectrumPeaksInfo.MI[] ReadSpectrum(ElibSpectrumInfo info, int? sourceFileId)
         {
             if (sourceFileId < 0)
             {
@@ -395,49 +403,52 @@ namespace pwiz.Skyline.Model.Lib
             }
             return _pooledSqliteConnection.ExecuteWithConnection(connection =>
             {
-                // Map of peak m/z to SpectrumPeaksInfo.MI
-                IDictionary<double, SpectrumPeaksInfo.MI> spectrum = new Dictionary<double, SpectrumPeaksInfo.MI>();
-                // First read all of the quantifiable transitions from the PeptideQuants table.
-                var peptideQuantSpectrum = ReadSpectrumFromPeptideQuants(connection, info);
+                HashSet<double> mzs = new HashSet<double>();
+                List<SpectrumPeaksInfo.MI> spectrum = new List<SpectrumPeaksInfo.MI>();
+                IEnumerable<SpectrumPeaksInfo.MI> peptideQuantSpectrum = null;
+
+                if (!sourceFileId.HasValue)
+                {
+                    // First read all of the quantifiable transitions from the PeptideQuants table.
+                    peptideQuantSpectrum = ReadSpectrumFromPeptideQuants(connection, info);
+                }
+
                 if (peptideQuantSpectrum != null)
                 {
                     foreach (var mi in peptideQuantSpectrum)
                     {
-                        if (!spectrum.ContainsKey(mi.Mz))
+                        if (mzs.Add(mi.Mz))
                         {
-                            spectrum.Add(mi.Mz, mi);
+                            spectrum.Add(mi);
                         }
                     }
                 }
                 // Then read the spectrum for the specific file
-                var entriesSpectrum = ReadSpectrumFromEntriesTable(connection, info, sourceFileId);
+                var entriesSpectrum = ReadSpectrumFromEntriesTable(connection, info, sourceFileId ?? info.BestFileId);
                 foreach (var mi in entriesSpectrum)
                 {
-                    if(!spectrum.TryGetValue(mi.Mz, out var existingMi))
+                    if (mzs.Add(mi.Mz))
                     {
                         var miToAdd = mi;
-                        if (peptideQuantSpectrum != null)
+                        if (!sourceFileId.HasValue)
                         {
-                            // If we successfully read from the PeptideQuants table, then the
-                            // rest of the mzs we find in the entries table are non-quantitative.
-                            miToAdd.Quantitative = false;
+                            if (peptideQuantSpectrum != null)
+                            {
+                                // If we successfully read from the PeptideQuants table, then the
+                                // rest of the mzs we find in the entries table are non-quantitative.
+                                miToAdd.Quantitative = false;
+                            }
+                            else
+                            {
+                                // If we were unable to read from the PeptideQuants table, then 
+                                // the non-quantitative transitions are the ones with really low intensity.
+                                miToAdd.Quantitative = miToAdd.Intensity >= MIN_QUANTITATIVE_INTENSITY;
+                            }
                         }
-                        else
-                        {
-                            // If we were unable to read from the PeptideQuants table, then 
-                            // the non-quantitative transitions are the ones with really low intensity.
-                            miToAdd.Quantitative = miToAdd.Intensity >= MIN_QUANTITATIVE_INTENSITY;
-                        }
-                        spectrum.Add(miToAdd.Mz, miToAdd);
-                    }
-                    else
-                    {
-                        // Set the intensity for this m/z to be what was measured in the given source file. 
-                        existingMi.Intensity = mi.Intensity;
-                        spectrum[existingMi.Mz] = existingMi;
+                        spectrum.Add(miToAdd);
                     }
                 }
-                return spectrum.Values.ToArray();
+                return spectrum.ToArray();
             });
         }
 
