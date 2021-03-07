@@ -395,17 +395,17 @@ namespace pwiz.Skyline.Model.Lib
             }
             return _pooledSqliteConnection.ExecuteWithConnection(connection =>
             {
-                HashSet<double> mzs = new HashSet<double>();
-                List<SpectrumPeaksInfo.MI> spectrum = new List<SpectrumPeaksInfo.MI>();
+                // Map of peak m/z to SpectrumPeaksInfo.MI
+                IDictionary<double, SpectrumPeaksInfo.MI> spectrum = new Dictionary<double, SpectrumPeaksInfo.MI>();
                 // First read all of the quantifiable transitions from the PeptideQuants table.
                 var peptideQuantSpectrum = ReadSpectrumFromPeptideQuants(connection, info);
                 if (peptideQuantSpectrum != null)
                 {
                     foreach (var mi in peptideQuantSpectrum)
                     {
-                        if (mzs.Add(mi.Mz))
+                        if (!spectrum.ContainsKey(mi.Mz))
                         {
-                            spectrum.Add(mi);
+                            spectrum.Add(mi.Mz, mi);
                         }
                     }
                 }
@@ -413,7 +413,7 @@ namespace pwiz.Skyline.Model.Lib
                 var entriesSpectrum = ReadSpectrumFromEntriesTable(connection, info, sourceFileId);
                 foreach (var mi in entriesSpectrum)
                 {
-                    if (mzs.Add(mi.Mz))
+                    if(!spectrum.TryGetValue(mi.Mz, out var existingMi))
                     {
                         var miToAdd = mi;
                         if (peptideQuantSpectrum != null)
@@ -428,10 +428,16 @@ namespace pwiz.Skyline.Model.Lib
                             // the non-quantitative transitions are the ones with really low intensity.
                             miToAdd.Quantitative = miToAdd.Intensity >= MIN_QUANTITATIVE_INTENSITY;
                         }
-                        spectrum.Add(miToAdd);
+                        spectrum.Add(miToAdd.Mz, miToAdd);
+                    }
+                    else
+                    {
+                        // Set the intensity for this m/z to be what was measured in the given source file. 
+                        existingMi.Intensity = mi.Intensity;
+                        spectrum[existingMi.Mz] = existingMi;
                     }
                 }
-                return spectrum.ToArray();
+                return spectrum.Values.ToArray();
             });
         }
 
@@ -879,7 +885,7 @@ namespace pwiz.Skyline.Model.Lib
                         while (reader.Read())
                         {
                             var key = Tuple.Create(reader.GetString(0), Convert.ToInt32(reader.GetValue(1)));
-                            var value = Tuple.Create(reader.GetDouble(3), reader.GetDouble(3));
+                            var value = Tuple.Create(reader.GetDouble(3), reader.GetDouble(4));
                             string filename = reader.GetString(2);
                             IDictionary<string, Tuple<double, double>> values;
                             if (!_dictionary.TryGetValue(key, out values))
