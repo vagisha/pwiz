@@ -384,18 +384,15 @@ namespace pwiz.Skyline.Model.Lib
 
         protected override SpectrumPeaksInfo.MI[] ReadSpectrum(ElibSpectrumInfo info)
         {
-            return ReadSpectrum(info, null);
+            return ReadSpectrum(info, info.BestFileId);
         }
 
         /// <summary>
         /// Reads the spectrum for a particular file.
-        /// If sourceFileId is null, then return the "best" spectrum.
-        /// The "best" spectrum is a hybrid where the intensities of the quantitative transitions are read
+        /// The spectrum is a hybrid where the intensities of the quantitative transitions are read
         /// from the PeptideQuants table and the intensities of the other transitions are read from the Entries table
-        /// of the highest scoring file.
-        /// If sourceFileId has a value, then return a "redundant" spectrum where the intensities are read from the Entries table.
         /// </summary>
-        private SpectrumPeaksInfo.MI[] ReadSpectrum(ElibSpectrumInfo info, int? sourceFileId)
+        private SpectrumPeaksInfo.MI[] ReadSpectrum(ElibSpectrumInfo info, int sourceFileId)
         {
             if (sourceFileId < 0)
             {
@@ -407,11 +404,8 @@ namespace pwiz.Skyline.Model.Lib
                 List<SpectrumPeaksInfo.MI> spectrum = new List<SpectrumPeaksInfo.MI>();
                 IEnumerable<SpectrumPeaksInfo.MI> peptideQuantSpectrum = null;
 
-                if (!sourceFileId.HasValue)
-                {
-                    // First read all of the quantifiable transitions from the PeptideQuants table.
-                    peptideQuantSpectrum = ReadSpectrumFromPeptideQuants(connection, info);
-                }
+                // First read all of the quantifiable transitions from the PeptideQuants table.
+                peptideQuantSpectrum = ReadSpectrumFromPeptideQuants(connection, info, sourceFileId);
 
                 if (peptideQuantSpectrum != null)
                 {
@@ -424,26 +418,23 @@ namespace pwiz.Skyline.Model.Lib
                     }
                 }
                 // Then read the spectrum for the specific file
-                var entriesSpectrum = ReadSpectrumFromEntriesTable(connection, info, sourceFileId ?? info.BestFileId);
+                var entriesSpectrum = ReadSpectrumFromEntriesTable(connection, info, sourceFileId);
                 foreach (var mi in entriesSpectrum)
                 {
                     if (mzs.Add(mi.Mz))
                     {
                         var miToAdd = mi;
-                        if (!sourceFileId.HasValue)
+                        if (peptideQuantSpectrum != null)
                         {
-                            if (peptideQuantSpectrum != null)
-                            {
-                                // If we successfully read from the PeptideQuants table, then the
-                                // rest of the mzs we find in the entries table are non-quantitative.
-                                miToAdd.Quantitative = false;
-                            }
-                            else
-                            {
-                                // If we were unable to read from the PeptideQuants table, then 
-                                // the non-quantitative transitions are the ones with really low intensity.
-                                miToAdd.Quantitative = miToAdd.Intensity >= MIN_QUANTITATIVE_INTENSITY;
-                            }
+                            // If we successfully read from the PeptideQuants table, then the
+                            // rest of the mzs we find in the entries table are non-quantitative.
+                            miToAdd.Quantitative = false;
+                        }
+                        else
+                        {
+                            // If we were unable to read from the PeptideQuants table, then 
+                            // the non-quantitative transitions are the ones with really low intensity.
+                            miToAdd.Quantitative = miToAdd.Intensity >= MIN_QUANTITATIVE_INTENSITY;
                         }
                         spectrum.Add(miToAdd);
                     }
@@ -452,13 +443,14 @@ namespace pwiz.Skyline.Model.Lib
             });
         }
 
-        private IEnumerable<SpectrumPeaksInfo.MI> ReadSpectrumFromPeptideQuants(SQLiteConnection connection, ElibSpectrumInfo info)
+        private IEnumerable<SpectrumPeaksInfo.MI> ReadSpectrumFromPeptideQuants(SQLiteConnection connection, ElibSpectrumInfo info, int sourceFileId)
         {
             using (var cmd = new SQLiteCommand(connection))
             {
-                cmd.CommandText = @"SELECT QuantIonMassLength, QuantIonMassArray, QuantIonIntensityLength, QuantIonIntensityArray FROM peptidequants WHERE PrecursorCharge = ? AND PeptideModSeq = ?";
+                cmd.CommandText = @"SELECT QuantIonMassLength, QuantIonMassArray, QuantIonIntensityLength, QuantIonIntensityArray FROM peptidequants WHERE PrecursorCharge = ? AND PeptideModSeq = ? AND SourceFile = ?";
                 cmd.Parameters.Add(new SQLiteParameter(DbType.Int32) { Value = info.Key.Charge });
                 cmd.Parameters.Add(new SQLiteParameter(DbType.String) { Value = info.PeptideModSeq });
+                cmd.Parameters.Add(new SQLiteParameter(DbType.String) { Value = _sourceFiles[sourceFileId] });
                 SQLiteDataReader reader;
                 try
                 {
