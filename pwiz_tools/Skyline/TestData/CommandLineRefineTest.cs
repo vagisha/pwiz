@@ -532,7 +532,7 @@ namespace pwiz.SkylineTestData
                     CommandLine.AddedText(proteins - _initProt, lists - _initList, peptides - _initPep,
                         molecules - _initMol, tranGroups - _initPrec, transitions - _initTran));
             }
-            var doc = ResultsUtil.DeserializeDocument(docPath);
+                var doc = ResultsUtil.DeserializeDocument(docPath);
             AssertEx.IsDocumentState(doc, null, proteins+lists, peptides+molecules, tranGroups, transitions);
         }
     }

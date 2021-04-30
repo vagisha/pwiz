@@ -973,7 +973,7 @@ namespace pwiz.Skyline.Model.Results
                 return false;
             return Equals(nodeGroup1.TransitionGroup.PrecursorAdduct, nodeGroup2.TransitionGroup.PrecursorAdduct) &&
                    ReferenceEquals(nodeGroup1.TransitionGroup.LabelType, nodeGroup2.TransitionGroup.LabelType) &&
-                   Equals(nodeGroup1.TransitionGroup.ConformerID, nodeGroup2.TransitionGroup.ConformerID);
+                   Equals(nodeGroup1.ConformerDetails, nodeGroup2.ConformerDetails);
         }
     }
 

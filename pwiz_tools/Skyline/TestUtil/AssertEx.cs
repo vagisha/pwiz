@@ -1101,10 +1101,10 @@ namespace pwiz.SkylineTestUtil
                 errmsg += DocumentStateTestAreEqual("MoleculeCount", molecules, document.MoleculeCount);
             if (tranGroups.HasValue)
                 errmsg += DocumentStateTestAreEqual("MoleculeTransitionGroupCount", tranGroups, 
-                    document.MoleculeTransitionGroupCount - document.SpecialTestTransitionGroupsCount); // Test authors won't have anticipated special test nodes created for development work
+                    document.MoleculeTransitionGroupCountIgnoringSpecialTestNodes); // Test authors won't have anticipated special test nodes created for development work
             if (transitions.HasValue)
                 errmsg += DocumentStateTestAreEqual("MoleculeTransitionCount", transitions, 
-                    document.MoleculeTransitionCount - document.SpecialTestTransitionsCount); // Test authors won't have anticipated special test nodes created for development work
+                    document.MoleculeTransitionCountIgnoringSpecialTestNodes); // Test authors won't have anticipated special test nodes created for development work
             return errmsg;
         }
 

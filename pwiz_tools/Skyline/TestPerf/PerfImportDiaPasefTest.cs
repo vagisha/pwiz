@@ -87,7 +87,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             });
 
             var doc1 = WaitForDocumentChangeLoaded(doc, 15 * 60 * 1000); // 15 minutes
-            AssertEx.IsDocumentState(doc1, null, 1, 34, 34, 204);
+            AssertEx.IsDocumentState(doc1, null, 1, 34, 40, 240); // Without conformers, it's 34, 204);
             loadStopwatch.Stop();
             DebugLog.Info("load time = {0}", loadStopwatch.ElapsedMilliseconds);
 

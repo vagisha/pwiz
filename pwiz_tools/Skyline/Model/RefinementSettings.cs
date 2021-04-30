@@ -1156,7 +1156,7 @@ namespace pwiz.Skyline.Model
                 var mapped = new List<PrecursorIonMobilities>();
                 foreach (var kvp in precursorMap)
                 {
-                    var im = document.Settings.TransitionSettings.IonMobilityFiltering.GetIonMobilityFilter(kvp.Key, 0, null);
+                    var im = document.Settings.TransitionSettings.IonMobilityFiltering.GetIonMobilityFromCCS(kvp.Key, 0, null);
                     if (!IonMobilityAndCCS.IsNullOrEmpty(im))
                     {
                         mapped.Add(new PrecursorIonMobilities(kvp.Value.Target, kvp.Value.Adduct, im));

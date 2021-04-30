@@ -933,13 +933,13 @@ namespace pwiz.Skyline.Model
             }
         }
 
-        public override string ToString() // For debugging, not user-facing
+        public override string ToString()
         {
-            var conformerID = $@"conformer#{ConformerID}";
+            var conformerID = ConformerID==0 ? string.Empty : string.Format(Resources.TransitionGroup_ToString_conformer___0_, ConformerID);
             return LabelType.IsLight
-                ? string.Format(@"Charge {0} {1} {2}", PrecursorAdduct,   
+                ? string.Format(Resources.TransitionGroup_ToString_Charge__0___1___2_, PrecursorAdduct,   
                     Transition.GetDecoyText(DecoyMassShift), conformerID) 
-                : string.Format(@"Charge {0} ({1}) {2} {3}", PrecursorAdduct, LabelType,
+                : string.Format(Resources.TransitionGroup_ToString_Charge__0____1____2___3_, PrecursorAdduct, LabelType,
                     Transition.GetDecoyText(DecoyMassShift), conformerID);
         }
 

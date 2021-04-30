@@ -3230,7 +3230,7 @@ namespace pwiz.Skyline.Model
             var windowIM = 0.4;
             if (Document.Settings.TransitionSettings.IonMobilityFiltering != null)
             {
-                var result = Document.Settings.GetIonMobilityFilter(nodePep, nodeTranGroup, nodeTran, null, _oneOverK0UpperLimit);
+                var result = Document.Settings.GetIonMobilityFilter(nodeTranGroup, nodeTran, null, _oneOverK0UpperLimit);
                 if (result.HasIonMobilityValue)
                 {
                     ionMobility = result.IonMobility.Mobility.Value;

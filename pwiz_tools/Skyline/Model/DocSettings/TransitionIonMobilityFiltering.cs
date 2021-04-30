@@ -133,7 +133,7 @@ namespace pwiz.Skyline.Model.DocSettings
             return eIonMobilityUnits.none; // Didn't find anything
         }
 
-        public IonMobilityAndCCS GetIonMobilityFilter(LibKey ion, double mz,
+        public IonMobilityAndCCS GetIonMobilityFromCCS(LibKey ion, double mz,
             IIonMobilityFunctionsProvider ionMobilityFunctionsProvider)
         {
             var result = ion.IonMobility;
@@ -186,35 +186,6 @@ namespace pwiz.Skyline.Model.DocSettings
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// Get the ion mobility for the ion, and the width of the window centered thereon
-        /// </summary>
-        public IonMobilityFilter GetIonMobilityFilter(LibKey ion, double mz,
-            IIonMobilityFunctionsProvider ionMobilityFunctionsProvider, double ionMobilityRangeMax)
-        {
-            var ionMobility = GetIonMobilityFilter(ion, mz, ionMobilityFunctionsProvider);
-            if (ionMobility != null && ! ionMobility.IsEmpty)
-            {
-                double? ionMobilityWindowWidth;
-                if (ionMobility.IonMobility.HasValue)
-                {
-                    ionMobilityWindowWidth =
-                        FilterWindowWidthCalculator.WidthAt(ionMobility.IonMobility.Mobility.Value, ionMobilityRangeMax);
-                }
-                else
-                {
-                    ionMobilityWindowWidth = null;
-                }
-
-                return IonMobilityFilter.GetIonMobilityFilter(ionMobility, ionMobilityWindowWidth);
-            }
-            else
-            {
-                return null;
-            }
-
         }
 
         #region Implementation of IXmlSerializable
@@ -868,9 +839,10 @@ namespace pwiz.Skyline.Model.DocSettings
 
         public override string ToString() 
         {
-            string ccs = HasCollisionalCrossSection ? $@"CCS{CollisionalCrossSectionSqA}" : null;
-            string im = IonMobility.HasValue ? $@"IM{IonMobility}" : null;
-            string highEnergyOffset = (HighEnergyIonMobilityValueOffset??0) != 0 ? $@"HEO{HighEnergyIonMobilityValueOffset}" : null;
+            string ccs = HasCollisionalCrossSection ? string.Format(@"CCS{0:0.00}",CollisionalCrossSectionSqA) : null;
+            string im = IonMobility.HasValue ? string.Format(@"IM{0:0.00}{1}", IonMobility.Mobility.Value,
+                IonMobilityFilter.IonMobilityUnitsL10NString(IonMobility.Units)) : null;
+            string highEnergyOffset = (HighEnergyIonMobilityValueOffset??0) != 0 ? string.Format(@"HEO{0:0.00}",HighEnergyIonMobilityValueOffset) : null;
             return TextUtil.SpaceSeparate(ccs,im,highEnergyOffset).Replace(@" ",@"/");
         }
 
@@ -952,6 +924,7 @@ namespace pwiz.Skyline.Model.DocSettings
         public double? CollisionalCrossSectionSqA => IonMobilityAndCCS.CollisionalCrossSectionSqA; // The CCS value used to get the ion mobility, if known
         public double? IonMobilityExtractionWindowWidth { get; private set; }
         public double? HighEnergyIonMobilityOffset => IonMobilityAndCCS.HighEnergyIonMobilityValueOffset; // As in Waters MsE, where ions move a bit faster due to more energetic collision in the high energy part of the cycle
+        public double? HighEnergyIonMobility => HasIonMobilityValue ? (IonMobility.Mobility.Value + HighEnergyIonMobilityOffset ?? 0) : (double?)null;
         public eIonMobilityUnits IonMobilityUnits { get { return HasIonMobilityValue ? IonMobilityAndCCS.IonMobility.Units : eIonMobilityUnits.none; } }
         public IonMobilityValue IonMobility => IonMobilityAndCCS.IonMobility;
         public bool HasIonMobilityValue => IonMobilityAndCCS.HasIonMobilityValue;

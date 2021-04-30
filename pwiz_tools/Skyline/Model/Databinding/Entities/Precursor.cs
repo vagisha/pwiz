@@ -502,7 +502,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         public override string ToString()
         {
             // Consider: maybe change TransitionGroupDocNode.ToString() to be this as well:
-            return TransitionGroupTreeNode.GetLabel(DocNode.TransitionGroup, DocNode.PrecursorMz, string.Empty);
+            return TransitionGroupTreeNode.GetLabel(DocNode, string.Empty);
         }
 
         [Obsolete]

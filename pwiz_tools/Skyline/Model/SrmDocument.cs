@@ -1635,6 +1635,11 @@ namespace pwiz.Skyline.Model
                 return this;
             }
 
+            if (MoleculeTransitionGroups.Any(tg => !tg.IsSpecialTestDocNode))
+            {
+                return this; // Already has magic nodes
+            }
+
             // Find last TransitionGroup in document, and create an ion mobility library with multiple conformers for it
             var lastPeptide = Molecules.Last();
             var transitionGroups = lastPeptide.TransitionGroups.ToList();
@@ -1668,7 +1673,11 @@ namespace pwiz.Skyline.Model
             {
                 return this; // No change
             }
-            transitionGroups = lastPeptide.TransitionGroups.ToList();
+
+            // Make sure that automanage didn't introduce any charges that weren't there before
+            var originalCharges = transitionGroups.Select(tg => tg.TransitionGroup.PrecursorAdduct).ToHashSet();
+            transitionGroups = lastPeptide.TransitionGroups.Where(tg => originalCharges.Contains(tg.TransitionGroup.PrecursorAdduct)).ToList();
+
             var index = transitionGroups.Count - 1;
             var newTransitionGroup = transitionGroups[index];
             newTransitionGroup = (TransitionGroupDocNode)newTransitionGroup.NoteAsSpecialTestNode();
@@ -1676,8 +1685,8 @@ namespace pwiz.Skyline.Model
             newTransitionGroup = (TransitionGroupDocNode)newTransitionGroup.ChangeChildren(transitions);
             transitionGroups[index] = newTransitionGroup;
             lastPeptide = (PeptideDocNode)lastPeptide.ChangeChildren(transitionGroups.Select(tg => tg as DocNode).ToList());
-            var pathPeptide = newDoc.GetPathTo((int)Level.Molecules, newDoc.Molecules.Count() - 1);
-            newDoc = (SrmDocument)newDoc.ReplaceChild(pathPeptide.Parent, lastPeptide);
+            var pathPeptide = GetPathTo((int)Level.Molecules, Molecules.Count() - 1);
+            newDoc = (SrmDocument)ReplaceChild(pathPeptide.Parent, lastPeptide);
             return newDoc;
         }
 
@@ -1964,14 +1973,14 @@ namespace pwiz.Skyline.Model
                                                               (float) mzMatchTolerance, loadPoints, out arrayChromInfo))
             {
                 throw new ArgumentOutOfRangeException(string.Format(Resources.SrmDocument_ChangePeak_No_results_found_for_the_precursor__0__in_the_replicate__1__,
-                                                                    TransitionGroupTreeNode.GetLabel(nodeGroup.TransitionGroup, nodeGroup.PrecursorMz, string.Empty), nameSet));
+                                                                    TransitionGroupTreeNode.GetLabel(nodeGroup, string.Empty), nameSet));
             }
             // Get the chromatograms for only the file of interest
             int indexInfo = arrayChromInfo.IndexOf(info => Equals(filePath, info.FilePath));
             if (indexInfo == -1)
             {
                 throw new ArgumentOutOfRangeException(string.Format(Resources.SrmDocument_ChangePeak_No_results_found_for_the_precursor__0__in_the_file__1__,
-                                                                    TransitionGroupTreeNode.GetLabel(nodeGroup.TransitionGroup, nodeGroup.PrecursorMz, string.Empty), filePath));
+                                                                    TransitionGroupTreeNode.GetLabel(nodeGroup, string.Empty), filePath));
             }
             var chromInfoGroup = arrayChromInfo[indexInfo];
             var nodeGroupNew = change(nodeGroup, chromInfoGroup, mzMatchTolerance, indexSet, fileId,
@@ -2173,9 +2182,7 @@ namespace pwiz.Skyline.Model
                 // Make sure peptide standards lists are up to date
                 Settings = Settings.CachePeptideStandards(new PeptideGroupDocNode[0], children);
 
-                var childrenUpdated = UpdateResultsSummaries(children, new Dictionary<int, PeptideDocNode>());
-
-                SetChildren(childrenUpdated);
+                SetChildren(UpdateResultsSummaries(children, new Dictionary<int, PeptideDocNode>()));
 
                 IsProteinMetadataPending = CalcIsProteinMetadataPending(); // Background loaders are about to kick in, they need this info.
             }

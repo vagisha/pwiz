@@ -38,7 +38,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
     /// Verify consistent import of Agilent IMS data as we work on various code optimizations.
     /// </summary>
     [TestClass]
-    public class ImportAgilentIMSTest : AbstractFunctionalTest
+    public class ImportAgilentIMSTest : AbstractFunctionalTestEx
     {
 
         [TestMethod] 
@@ -82,7 +82,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             foreach (var pair in doc0.PeptidePrecursorPairs)
             {
                 ChromatogramGroupInfo[] chromGroupInfo;
-                Assert.IsTrue(results0.TryLoadChromatogram(chromIndex, pair.NodePep, pair.NodeGroup,
+                AssertEx.IsTrue(results0.TryLoadChromatogram(chromIndex, pair.NodePep, pair.NodeGroup,
                     tolerance, true, out chromGroupInfo));
                 foreach (var chromGroup in chromGroupInfo)
                 {
@@ -109,8 +109,10 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             loadStopwatch.Stop();
 
             var doc1 = WaitForDocumentLoaded(400000);
+(new CommandLine()).SaveDocument(doc0, "c:\\tmp\\doc0.sky", null);
+(new CommandLine()).SaveDocument(doc1, "c:\\tmp\\doc1.sky", null);
+//PauseTest();
             AssertEx.IsDocumentState(doc1, null, 19, 19, 28, 607);
-
             var chroms0 = doc0.Settings.MeasuredResults.Chromatograms[chromIndex];
             // Original file was saved before we had a sense of ion mobility type
             chroms0 = chroms0.ChangeMSDataFileInfos(chroms0.MSDataFileInfos.Select(m => m.ChangeIonMobilityUnits(eIonMobilityUnits.drift_time_msec)).ToList());

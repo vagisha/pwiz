@@ -1171,7 +1171,7 @@ namespace pwiz.Skyline.Controls.Graphs
             var nodeGroup = _nodeGroups != null ? _nodeGroups.FirstOrDefault() : null;
             if (nodeGroup == null)
                 nodeTranSelected = null;
-            var info = chromGroupInfo.GetTransitionInfo(null, 0, TransformChrom.raw, chromatograms.OptimizationFunction);
+            var info = chromGroupInfo.GetTransitionInfo(null, null, 0, TransformChrom.raw, chromatograms.OptimizationFunction);
 
             TransitionChromInfo tranPeakInfo = null;
             RetentionTimeValues bestQuantitativePeakTimes = null;
@@ -1277,7 +1277,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 else
                 {
                     var listChromInfo = new List<ChromatogramInfo>();
-                    chromGroupInfo.GetAllTransitionInfo(nodeTranSelected,
+                    chromGroupInfo.GetAllTransitionInfo(nodeGroup, nodeTranSelected,
                         mzMatchTolerance,
                         chromatograms.OptimizationFunction,
                         listChromInfo, TransformChrom.raw);
@@ -1309,7 +1309,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 {
                     var nodeTran = displayTrans[i];
                     // Get chromatogram info for this transition
-                    arrayChromInfo[i] = chromGroupInfo.GetTransitionInfo(nodeTran, mzMatchTolerance, TransformChrom.raw, chromatograms.OptimizationFunction);
+                    arrayChromInfo[i] = chromGroupInfo.GetTransitionInfo(nodeGroup, nodeTran, mzMatchTolerance, TransformChrom.raw, chromatograms.OptimizationFunction);
                 }
             }
 
@@ -1723,7 +1723,7 @@ namespace pwiz.Skyline.Controls.Graphs
             foreach (TransitionDocNode nodeTran in nodeGroup.Children)
             {
                 var listChromInfo = new List<ChromatogramInfo>();
-                chromGroupInfo.GetAllTransitionInfo(nodeTran,
+                chromGroupInfo.GetAllTransitionInfo(nodeGroup, nodeTran,
                     mzMatchTolerance,
                     chromatograms.OptimizationFunction,
                     listChromInfo, TransformChrom.raw);
@@ -1978,7 +1978,7 @@ namespace pwiz.Skyline.Controls.Graphs
                     {
                         continue;
                     }
-                    var info = chromGroupInfo.GetTransitionInfo(nodeTran, mzMatchTolerance, TransformChrom.raw, chromatograms.OptimizationFunction);
+                    var info = chromGroupInfo.GetTransitionInfo(nodeGroup, nodeTran, mzMatchTolerance, TransformChrom.raw, chromatograms.OptimizationFunction);
                     if (info == null)
                         continue;
 
@@ -2114,7 +2114,7 @@ namespace pwiz.Skyline.Controls.Graphs
                     ChromFileInfoId fileId = chromatograms.FindFile(chromGroupInfo);
                     foreach (var nodeTran in precursor.Transitions)
                     {
-                        var info = chromGroupInfo.GetTransitionInfo(nodeTran, mzMatchTolerance, TransformChrom.raw, chromatograms.OptimizationFunction);
+                        var info = chromGroupInfo.GetTransitionInfo(precursor, nodeTran, mzMatchTolerance, TransformChrom.raw, chromatograms.OptimizationFunction);
                         if (info == null)
                             continue;
                         if (sumInfo == null)
@@ -3484,7 +3484,8 @@ namespace pwiz.Skyline.Controls.Graphs
             // The same label type should always have the same color, with the
             // first charge state in the peptide matching the peptide label type
             // modification font colors.
-            if (!Equals(charge, nodeGroup.TransitionGroup.PrecursorAdduct))
+            // If the precursor is a conformer, shift the color to distinguish it from its siblings
+            if (!Equals(charge, nodeGroup.TransitionGroup.PrecursorAdduct) || nodeGroup.TransitionGroup.ConformerID != 0)
             {
                 charge = nodeGroup.TransitionGroup.PrecursorAdduct;
                 iCharge++;

@@ -308,11 +308,12 @@ namespace pwiz.Skyline.Model
             return merged;
         }
 
+        // ReSharper disable LocalizableElement
+        public static string NOTE_SEPARATOR = "\r\n\r\n";
+        // ReSharper restore LocalizableElement
         private static IEnumerable<string> SplitNotes(string note)
         {
-            // ReSharper disable LocalizableElement
-            return note.Split(new[] {"\r\n\r\n"}, StringSplitOptions.RemoveEmptyEntries);
-            // ReSharper restore LocalizableElement
+            return note.Split(new[] { NOTE_SEPARATOR }, StringSplitOptions.RemoveEmptyEntries);
         }
 
         public bool Equals(Annotations other)

@@ -283,14 +283,23 @@ namespace pwiz.Skyline.Model.DocSettings
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return ArrayUtil.EqualsDeep(other._annotationDefs, _annotationDefs)
-                   && ArrayUtil.EqualsDeep(other._groupComparisonDefs, _groupComparisonDefs)
-                   && Equals(ViewSpecList, other.ViewSpecList)
-                   && Equals(PanoramaPublishUri, other.PanoramaPublishUri)
-                   && Equals(AuditLogging, other.AuditLogging)
-                   && Equals(DocumentGuid, other.DocumentGuid)
-                   && Equals(Lists, other.Lists)
-                   && Equals(MetadataRuleSets, other.MetadataRuleSets);
+            if (!ArrayUtil.EqualsDeep(other._annotationDefs, _annotationDefs))
+                return false;
+            if (!ArrayUtil.EqualsDeep(other._groupComparisonDefs, _groupComparisonDefs))
+                return false;
+            if (!Equals(ViewSpecList, other.ViewSpecList))
+                return false;
+            if (!Equals(PanoramaPublishUri, other.PanoramaPublishUri))
+                return false;
+            if (!Equals(AuditLogging, other.AuditLogging))
+                return false;
+            if (!Equals(DocumentGuid, other.DocumentGuid))
+                return false;
+            if (!Equals(Lists, other.Lists))
+                return false;
+            if (!Equals(MetadataRuleSets, other.MetadataRuleSets))
+                return false;
+            return true;
         }
 
         public override bool Equals(object obj)

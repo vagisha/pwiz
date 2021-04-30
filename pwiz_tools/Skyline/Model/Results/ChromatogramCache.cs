@@ -1319,7 +1319,8 @@ namespace pwiz.Skyline.Model.Results
                             lastEntry.StatusRank,
                             lastEntry.StartTime,
                             lastEntry.EndTime,
-                            lastEntry.CollisionalCrossSection, 
+                            lastEntry.CollisionalCrossSection,
+                            lastEntry.IonMobility,
                             lastEntry.IonMobilityUnits));
                         int start = lastEntry.StartTransitionIndex;
                         int end = start + lastEntry.NumTransitions;

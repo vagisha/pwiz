@@ -104,7 +104,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
                 {
                     var cdt = curatedDTs[n];
                     var key = cdt.Precursor;
-                    var indexM = measuredDTs[pass].FindIndex(m => m.Precursor.Equals(key));
+                    var indexM = measuredDTs[pass].FindIndex(m => m.Precursor.EqualsIgnoringIonMobility(key));
                     var measured = measuredDTs[pass][indexM];
                     var measuredDT = measured.IonMobility;
                     var measuredHEO = measured.HighEnergyIonMobilityOffset;

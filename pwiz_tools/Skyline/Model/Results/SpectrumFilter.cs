@@ -177,7 +177,7 @@ namespace pwiz.Skyline.Model.Results
 
                         double? minTime = _minTime, maxTime = _maxTime;
                         var ionMobilityFilter = document.Settings.GetIonMobilityFilter(
-                            nodePep, nodeGroup, null, _ionMobilityFunctionsProvider, ionMobilityMax);
+                            nodeGroup, null, _ionMobilityFunctionsProvider, ionMobilityMax);
 
                         ExplicitPeakBounds peakBoundaries = null;
                         if (_fullScan.RetentionTimeFilterType != RetentionTimeFilterType.none)

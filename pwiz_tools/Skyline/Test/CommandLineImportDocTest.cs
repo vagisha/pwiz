@@ -89,8 +89,8 @@ namespace pwiz.SkylineTest
             long startCacheLen = ResultsUtil.CacheSize(doc, cacheSizes[firstIndex],
                 groupCounts[firstIndex], tranCounts[firstIndex], peakCounts[firstIndex]);
             AssertEx.IsDocumentState(doc, null, docImported.MoleculeGroupCount, docImported.MoleculeCount,
-                docImported.MoleculeTransitionGroupCount - docImported.SpecialTestTransitionGroupsCount, 
-                docImported.MoleculeTransitionCount - docImported.SpecialTestTransitionsCount);
+                docImported.MoleculeTransitionGroupCountIgnoringSpecialTestNodes, 
+                docImported.MoleculeTransitionCountIgnoringSpecialTestNodes);
             
             long singleCacheLen = new FileInfo(cachePersistPath).Length;
             Assert.AreEqual(startCacheLen, singleCacheLen);
@@ -111,7 +111,7 @@ namespace pwiz.SkylineTest
             // One protein should get merged
             int groups2 = docImported.MoleculeGroupCount + docImported2.MoleculeTransitionGroupCountIgnoringSpecialTestNodes - 1;
             int mols = docImported.MoleculeCount + docImported2.MoleculeCount;
-            int precursors = docImported.MoleculeTransitionGroupCount + docImported2.MoleculeTransitionGroupCountIgnoringSpecialTestNodes - 1;
+            int precursors = docImported.MoleculeTransitionGroupCount + docImported2.MoleculeTransitionGroupCountIgnoringSpecialTestNodes;
             int trans = docImported.MoleculeTransitionCountIgnoringSpecialTestNodes + docImported2.MoleculeTransitionCountIgnoringSpecialTestNodes;
             AssertEx.IsDocumentState(doc2, null, groups2, mols, precursors, trans);
             Assert.AreEqual(doc.MeasuredResults, doc2.MeasuredResults);
@@ -164,8 +164,8 @@ namespace pwiz.SkylineTest
             AssertEx.IsDocumentState(docAdd, null,
                 doc.PeptideGroupCount + docAdded.PeptideGroupCount,
                 doc.PeptideCount + docAdded.PeptideCount,
-                doc.PeptideTransitionGroupCount + docAdded.MoleculeTransitionGroupCountIgnoringSpecialTestNodes,
-                doc.PeptideTransitionCount + docAdded.MoleculeTransitionCountIgnoringSpecialTestNodes);
+                doc.MoleculeTransitionGroupCountIgnoringSpecialTestNodes + docAdded.MoleculeTransitionGroupCountIgnoringSpecialTestNodes,
+                doc.MoleculeTransitionCountIgnoringSpecialTestNodes + docAdded.MoleculeTransitionCountIgnoringSpecialTestNodes);
 
             Assert.AreEqual(3, docAdded.Settings.MeasuredResults.Chromatograms.Count);
             var chromatograms = docAdd.Settings.MeasuredResults.Chromatograms;

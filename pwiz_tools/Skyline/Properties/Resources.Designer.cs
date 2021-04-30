@@ -32123,6 +32123,33 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Charge {0} ({1}) {2} {3}.
+        /// </summary>
+        public static string TransitionGroup_ToString_Charge__0____1____2___3_ {
+            get {
+                return ResourceManager.GetString("TransitionGroup_ToString_Charge__0____1____2___3_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Charge {0} {1} {2}.
+        /// </summary>
+        public static string TransitionGroup_ToString_Charge__0___1___2_ {
+            get {
+                return ResourceManager.GetString("TransitionGroup_ToString_Charge__0___1___2_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to conformer #{0}.
+        /// </summary>
+        public static string TransitionGroup_ToString_conformer___0_ {
+            get {
+                return ResourceManager.GetString("TransitionGroup_ToString_conformer___0_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Precursor charge {0} must be between {1} and {2}..
         /// </summary>
         public static string TransitionGroup_Validate_Precursor_charge__0__must_be_between__1__and__2__ {

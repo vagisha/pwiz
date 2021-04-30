@@ -11328,4 +11328,13 @@ Example: Crosslink to PEPTIDE: T [4]</comment>
   <data name="SmallMoleculeTransitionListReader_GetMoleculeTransitionGroup_Inconsistent_molecule_description" xml:space="preserve">
     <value>Inconsistent molecule description</value>
   </data>
+  <data name="TransitionGroup_ToString_conformer___0_" xml:space="preserve">
+    <value>conformer #{0}</value>
+  </data>
+  <data name="TransitionGroup_ToString_Charge__0___1___2_" xml:space="preserve">
+    <value>Charge {0} {1} {2}</value>
+  </data>
+  <data name="TransitionGroup_ToString_Charge__0____1____2___3_" xml:space="preserve">
+    <value>Charge {0} ({1}) {2} {3}</value>
+  </data>
 </root>

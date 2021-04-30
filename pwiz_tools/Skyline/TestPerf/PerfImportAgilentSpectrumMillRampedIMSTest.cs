@@ -232,13 +232,17 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             WaitForClosedForm(importPeptideSearchDlg);
             var doc1 = WaitForDocumentChangeLoaded(doc, 15 * 60 * 1000); // 15 minutes
 
+            var nConformers = doc1.MoleculeTransitionGroups.Count(tg => tg.TransitionGroup.ConformerID != 0);
+            var nConformerTransitions = doc1.MoleculeTransitionGroups.Where(tg => tg.TransitionGroup.ConformerID != 0)
+                .Select(tg => tg.Children.Count).Sum();
+
             if (_testCase == 1)
             {
-                AssertEx.IsDocumentState(doc1, null, 1, 34, 45, 135);
+                AssertEx.IsDocumentState(doc1, null, 1, 34, 45 + nConformers, 135 + nConformerTransitions);
             }
             else
             {
-                AssertEx.IsDocumentState(doc1, null, 1, 36, 43, 129);
+                AssertEx.IsDocumentState(doc1, null, 1, 36, 43 + nConformers, 129 + nConformerTransitions);
             }
             loadStopwatch.Stop();
             DebugLog.Info("load time = {0}", loadStopwatch.ElapsedMilliseconds);
@@ -330,8 +334,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
                 {
                     foreach (var nodeGroup in pep.TransitionGroups)
                     {
-                        var calculatedDriftTime = doc1.Settings.GetIonMobilityFilter(
-                            pep, nodeGroup, null, instrumentInfo, 0);
+                        var calculatedDriftTime = doc1.Settings.GetIonMobilityFilter(nodeGroup, null, instrumentInfo, 0);
                         var libKey = new LibKey(pep.ModifiedSequence, nodeGroup.PrecursorAdduct, IonMobilityAndCCS.EMPTY);
                         IonMobilityAndCCS[] infoValueExplicitDT;
                         if (!dictExplicitDT.TryGetValue(libKey, out infoValueExplicitDT))
@@ -360,7 +363,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             var results = doc1.Settings.MeasuredResults;
             var numPeaks = _testCase == 1 ?
                 new[] {  8, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,  9, 10, 7, 10, 10, 10, 10, 8, 10, 10, 10, 10, 10, 10,  9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9, 10, 10, 8, 10, 10, 10, 10, 10 } :
-                new[] { 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 8,  9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10 };
+                new[] { 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 8, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10 };
 
             int npIndex = 0;
             foreach (var pair in doc1.PeptidePrecursorPairs)

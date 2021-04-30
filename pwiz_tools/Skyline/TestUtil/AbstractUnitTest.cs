@@ -270,7 +270,27 @@ namespace pwiz.SkylineTestUtil
             }
             set { TestFilesDirs = new[] { value }; }
         }
-        public TestFilesDir[] TestFilesDirs { get; set; }
+
+        private TestFilesDir[] _testFileDirs;
+        public TestFilesDir[] TestFilesDirs
+        {
+            get { return _testFileDirs;}
+            set
+            {
+                _testFileDirs = value;
+                #region Multiple conformers test support
+                if (Settings.Default.TestMultiCCS)
+                {
+                    // We're likely going to be creating a .imsdb file, make sure there's a directory for that
+                    if (string.IsNullOrEmpty(Settings.Default.LibraryDirectory))
+                    {
+                        Settings.Default.LibraryDirectory = _testFileDirs[0]?.FullPath;
+                    }
+                }
+                #endregion Multiple conformers test support
+
+            }
+        }
 
         /// <summary>
         /// If there are any stale downloads, freshen them

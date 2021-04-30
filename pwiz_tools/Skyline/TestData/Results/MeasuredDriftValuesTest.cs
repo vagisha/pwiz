@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.Chemistry;
+using pwiz.Skyline;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
@@ -72,6 +73,9 @@ namespace pwiz.SkylineTestData.Results
             var pathFirstPeptide = docOriginal.GetPathTo((int) SrmDocument.Level.Molecules, 0);
             var nodeFirstPeptide = (DocNodeParent) docOriginal.FindNode(pathFirstPeptide);
             docOriginal = (SrmDocument) docOriginal.RemoveChild(pathFirstPeptide, nodeFirstPeptide.Children[0]);
+            docOriginal = CommandLine.ConnectLibrarySpecs(docOriginal, docPath, null);
+            // Clear out any current ion mobility settings so we load without IM filtering
+            docOriginal = docOriginal.ChangeSettings(docOriginal.Settings.ChangeTransitionIonMobilityFiltering(s => TransitionIonMobilityFiltering.EMPTY));
             if (asSmallMolecules)
             {
                 var refine = new RefinementSettings();

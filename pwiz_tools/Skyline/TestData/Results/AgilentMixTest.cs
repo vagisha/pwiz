@@ -67,7 +67,6 @@ namespace pwiz.SkylineTestData.Results
                 Assert.IsTrue(docContainer.SetDocument(docResults, doc, true));
                 docContainer.AssertComplete();
                 docResults = docContainer.Document;
-WriteDocument(docResults, "c:\\tmp\\multi.sky");
                 AssertResult.IsDocumentResultsState(docResults, replicateName,
                     doc.PeptideCount, doc.MoleculeTransitionGroupCountIgnoringSpecialTestNodes, 0, doc.MoleculeTransitionCountIgnoringSpecialTestNodes, 0);
             }

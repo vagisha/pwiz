@@ -146,8 +146,8 @@ namespace pwiz.SkylineTest
             expectedWarnings += "{3}";
             AssertEx.AreComparableStrings(expectedWarnings, output);
             var docIgnore = ResultsUtil.DeserializeDocument(documentUpdated);
-            Assert.AreEqual(docIgnore.PeptideTransitionCount, 109);
-            Assert.AreEqual(docIgnore.PeptideTransitionGroupCount, 22);
+            Assert.AreEqual(109, docIgnore.MoleculeTransitionCountIgnoringSpecialTestNodes);
+            Assert.AreEqual(22, docIgnore.MoleculeTransitionGroupCountIgnoringSpecialTestNodes);
             ValidateIrtAndLibrary(docIgnore);
 
             // 9. Argument requirements warnings
@@ -231,8 +231,8 @@ namespace pwiz.SkylineTest
             Assert.IsTrue(File.Exists(documentUpdated));
             Assert.IsTrue(File.Exists(newIrtDatabasePath));
             var docSuccess = ResultsUtil.DeserializeDocument(documentUpdated);
-            Assert.AreEqual(expectedCount, docSuccess.PeptideTransitionGroupCount);
-            Assert.AreEqual(1170, docSuccess.PeptideTransitionCount);
+            Assert.AreEqual(expectedCount, docSuccess.MoleculeTransitionGroupCountIgnoringSpecialTestNodes);
+            Assert.AreEqual(1170, docSuccess.MoleculeTransitionCountIgnoringSpecialTestNodes);
             ValidateIrtAndLibrary(docSuccess);
 
             // 14. Successful import and succesful load of existing database, with keeping of iRT's, plus successful library import
@@ -245,8 +245,8 @@ namespace pwiz.SkylineTest
             expectedCount = 284;
             ValidateIrtAndLibraryOutput(output, documentUpdated, expectedCount);
             var docSuccess2 = ResultsUtil.DeserializeDocument(documentUpdated);
-            Assert.AreEqual(expectedCount, docSuccess2.PeptideTransitionGroupCount);
-            Assert.AreEqual(1119, docSuccess2.PeptideTransitionCount);
+            Assert.AreEqual(expectedCount, docSuccess2.MoleculeTransitionGroupCountIgnoringSpecialTestNodes);
+            Assert.AreEqual(1119, docSuccess2.MoleculeTransitionCountIgnoringSpecialTestNodes);
             // Can't validate, because the document does not contain the iRT standard peptides
             AssertEx.Contains(output, Resources.CommandLine_ImportTransitionList_Warning__The_document_is_missing_iRT_standards);
         }

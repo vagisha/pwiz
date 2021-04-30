@@ -723,7 +723,6 @@ namespace pwiz.Skyline.Model.Lib
                         int fileId = iFileId < 0 || reader.IsDBNull(iFileId) ? -1 : reader.GetInt32(iFileId);
                         string sequence = reader.GetString(iModSeq);
                         int charge = reader.GetInt16(iCharge);
-                        var ionMobility = IonMobilityAndCCS.EMPTY; // TODO(bspratt) retrieve IMS info from refSpectra table
                         string adduct = iAdduct >= 0 && !reader.IsDBNull(iAdduct) ? reader.GetString(iAdduct) : null;
                         int copies = reader.GetInt32(iCopies);
                         int numPeaks = reader.GetInt32(iPeaks);
@@ -769,6 +768,7 @@ namespace pwiz.Skyline.Model.Lib
                             peakBoundariesByFileId = ImmutableSortedList.FromValues(peakBoundsBySpectraIdAndFileId[id].Distinct());
                         }
                         LibKey key;
+                        var ionMobility = IonMobilityAndCCS.EMPTY; // Not including IM info in key, in case we use it for redundant spectra search
                         if (isProteomic)
                         {
                             LibraryKey libraryKey =

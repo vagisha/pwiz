@@ -29,6 +29,7 @@ using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.IonMobility;
 using pwiz.Skyline.Model.Lib;
+using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Model.Serialization;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -1171,11 +1172,11 @@ namespace pwiz.SkylineTest
             Assert.AreEqual(0, pred1.FilterWindowWidthCalculator.PeakWidthAtIonMobilityValueMax);
             Assert.AreEqual(100, pred1.FilterWindowWidthCalculator.ResolvingPower);
             var dummy_mz = 0;
-            Assert.AreEqual(17.0, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).IonMobility.Mobility);
-            Assert.AreEqual(123.45, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).CollisionalCrossSectionSqA);
-            Assert.AreEqual(17.0, pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).GetHighEnergyIonMobility() ?? 0); // Apply the high energy offset
-            Assert.IsNull(pred1.GetIonMobilityFilter(new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that charge state
-            Assert.IsNull(pred1.GetIonMobilityFilter(new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that peptide
+            Assert.AreEqual(17.0, GetIonMobilityFilter(pred1, new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).IonMobility.Mobility);
+            Assert.AreEqual(123.45, GetIonMobilityFilter(pred1, new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).CollisionalCrossSectionSqA);
+            Assert.AreEqual(17.0, GetIonMobilityFilter(pred1, new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).HighEnergyIonMobility ?? 0); // Apply the high energy offset
+            Assert.IsNull(GetIonMobilityFilter(pred1, new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that charge state
+            Assert.IsNull(GetIonMobilityFilter(pred1, new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that peptide
 
             // Check for enforcement of valid resolving power
             CheckIonMobilitySettingsBackwardCompatibility(predictor1.Replace("100", "-1"),Resources.DriftTimePredictor_Validate_Resolving_power_must_be_greater_than_0_);
@@ -1186,10 +1187,10 @@ namespace pwiz.SkylineTest
             Assert.AreEqual(0, pred2.FilterWindowWidthCalculator.PeakWidthAtIonMobilityValueZero);
             Assert.AreEqual(0, pred2.FilterWindowWidthCalculator.PeakWidthAtIonMobilityValueMax);
             Assert.AreEqual(100, pred2.FilterWindowWidthCalculator.ResolvingPower);
-            Assert.AreEqual(17.0, pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).IonMobility.Mobility);
-            Assert.AreEqual(16.0, pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).GetHighEnergyIonMobility() ?? 0); // Apply the high energy offset
-            Assert.IsNull(pred2.GetIonMobilityFilter(new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that charge state
-            Assert.IsNull(pred2.GetIonMobilityFilter(new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that peptide
+            Assert.AreEqual(17.0,GetIonMobilityFilter(pred2, new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).IonMobility.Mobility);
+            Assert.AreEqual(16.0,GetIonMobilityFilter(pred2, new LibKey("JLMN", Adduct.SINGLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null).HighEnergyIonMobility ?? 0); // Apply the high energy offset
+            Assert.IsNull(GetIonMobilityFilter(pred2, new LibKey("JLMN", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that charge state
+            Assert.IsNull(GetIonMobilityFilter(pred2, new LibKey("LMNJK", Adduct.QUINTUPLY_PROTONATED, IonMobilityAndCCS.EMPTY), dummy_mz, null)); // Should not find a value for that peptide
 
             // Check using drift time predictor with only measured drift times, and a high energy scan drift time offset, and linear width
             var predictor3 =
@@ -1219,9 +1220,9 @@ namespace pwiz.SkylineTest
             var settings = AssertEx.Deserialize<SrmSettings>(xml);
             var save = AuditLogList.IgnoreTestChecks;
             AuditLogList.IgnoreTestChecks = true;
-            var tmpFile19 = "V19_1.sky";
-            var tmpFileCurrent = "V20_13.sky";
-            var oldDoc = new SrmDocument(settings.ChangeDataSettings(settings.DataSettings.ChangeAuditLogging(false)));
+            var tmpFile19 = Path.Combine(TestContext.TestDir, "V19_1.sky");
+            var tmpFileCurrent = Path.Combine(TestContext.TestDir, "V20_13.sky");
+            var oldDoc = new SrmDocument(settings.ChangeDataSettings(settings.DataSettings));
             var testPath = TestContext.TestDir;
             AssertEx.Serializable(oldDoc, testPath, SkylineVersion.V19_1); // Round trip with IMS info in peptide settings
             AssertEx.Serializable(oldDoc, testPath, SkylineVersion.CURRENT); // Round trip with IMS info in transition settings
@@ -1241,6 +1242,38 @@ namespace pwiz.SkylineTest
             AuditLogList.IgnoreTestChecks = save;
 
         }
+
+        /// <summary>
+        /// Get the ion mobility for the ion, and the width of the window centered thereon
+        /// </summary>
+        private IonMobilityFilter GetIonMobilityFilter(TransitionIonMobilityFiltering timf, LibKey ion, double mz,
+            IIonMobilityFunctionsProvider ionMobilityFunctionsProvider)
+        {
+
+            var ionMobility = timf.GetIonMobilitiesInfoFromLibrary(new[] {ion}).Values.FirstOrDefault()?.FirstOrDefault();
+            if (ionMobility != null && !ionMobility.IsEmpty)
+            {
+                double? ionMobilityWindowWidth;
+                if (ionMobility.IonMobility.HasValue)
+                {
+                    ionMobilityWindowWidth =
+                        timf.FilterWindowWidthCalculator.WidthAt(ionMobility.IonMobility.Mobility.Value, 0);
+                }
+                else
+                {
+                    ionMobilityWindowWidth = null;
+                }
+
+                return IonMobilityFilter.GetIonMobilityFilter(ionMobility, ionMobilityWindowWidth);
+            }
+            else
+            {
+                return null;
+            }
+
+        }
+
+
 
         private const string VALID_ISOTOPE_ENRICHMENT_XML =
             "<isotope_enrichments name=\"Cambridge Isotope Labs\">" +

@@ -212,13 +212,13 @@ namespace pwiz.SkylineTestFunctional
                 double driftTimeMax = 1000.0;
                 var node = FindOrCreateNodes("ANELLINV", Adduct.SINGLY_PROTONATED);
                 var centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 AssertEx.AreEqual(DRIFTTIME_ANELLINVK, centerIonMobility.IonMobilityAndCCS.IonMobility.Mobility);
                 AssertEx.AreEqual(2 * DRIFTTIME_ANELLINVK / resolvingPower, centerIonMobility.IonMobilityExtractionWindowWidth);
                 AssertEx.AreEqual(DRIFTTIME_ANELLINVK + HIGH_ENERGY_DRIFT_TIME_OFFSET_MSEC, centerIonMobility.IonMobilityAndCCS.GetHighEnergyIonMobility());
 
                 var centerIonMobilityNoHighEnergy = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 AssertEx.AreEqual(DRIFTTIME_ANELLINVK, centerIonMobilityNoHighEnergy.IonMobilityAndCCS.IonMobility.Mobility);
                 AssertEx.AreEqual(2 * DRIFTTIME_ANELLINVK / resolvingPower, centerIonMobilityNoHighEnergy.IonMobilityExtractionWindowWidth);
                 AssertEx.AreEqual(DRIFTTIME_ANELLINVK+HIGH_ENERGY_DRIFT_TIME_OFFSET_MSEC, centerIonMobilityNoHighEnergy.IonMobilityAndCCS.GetHighEnergyIonMobility());
@@ -370,11 +370,11 @@ namespace pwiz.SkylineTestFunctional
                 // Do some DT calculations with this new library
                 node = FindOrCreateNodes("ANELLINVK", Adduct.DOUBLY_PROTONATED);
                 centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 AssertEx.IsTrue(centerIonMobility.IsEmpty); // This library entry was CCS only, so GetIonMobilityHelp with no ionMobilityFunctionsProvider returns EMPTY
                 node = FindOrCreateNodes("ANGTTVLVGMPAGAK", Adduct.DOUBLY_PROTONATED);
                 centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 var dt = 4.99820623749102;
                 AssertEx.IsFalse(centerIonMobility.IonMobilityAndCCS.CollisionalCrossSectionSqA.HasValue);
                 AssertEx.AreEqual(dt, centerIonMobility.IonMobilityAndCCS.IonMobility.Mobility.Value, .000001);
@@ -382,12 +382,12 @@ namespace pwiz.SkylineTestFunctional
 
                 node = FindOrCreateNodes("DEADEELS", Adduct.TRIPLY_PROTONATED);
                 centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax); // Should fail to find anything
+                    node.NodeGroup, null, null, driftTimeMax); // Should fail to find anything
                 AssertEx.IsTrue(centerIonMobility.IsEmpty);
 
                 node = FindOrCreateNodes("DEADEELS", Adduct.QUINTUPLY_PROTONATED);
                 centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 AssertEx.AreEqual(deadeelsDT, centerIonMobility.IonMobilityAndCCS.IonMobility.Mobility.Value, .000001);
                 AssertEx.AreEqual(deadeelsDT+deadeelsDTHighEnergyOffset, centerIonMobility.IonMobilityAndCCS.GetHighEnergyIonMobility() ?? -1, .000001);
                 AssertEx.AreEqual(2 * (deadeelsDT / resolvingPower), centerIonMobility.IonMobilityExtractionWindowWidth??0, .0001); // Directly measured, should match
@@ -410,7 +410,7 @@ namespace pwiz.SkylineTestFunctional
                 doc = WaitForDocumentChangeLoaded(doc);
                 node = FindOrCreateNodes("DEADEELS", Adduct.QUINTUPLY_PROTONATED);
                 centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 AssertEx.AreEqual(deadeelsDT, centerIonMobility.IonMobilityAndCCS.IonMobility.Mobility.Value, .000001);
                 AssertEx.AreEqual(deadeelsDT-0.1, centerIonMobility.IonMobilityAndCCS.GetHighEnergyIonMobility() ?? -1, .000001); // High energy value should now be same as low energy value
                 AssertEx.AreEqual(2 * (deadeelsDT / resolvingPower), centerIonMobility.IonMobilityExtractionWindowWidth??0, .0001); // Directly measured, should match
@@ -440,7 +440,7 @@ namespace pwiz.SkylineTestFunctional
                 doc = WaitForDocumentChangeLoaded(doc);
                 node = FindOrCreateNodes("DEADEELS", Adduct.QUINTUPLY_PROTONATED);
                 centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 AssertEx.AreEqual(deadeelsDT, centerIonMobility.IonMobilityAndCCS.IonMobility.Mobility.Value, .000001);
                 AssertEx.AreEqual(deadeelsDT-0.1, centerIonMobility.IonMobilityAndCCS.GetHighEnergyIonMobility() ?? -1, .000001); // High energy value should now be same as low energy value
                 AssertEx.AreEqual(widthAtDtZero + deadeelsDT * (widthAtDtMax - widthAtDtZero) / driftTimeMax, centerIonMobility.IonMobilityExtractionWindowWidth??0, .0001);
@@ -458,7 +458,7 @@ namespace pwiz.SkylineTestFunctional
                 doc = WaitForDocumentChangeLoaded(doc);
                 node = FindOrCreateNodes("DEADEELS", Adduct.QUINTUPLY_PROTONATED);
                 centerIonMobility = doc.Settings.GetIonMobilityFilter(
-                    node.NodePep, node.NodeGroup, null, null, driftTimeMax);
+                    node.NodeGroup, null, null, driftTimeMax);
                 AssertEx.AreEqual(deadeelsDT, centerIonMobility.IonMobilityAndCCS.IonMobility.Mobility.Value, .000001);
                 AssertEx.AreEqual(deadeelsDT-0.1, centerIonMobility.IonMobilityAndCCS.GetHighEnergyIonMobility() ?? -1, .000001); // High energy value should now be same as low energy value
                 AssertEx.AreEqual(fixedWidth, centerIonMobility.IonMobilityExtractionWindowWidth??0, .0001);

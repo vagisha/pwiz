@@ -444,8 +444,9 @@ namespace pwiz.Skyline.Controls.SeqNode
 
         public override string GetPickLabel(DocNode child)
         {
+            var peptideDocNode = (PeptideDocNode) Model;
             return TransitionGroupTreeNode.DisplayText((TransitionGroupDocNode)child, 
-                SequenceTree.GetDisplaySettings((PeptideDocNode) Model));
+                SequenceTree.GetDisplaySettings(peptideDocNode));
         }
 
         public override Image GetPickTypeImage(DocNode child)

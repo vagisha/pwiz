@@ -228,6 +228,11 @@ namespace pwiz.Skyline.Model
             return Peptide.IsCustomMolecule ? Peptide.CustomMolecule.InvariantName : text;
         }
 
+        public bool HasConformers
+        {
+            get { return TransitionGroups.Any(tg => tg.TransitionGroup.ConformerID != 0); }
+        }
+
         /// <summary>
         /// For decoy peptides, returns modified sequence of the source peptide
         /// For non-decoy peptides, returns modified sequence
@@ -733,10 +738,10 @@ namespace pwiz.Skyline.Model
                     {
                         // Two or more precursors with same adduct and mz, means this is a multiple conformer,
                         // don't include it in the enumeration
-                        Assume.IsTrue(signatures[signature].IonMobilityAndCCS.HasIonMobilityValue &&
-                                      node.IonMobilityAndCCS.HasIonMobilityValue,
+                        Assume.IsTrue(!signatures[signature].ConformerDetails.IsEmpty &&
+                                      !node.ConformerDetails.IsEmpty,
                             @"Not expecting precursors with identical mz values without ion mobility to distinguish them");
-                        Assume.AreNotEqual(signatures[signature].IonMobilityAndCCS, node.IonMobilityAndCCS,
+                        Assume.AreNotEqual(signatures[signature].ConformerDetails, node.ConformerDetails,
                             @"Not expecting precursors with identical mz values and identical ion mobility values");
                         continue; 
                     }
@@ -921,7 +926,8 @@ namespace pwiz.Skyline.Model
                 }
             }
 
-            if (diff.DiffTransitionGroups && settingsNew.TransitionSettings.Filter.AutoSelect && AutoManageChildren)
+            if (diff.DiffTransitionGroups && settingsNew.TransitionSettings.Filter.AutoSelect && AutoManageChildren 
+                && !diff.DiffConformersOnly) // If we're just adding/removing conformers, don't perform usual auto-manage
             {
                 IList<DocNode> childrenNew = new List<DocNode>();
 
@@ -1088,9 +1094,9 @@ namespace pwiz.Skyline.Model
             {
                 // Ion mobility filtering, add or remove nodes for multiple conformers if needed
                 // Cases to consider:
-                //   Multi-conformer retreats to single conformer: multi-IM nodes go away
-                //   Single conformer goes multi: multi-IM nodes added
-                //   IM library value no longer can be found: single IM value goes away, multi-IM nodes go away
+                //   Multi-conformer retreats to single conformer: conformer 0 gets the value and  conformer 1...n nodes go away
+                //   Single conformer goes multi: conformer 1...n nodes added
+                //   IM library value no longer can be found: conformer 0 has no IM, conformer 1...n nodes go away
                 //   IM library changes, one or more nodes get updated IM value, possibly some added or removed to accomodate number of IM values
                 //   No change
 
@@ -1146,6 +1152,7 @@ namespace pwiz.Skyline.Model
                             {
                                 newChildren.Add(existing);
                                 siblings.Remove(existing); // This has been handled
+                                obsoleteChildren.Add(existing); // Don't consider this node on next pass through currentChildren
                             }
                             else
                             {
@@ -1155,6 +1162,7 @@ namespace pwiz.Skyline.Model
                                 {
                                     newChildren.Add(existing.ChangeLibraryIonMobility(mobility));
                                     siblings.Remove(existing); // This has been used
+                                    obsoleteChildren.Add(existing); // Don't consider this node on next pass through currentChildren
                                 }
                                 else
                                 {

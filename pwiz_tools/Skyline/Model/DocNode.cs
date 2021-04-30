@@ -82,7 +82,7 @@ namespace pwiz.Skyline.Model
         /// User supplied comment of this node.  All <see cref="DocNode"/> objects
         /// in the document support user notes.
         /// </summary>
-        public string Note { get { return Annotations.Note;} }
+        public string Note { get { return Annotations?.Note;} }
 
         /// <summary>
         /// Creates a new copy of this node with a new copy of its ID.
@@ -104,7 +104,7 @@ namespace pwiz.Skyline.Model
         /// Useful when user alters small molecule ID info in the UI - normally a change in node
         /// ID causes the tree display to collapse, and selection to pop up a level.  This allows
         /// the tree to retain selection so the user isn't alarmed.
-        /// </summary>
+        /// </summary> 
         public DocNode ChangeReplacedId(Identity id)
         {
             return ChangeProp(ImClone(this), im => im.ReplacedId = id);

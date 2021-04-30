@@ -910,7 +910,7 @@ namespace pwiz.Skyline
 
         private SrmDocument ConnectDocument(SrmDocument document, string path)
         {
-            document = ConnectLibrarySpecs(document, path);
+            document = ConnectLibrarySpecs(document, path, _out);
             if (document != null)
                 document = ConnectBackgroundProteome(document, path);
             if (document != null)
@@ -922,7 +922,7 @@ namespace pwiz.Skyline
             return document;
         }
 
-        private SrmDocument ConnectLibrarySpecs(SrmDocument document, string documentPath)
+        public static SrmDocument ConnectLibrarySpecs(SrmDocument document, string documentPath, TextWriter messageOut)
         {
             string docLibFile = null;
             if (!string.IsNullOrEmpty(documentPath) && document.Settings.PeptideSettings.Libraries.HasDocumentLibrary)
@@ -930,7 +930,11 @@ namespace pwiz.Skyline
                 docLibFile = BiblioSpecLiteSpec.GetLibraryFileName(documentPath);
                 if (!File.Exists(docLibFile))
                 {
-                    _out.WriteLine(Resources.CommandLine_ConnectLibrarySpecs_Error__Could_not_find_the_spectral_library__0__for_this_document_, docLibFile);
+                    if (messageOut == null)
+                    {
+                        throw new FileNotFoundException(Resources.CommandLine_ConnectLibrarySpecs_Error__Could_not_find_the_spectral_library__0__for_this_document_, docLibFile);
+                    }
+                    messageOut.WriteLine(Resources.CommandLine_ConnectLibrarySpecs_Error__Could_not_find_the_spectral_library__0__for_this_document_, docLibFile);
                     return null;
                 }
             }
@@ -957,7 +961,8 @@ namespace pwiz.Skyline
                     if (File.Exists(pathLibrary))
                         return CreateLibrarySpec(library, librarySpec, pathLibrary, false);
                 }
-                _out.WriteLine(Resources.CommandLine_ConnectLibrarySpecs_Warning__Could_not_find_the_spectral_library__0_, name);
+
+                messageOut?.WriteLine(Resources.CommandLine_ConnectLibrarySpecs_Warning__Could_not_find_the_spectral_library__0_, name);
                 return CreateLibrarySpec(library, librarySpec, null, false);
             }, docLibFile);
 

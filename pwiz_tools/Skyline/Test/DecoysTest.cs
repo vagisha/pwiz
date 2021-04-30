@@ -53,7 +53,6 @@ namespace pwiz.SkylineTest
             // MS1 document with precursors and variable modifications, shuffled
             docPath = testFilesDir.GetTestPath("Ms1FilterTutorial.sky");
             SrmDocument variableDecoysDoc = ResultsUtil.DeserializeDocument(docPath);
-WriteDocument(variableDecoysDoc, "c:\\tmp\\multi.sky");
 
             AssertEx.IsDocumentState(variableDecoysDoc, 0, 11, 50, 51, 153);
             numDecoys = variableDecoysDoc.PeptideCount;

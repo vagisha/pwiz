@@ -67,6 +67,33 @@ namespace pwiz.Skyline.Controls.SeqNode
             get { return GetModifiedSequence(PepNode, DocNode, SequenceTree.Document.Settings); }
         }
 
+        public bool IsConformer
+        {
+            get
+            {
+                if (DocNode.TransitionGroup.ConformerID != 0)
+                {
+                    return true;
+                }
+                for (var sibling = PrevNode; sibling != null; sibling = sibling.PrevNode)
+                {
+                    if (((TransitionGroupTreeNode)sibling).DocNode.TransitionGroup.ConformerID != 0)
+                    {
+                        return true;
+                    }
+                }
+                for (var sibling = NextNode; sibling != null; sibling = sibling.NextNode)
+                {
+                    if (((TransitionGroupTreeNode)sibling).DocNode.TransitionGroup.ConformerID != 0)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
         public PeptideDocNode PepNode
         {
             get { return (Parent != null ? ((PeptideTreeNode)Parent).DocNode : null); }
@@ -165,7 +192,7 @@ namespace pwiz.Skyline.Controls.SeqNode
         
         public static string DisplayText(TransitionGroupDocNode nodeGroup, DisplaySettings settings)
         {
-            return GetLabel(nodeGroup.TransitionGroup, nodeGroup.PrecursorMz,
+            return GetLabel(nodeGroup,
                 GetResultsText(settings, nodeGroup));
         }
 
@@ -217,12 +244,17 @@ namespace pwiz.Skyline.Controls.SeqNode
                                             materialize, TransitionTreeNode.CreateInstance);
         }
 
-        public static string GetLabel(TransitionGroup tranGroup, double precursorMz,
+        public static string GetLabel(TransitionGroupDocNode node,
             string resultsText)
         {
-            return string.Format(@"{0}{1}{2}{3}", GetMzLabel(tranGroup, precursorMz),
-                                 Transition.GetChargeIndicator(tranGroup.PrecursorAdduct),
-                                 tranGroup.LabelTypeText, resultsText);
+            var tranGroup = node.TransitionGroup;
+            var conformerDetails = node.ConformerDetails;
+            var conformerText = !conformerDetails.IsEmpty ?
+                string.Format(@" {0}", node.ConformerDetailsDisplayString) :
+                string.Empty;
+            return string.Format(@"{0}{1}{2}{3}{4}", GetMzLabel(tranGroup, node.PrecursorMz),
+                Transition.GetChargeIndicator(tranGroup.PrecursorAdduct),
+                tranGroup.LabelTypeText, conformerText, resultsText);
         }
 
         private static string GetMzLabel(TransitionGroup tranGroup, double precursorMz)

@@ -1382,7 +1382,8 @@ namespace pwiz.Skyline.Model.Results
                     chromDataSet.MinRawTime,
                 chromDataSet.MaxRawTime,
                 // TODO(version)
-                chromDataSet.CollisionalCrossSectionSqA,
+                    chromDataSet.CollisionalCrossSectionSqA,
+                    chromDataSet.IonMobility,
                 chromDataSet.IonMobilityUnits);
                 header.CalcTextIdIndex(chromDataSet.ModifiedSequence, _dictSequenceToByteIndex, _listTextIdBytes);
 

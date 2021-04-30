@@ -207,7 +207,7 @@ namespace pwiz.SkylineTestData.Results
                             foreach (TransitionGroupDocNode nodeGroup in pep.Children)
                             {
                                 var centerDriftTime = document2.Settings.GetIonMobilityFilter(
-                                    pep, nodeGroup, null, null, driftTimeMax);
+                                    nodeGroup, null, null, driftTimeMax);
                                 AssertEx.AreEqual(3.86124, centerDriftTime.IonMobilityAndCCS.IonMobility.Mobility.Value, .0001, testModeStr + " ccs");
                                 AssertEx.AreEqual(expectedWidth, centerDriftTime.IonMobilityExtractionWindowWidth.Value, .0001, testModeStr + " dtWidth");
                             }

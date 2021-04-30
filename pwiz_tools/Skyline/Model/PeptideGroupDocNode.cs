@@ -177,7 +177,8 @@ namespace pwiz.Skyline.Model
             if (diff.Monitor != null)
                 diff.Monitor.ProcessGroup(this);
 
-            if (diff.DiffPeptides && settingsNew.PeptideSettings.Filter.AutoSelect && AutoManageChildren)
+            if (diff.DiffPeptides && settingsNew.PeptideSettings.Filter.AutoSelect && AutoManageChildren
+                && !diff.DiffConformersOnly) // If we're just adding/removing conformers, don't perform usual auto-manage
             {
                 IList<DocNode> childrenNew = new List<DocNode>();
 

@@ -1977,6 +1977,11 @@ namespace pwiz.Skyline.Model.DocSettings
                         return whyNot;
                     }
                 }
+                // Has the document library, if any, been added to the list of libraries yet?
+                if (HasDocumentLibrary && !_librarySpecs.Any(libSpec => libSpec.IsDocumentLibrary))
+                {
+                    return @"document library not loaded";
+                }
                 return null;
             }
         }
@@ -2146,8 +2151,7 @@ namespace pwiz.Skyline.Model.DocSettings
             if (resultDict.Count > foundDictKeys.Count)
             {
                 // Other libraries contributed some drift info
-                ionMobilities = new LibraryIonMobilityInfo(filePath?.GetFilePath(), 
-                    false, resultDict);
+                ionMobilities = new LibraryIonMobilityInfo(filePath?.GetFilePath(), false, resultDict);
             }
             return ionMobilities != null;
         }
@@ -2644,6 +2648,7 @@ namespace pwiz.Skyline.Model.DocSettings
             if (ReferenceEquals(this, obj)) return true;
             return ArrayUtil.EqualsDeep(obj._librarySpecs, _librarySpecs) &&
                 ArrayUtil.EqualsDeep(obj._libraries, _libraries) &&
+                Equals(obj.HasDocumentLibrary, HasDocumentLibrary) && // Guard against transitory state where there is only a document library, but it's not added to libspecs yet
                 Equals(obj._rankIdName, _rankIdName) &&
                 Equals(obj.Pick, Pick) &&
                 Equals(obj.RankId, RankId) &&

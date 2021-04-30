@@ -20,10 +20,10 @@
 using System;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Skyline;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
-using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Model.Results;
 using pwiz.SkylineTestUtil;
 
@@ -46,21 +46,22 @@ namespace pwiz.SkylineTestData.Results
             // Open document with some peptides but no results
             var docPath = testFilesDir.GetTestPath("BlibDriftTimeTest.sky");
             SrmDocument docOriginal = ResultsUtil.DeserializeDocument(docPath);
+            docOriginal = CommandLine.ConnectLibrarySpecs(docOriginal, docPath, null);
             using (var docContainer = new ResultsTestDocumentContainer(docOriginal, docPath))
             {
+                // Wait for the document library to load
+                docContainer.WaitForProcessing();
+                docContainer.AssertComplete();
+
                 var doc = docContainer.Document;
 
-                // Use the bare drift times in the spectral library
-                var librarySpec = new BiblioSpecLiteSpec("drift test",
-                                                    testFilesDir.GetTestPath("BlibDriftTimeTest.blib"));
                 var ionMobility = doc.Settings.TransitionSettings.IonMobilityFiltering
                     .ChangeFilterWindowWidthCalculator(
                         new IonMobilityWindowWidthCalculator(
                             IonMobilityWindowWidthCalculator.IonMobilityWindowWidthType.resolving_power, 20, 0, 0, 0))
                     .ChangeUseSpectralLibraryIonMobilityValues(true);
                 doc = doc.ChangeSettings(
-                    doc.Settings.ChangePeptideLibraries(lib => lib.ChangeLibrarySpecs(new[] { librarySpec })).
-                        ChangeTransitionSettings(t => t.ChangeIonMobilityFiltering(ionMobility)));
+                    doc.Settings.ChangeTransitionSettings(t => t.ChangeIonMobilityFiltering(ionMobility)));
 
                 // Import an mz5 file that needs drift info that's in the original data set, 
                 // but preserved in the .blib file associated with a different raw source

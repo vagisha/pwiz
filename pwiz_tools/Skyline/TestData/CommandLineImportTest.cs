@@ -73,8 +73,8 @@ namespace pwiz.SkylineTestData
             Assert.IsTrue(doc.Settings.MeasuredResults.ContainsChromatogram("CAexample"));
             Assert.AreEqual(5, doc.PeptideGroupCount);
             Assert.AreEqual(26, doc.PeptideCount);
-            Assert.AreEqual(26 + doc.SpecialTestTransitionGroupsCount, doc.PeptideTransitionGroupCount);
-            Assert.AreEqual(78 + doc.SpecialTestTransitionsCount, doc.PeptideTransitionCount);
+            Assert.AreEqual(26, doc.MoleculeTransitionGroupCountIgnoringSpecialTestNodes);
+            Assert.AreEqual(78, doc.MoleculeTransitionCountIgnoringSpecialTestNodes);
 
             // without mods
             var outPath2 = testFilesDir.GetTestPath("import-search2.sky");
@@ -94,8 +94,8 @@ namespace pwiz.SkylineTestData
             Assert.IsTrue(doc.Settings.MeasuredResults.ContainsChromatogram("CAexample"));
             Assert.AreEqual(5, doc.PeptideGroupCount);
             Assert.AreEqual(23, doc.PeptideCount);
-            Assert.AreEqual(23 + doc.SpecialTestTransitionGroupsCount, doc.PeptideTransitionGroupCount);
-            Assert.AreEqual(69 + doc.SpecialTestTransitionsCount, doc.PeptideTransitionCount);
+            Assert.AreEqual(23, doc.MoleculeTransitionGroupCountIgnoringSpecialTestNodes);
+            Assert.AreEqual(69, doc.MoleculeTransitionCountIgnoringSpecialTestNodes);
 
             // test setting cutoff and accepting mods when not importing a search
             output = RunCommand(
@@ -171,8 +171,8 @@ namespace pwiz.SkylineTestData
             AssertEx.Contains(output, string.Format(Resources.CommandLine_ImportTransitionList_Importing_transiton_list__0____,
                 Path.GetFileName(smallmolPath))); 
             var doc = ResultsUtil.DeserializeDocument(outPath);
-            Assert.AreEqual(2 + doc.SpecialTestTransitionGroupsCount, doc.MoleculeGroupCount);
-            Assert.AreEqual(4 + doc.SpecialTestTransitionsCount, doc.MoleculeCount);
+            Assert.AreEqual(2, doc.MoleculeGroupCount);
+            Assert.AreEqual(4 , doc.MoleculeCount);
         }
     }
 }

@@ -603,37 +603,39 @@ namespace pwiz.Skyline.Controls.Graphs
 
     public struct PaneKey : IComparable
     {
-        public static readonly PaneKey PRECURSORS = new PaneKey(Adduct.EMPTY, null, false);
-        public static readonly PaneKey PRODUCTS = new PaneKey(Adduct.EMPTY, null, true);
-        public static readonly PaneKey DEFAULT = new PaneKey(Adduct.EMPTY, null, null);
+        public static readonly PaneKey PRECURSORS = new PaneKey(Adduct.EMPTY, null, false, -1);
+        public static readonly PaneKey PRODUCTS = new PaneKey(Adduct.EMPTY, null, true, -1);
+        public static readonly PaneKey DEFAULT = new PaneKey(Adduct.EMPTY, null, null, -1);
 
         public PaneKey(TransitionGroupDocNode nodeGroup)
             : this(nodeGroup != null ? nodeGroup.TransitionGroup.PrecursorAdduct : Adduct.EMPTY,
                    nodeGroup != null ? nodeGroup.TransitionGroup.LabelType : null,
-                   false)
+                   false, nodeGroup.TransitionGroup.ConformerID)
         {
         }
 
         public PaneKey(IsotopeLabelType isotopeLabelType)
-            : this(Adduct.EMPTY, isotopeLabelType, false)
+            : this(Adduct.EMPTY, isotopeLabelType, false, 0)
         {
         }
 
-        private PaneKey(Adduct precursorAdduct, IsotopeLabelType isotopeLabelType, bool? isProducts)
+        private PaneKey(Adduct precursorAdduct, IsotopeLabelType isotopeLabelType, bool? isProducts, int conformerId)
             : this()
         {
             PrecursorAdduct = precursorAdduct.Unlabeled; // Interested only in the "+2Na" part of "M3C13+2Na"
             IsotopeLabelType = isotopeLabelType;
             IsProducts = isProducts;
+            ConformerId = conformerId;
         }
 
         public Adduct PrecursorAdduct { get; private set; }
         public IsotopeLabelType IsotopeLabelType { get; private set; }
         public bool? IsProducts { get; private set; }
+        public int ConformerId { get; private set; }
 
-        private Tuple<Adduct, IsotopeLabelType, bool?> AsTuple()
+        private Tuple<Adduct, IsotopeLabelType, bool?, int> AsTuple()
         {
-            return new Tuple<Adduct, IsotopeLabelType, bool?>(PrecursorAdduct, IsotopeLabelType, IsProducts);
+            return new Tuple<Adduct, IsotopeLabelType, bool?, int>(PrecursorAdduct, IsotopeLabelType, IsProducts, ConformerId);
         }
 
         public int CompareTo(object other)
@@ -650,6 +652,11 @@ namespace pwiz.Skyline.Controls.Graphs
             }
             if (null != IsotopeLabelType &&
                 !Equals(IsotopeLabelType, transitionGroupDocNode.TransitionGroup.LabelType))
+            {
+                return false;
+            }
+
+            if (!Equals(ConformerId, transitionGroupDocNode.TransitionGroup.ConformerID))
             {
                 return false;
             }
