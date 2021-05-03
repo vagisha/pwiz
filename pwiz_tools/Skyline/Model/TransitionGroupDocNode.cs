@@ -185,14 +185,27 @@ namespace pwiz.Skyline.Model
             foreach (var nodeTran in Transitions)
             {
                 var transition = nodeTran.Transition;
-                var adduct = transition.IonType == IonType.precursor ? groupNew.PrecursorAdduct : transition.Adduct;
-                var molecule = transition.IonType == IonType.precursor ? groupNew.CustomMolecule : transition.CustomIon;
+                var adduct = transition.IonType == IonType.precursor
+                             ? groupNew.PrecursorAdduct : transition.Adduct;
+                var molecule = transition.IonType == IonType.precursor
+                             ? groupNew.CustomMolecule : transition.CustomIon;
                 var tranNew = new Transition(groupNew, transition.IonType, transition.CleavageOffset,
                     transition.MassIndex, adduct, transition.DecoyMassShift, molecule);
-                var moleculeMass = transition.IonType == IonType.precursor && nodeGroupNew.IsotopeDist != null
-                    ? nodeGroupNew.IsotopeDist.GetMassI(transition.MassIndex)
-                    : nodeTran.GetMoleculeMass();
-
+                TypedMass moleculeMass;
+                if (transition.IonType == IonType.precursor && nodeGroupNew.IsotopeDist != null)
+                {
+                    var peakIndex = nodeGroupNew.IsotopeDist.MassIndexToPeakIndex(transition.MassIndex);
+                    if (peakIndex < 0 || peakIndex >= nodeGroupNew.IsotopeDist.CountPeaks)
+                    {
+                        // Mass index is no longer valid: remove the transition
+                        continue;
+                    }
+                    moleculeMass = nodeGroupNew.IsotopeDist.GetMassI(transition.MassIndex);
+                }
+                else
+                {
+                    moleculeMass = nodeTran.GetMoleculeMass();
+                }
                 var nodeTranAnnotations = nodeTran.Annotations;
                 var nodeTranNew = new TransitionDocNode(tranNew, nodeTranAnnotations, nodeTran.Losses,
                     moleculeMass, nodeTran.QuantInfo, nodeTran.ExplicitValues, nodeTran.Results);

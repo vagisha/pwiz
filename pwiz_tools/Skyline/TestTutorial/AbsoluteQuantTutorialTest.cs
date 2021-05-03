@@ -230,7 +230,6 @@ namespace pwiz.SkylineTestTutorial
                           Assert.AreEqual(SkylineWindow.SelectedResultsIndex, SkylineWindow.GraphPeakArea.ResultsIndex);
                           Assert.AreEqual(SkylineWindow.SelectedResultsIndex, SkylineWindow.GraphRetentionTime.ResultsIndex);
                       });
-
             RunUI(() =>
             {
                 int transitionCount = SkylineWindow.DocumentUI.PeptideTransitionGroups.First().TransitionCount;
