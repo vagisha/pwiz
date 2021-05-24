@@ -310,15 +310,15 @@ namespace pwiz.Skyline.Model.AuditLog
         // These are referred to by index in log strings.
         // For instance, the string "{2:Missing}" (above) would get localized by
         // passing "Missing" into the function at index 2.
-        private static readonly Func<string, LogLevel, CultureInfo, SrmDocument.DOCUMENT_TYPE, string>[] PARSE_FUNCTIONS =
+        private static readonly Func<string, LogFormat, string>[] PARSE_FUNCTIONS =
         {
-            (s,l,c,t) => ParsePropertyName(s, c, t),
-            (s,l,c,t) => ParsePropertyElementName(s, c, t),
-            (s,l,c,t) => ParseAuditLogString(s, c, t),
-            (s,l,c,t) => ParsePrimitive(s, c, t),
-            (s,l,c,t) => ParsePath(s, l),
-            (s,l,c,t) => ParseColumnCaption(s, c, t),
-            (s,l,c,t) => ParseEnum(s, c, t)
+            (s,f) => ParsePropertyName(s, f.Language, f.DocumentType),
+            (s,f) => ParsePropertyElementName(s, f.Language, f.DocumentType),
+            (s,f) => ParseAuditLogString(s, f.Language, f.DocumentType),
+            (s,f) => ParsePrimitive(s, f.Language, f.DocumentType),
+            (s,f) => ParsePath(s, f.LogLevel, f.ConvertPathsToFilenames),
+            (s,f) => ParseColumnCaption(s, f.Language, f.DocumentType),
+            (s,f) => ParseEnum(s, f.Language, f.DocumentType)
         };
 
         public LogMessage(LogLevel level, MessageInfo info, bool expanded)
@@ -355,9 +355,9 @@ namespace pwiz.Skyline.Model.AuditLog
             return ChangeProp(ImClone(this), im => im.EnExpanded = null);
         }
 
-        private static string ParsePath(string s, LogLevel logLevel)
+        private static string ParsePath(string s, LogLevel logLevel, bool convertPathsToFilenames)
         {
-            if (logLevel == LogLevel.all_info && !AuditLogEntry.ConvertPathsToFileNames)
+            if (logLevel == LogLevel.all_info && !convertPathsToFilenames)
                 return s;
 
             return new DirectoryInfo(s).Name;
@@ -402,11 +402,16 @@ namespace pwiz.Skyline.Model.AuditLog
 
         public string ToString(CultureInfo cultureUI)
         {
-            var names = Names.Select(s => (object)ParseLogString(s, Level, cultureUI, DocumentType)).ToArray();
+            return ToString(new LogFormat(Level, cultureUI, DocumentType));
+        }
+
+        public string ToString(LogFormat logFormat)
+        {
+            var names = Names.Select(s => (object)ParseLogString(s, logFormat)).ToArray();
 
             // If the string could not be found, list the names in brackets and separated by commas
             // TODO: consider throwing exception instead
-            var format = AuditLogStrings.ResourceManager.GetString(Type.ToString(), cultureUI);
+            var format = AuditLogStrings.ResourceManager.GetString(Type.ToString(), logFormat.Language);
             format = Helpers.PeptideToMoleculeTextMapper.Translate(format, DocumentType); // Give it the "peptide" -> "molecule" treatment if document type requires it
 
             return string.IsNullOrEmpty(format)
@@ -518,11 +523,11 @@ namespace pwiz.Skyline.Model.AuditLog
                 }
             }
 
-            public string Parse(string s, LogLevel logLevel, CultureInfo cultureUI, SrmDocument.DOCUMENT_TYPE docType)
+            public string Parse(string s, LogFormat logFormat)
             {
                 if (ParseIndex >= 0 && ParseIndex < PARSE_FUNCTIONS.Length)
                 {
-                    var parsed = PARSE_FUNCTIONS[ParseIndex](ParseInput, logLevel, cultureUI, docType);
+                    var parsed = PARSE_FUNCTIONS[ParseIndex](ParseInput, logFormat);
                     if (parsed != null)
                         return parsed;
                 }
@@ -550,7 +555,14 @@ namespace pwiz.Skyline.Model.AuditLog
         /// <param name="cultureUI">CultureInfo to be used when looking up resources and parsing numbers</param>
         /// <param name="docType">may need to swap "peptide" for "molecule" depending on UI mode at time of event</param>
         /// <returns>localized string</returns>
-        public static string ParseLogString(string str, LogLevel logLevel, CultureInfo cultureUI, SrmDocument.DOCUMENT_TYPE docType)
+        public static string ParseLogString(string str, LogLevel logLevel, CultureInfo cultureUI,
+            SrmDocument.DOCUMENT_TYPE docType)
+        {
+            return ParseLogString(str, new LogFormat(logLevel, cultureUI, docType));
+        }
+
+
+        public static string ParseLogString(string str, LogFormat logFormat)
         {
             var result = new StringBuilder();
 
@@ -563,7 +575,7 @@ namespace pwiz.Skyline.Model.AuditLog
             // Append text before first token
             result.Append(str.Substring(0, token.StartIndex));
 
-            result.Append(token.Parse(str, logLevel, cultureUI, docType));
+            result.Append(token.Parse(str, logFormat));
 
             while (tokens.Count > 0)
             {
@@ -574,7 +586,7 @@ namespace pwiz.Skyline.Model.AuditLog
                 var start = prevToken.StartIndex + prevToken.Length;
                 result.Append(str.Substring(start, token.StartIndex - start));
 
-                result.Append(token.Parse(str, logLevel, cultureUI, docType));
+                result.Append(token.Parse(str, logFormat));
                 
             }
 

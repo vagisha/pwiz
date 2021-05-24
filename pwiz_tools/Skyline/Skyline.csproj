@@ -496,6 +496,7 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>EnumNames.resx</DependentUpon>
     </Compile>
+    <Compile Include="Model\AuditLog\LogFormat.cs" />
     <Compile Include="Model\AuditLog\LogMessage.cs" />
     <Compile Include="Model\AuditLog\Property.cs" />
     <Compile Include="Model\AuditLog\PropertyElementNames.Designer.cs">

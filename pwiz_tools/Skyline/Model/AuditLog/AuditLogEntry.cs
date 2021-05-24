@@ -613,8 +613,8 @@ namespace pwiz.Skyline.Model.AuditLog
             get
             {
                 return _enExtraInfo ?? (_enExtraInfo = LogMessage
-                           .ParseLogString(ExtraInfo, LogLevel.all_info, CultureInfo.InvariantCulture, DocumentType)?
-                           .EscapeNonPrintableChars());
+                    .ParseLogString(ExtraInfo, new LogFormat(LogLevel.all_info, CultureInfo.InvariantCulture, DocumentType))?
+                    .EscapeNonPrintableChars());
             }
             private set { _enExtraInfo = value; }
         }
@@ -1226,8 +1226,6 @@ namespace pwiz.Skyline.Model.AuditLog
         {
             return doc.ChangeAuditLog(ChangeParent(doc.AuditLog.AuditLogEntries));
         }
-
-        public static bool ConvertPathsToFileNames { get; set; }
 
         /// <summary>
         /// Compares the settings objects of the given documents and creates an entry

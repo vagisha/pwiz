@@ -1435,16 +1435,17 @@ namespace pwiz.SkylineTestUtil
             CleanupAuditLogs(); // Clean-up before to avoid appending to an existing audit log
             if (SkylineWindow != null)
                 SkylineWindow.DocumentChangedEvent += OnDocumentChangedLogging;
-            AuditLogEntry.ConvertPathsToFileNames = AuditLogConvertPathsToFileNames;
         }
 
         private void EndAuditLogging()
         {
-            AuditLogEntry.ConvertPathsToFileNames = false;
             if (SkylineWindow == null)
                 return;
             SkylineWindow.DocumentChangedEvent -= OnDocumentChangedLogging;
-            VerifyAuditLogCorrect();
+            foreach (var cultureInfo in ListAuditLogLanguages())
+            {
+                VerifyAuditLogCorrect(cultureInfo);
+            }
             CleanupAuditLogs(); // Clean-up after to avoid appending to an existing autid log - if passed, then it matches expected
         }
 
@@ -1493,10 +1494,13 @@ namespace pwiz.SkylineTestUtil
             }
 
             LogNewEntries(entry.Parent);
-            if (lastLoggedEntry == null)
-                WriteEntryToFile(AuditLogDir, entry);
-            else
-                WriteDiffEntryToFile(AuditLogDir, entry, lastLoggedEntry);
+            foreach (var language in ListAuditLogLanguages())
+            {
+                if (lastLoggedEntry == null)
+                    WriteEntryToFile(AuditLogDir, entry, language);
+                else
+                    WriteDiffEntryToFile(AuditLogDir, entry, lastLoggedEntry, language);
+            }
         }
 
         private AuditLogEntry GetLastLogged(AuditLogEntry entry)
@@ -1510,14 +1514,14 @@ namespace pwiz.SkylineTestUtil
             return null;
         }
 
-        private void VerifyAuditLogCorrect()
+        private void VerifyAuditLogCorrect(CultureInfo cultureInfo)
         {
-            var recordedFile = GetLogFilePath(AuditLogDir);
+            var recordedFile = GetLogFilePath(AuditLogDir, cultureInfo);
             if (!AuditLogCompareLogs)
                 return;
 
             // Ensure expected tutorial log file exists unless recording
-            var projectFile = GetLogFilePath(AuditLogTutorialDir);
+            var projectFile = GetLogFilePath(AuditLogTutorialDir, cultureInfo);
             bool existsInProject = File.Exists(projectFile);
             if (!IsRecordAuditLogForTutorials)
             {
@@ -1577,16 +1581,27 @@ namespace pwiz.SkylineTestUtil
             }
         }
 
-        private void CleanupAuditLogs()
+        public IEnumerable<CultureInfo> ListAuditLogLanguages()
         {
-            var recordedFile = GetLogFilePath(AuditLogDir);
-            if (File.Exists(recordedFile))
-                Helpers.TryTwice(() => File.Delete(recordedFile));    // Avoid appending to the same file on multiple runs
+            return new[]
+            {
+                "en", "fr", "ja", "tr", "zh-CHS"
+            }.Select(CultureInfo.GetCultureInfo);
         }
 
-        private string GetLogFilePath(string folderPath)
+        private void CleanupAuditLogs()
         {
-            var language = CultureInfo.CurrentCulture.TwoLetterISOLanguageName;
+            foreach (var cultureInfo in ListAuditLogLanguages())
+            {
+                var recordedFile = GetLogFilePath(AuditLogDir, cultureInfo);
+                if (File.Exists(recordedFile))
+                    Helpers.TryTwice(() => File.Delete(recordedFile));    // Avoid appending to the same file on multiple runs
+            }
+        }
+
+        private string GetLogFilePath(string folderPath, CultureInfo cultureInfo)
+        {
+            var language = cultureInfo.TwoLetterISOLanguageName;
             var path = Path.Combine(folderPath, language);
             if (!Directory.Exists(path))
                 Directory.CreateDirectory(path);
@@ -1594,9 +1609,9 @@ namespace pwiz.SkylineTestUtil
             return Path.Combine(path, TestContext.TestName + ".log");
         }
 
-        private void WriteDiffEntryToFile(string folderPath, AuditLogEntry entry, AuditLogEntry lastLoggedEntry)
+        private void WriteDiffEntryToFile(string folderPath, AuditLogEntry entry, AuditLogEntry lastLoggedEntry, CultureInfo language)
         {
-            var filePath = GetLogFilePath(folderPath);
+            var filePath = GetLogFilePath(folderPath, language);
             using (var fs = File.Open(filePath, FileMode.Append))
             {
                 using (var sw = new StreamWriter(fs))
@@ -1629,31 +1644,43 @@ namespace pwiz.SkylineTestUtil
             return result;
         }
 
-        private void WriteEntryToFile(string folderPath, AuditLogEntry entry)
+        private void WriteEntryToFile(string folderPath, AuditLogEntry entry, CultureInfo cultureInfo)
         {
-            var filePath = GetLogFilePath(folderPath);
+            var filePath = GetLogFilePath(folderPath, cultureInfo);
             using (var fs = File.Open(filePath, FileMode.Append))
             {
                 using (var sw = new StreamWriter(fs))
                 {
-                    sw.WriteLine(AuditLogEntryToString(entry));
+                    sw.WriteLine(AuditLogEntryToString(entry, cultureInfo));
                 }
             }
         }
 
-        private string AuditLogEntryToString(AuditLogEntry entry)
+        private string AuditLogEntryToString(AuditLogEntry entry, CultureInfo language)
         {
-            var result = string.Format("Undo Redo : {0}\r\n", entry.UndoRedo);
-            result += string.Format("Summary   : {0}\r\n", entry.Summary);
+            var logFormat = new LogFormat(LogLevel.all_info, language, entry.DocumentType)
+                .ChangeConvertPathsToFilenames(true);
+            var result = string.Format("Undo Redo : {0}\r\n", FormatLogMessage(entry.UndoRedo, logFormat));
+            result += string.Format("Summary   : {0}\r\n", FormatLogMessage(entry.Summary, logFormat));
             result += "All Info  :\r\n";
 
             foreach (var allInfoItem in entry.AllInfo)
-                result += allInfoItem + "\r\n";
+                result += FormatLogMessage(allInfoItem, logFormat) + "\r\n";
 
             if (entry.ExtraInfo != null)
-                result += string.Format("Extra Info: {0}\r\n", LogMessage.ParseLogString(entry.ExtraInfo, LogLevel.all_info, entry.DocumentType));
+                result += string.Format("Extra Info: {0}\r\n", LogMessage.ParseLogString(entry.ExtraInfo, logFormat));
 
             return result;
+        }
+
+        private string FormatLogMessage(LogMessage logMessage, LogFormat logFormat)
+        {
+            if (logMessage == null)
+            {
+                return null;
+            }
+
+            return logMessage.ToString(logFormat.ChangeLogLevel(logMessage.Level));
         }
 
         private void WaitForSkyline()
