@@ -1536,7 +1536,7 @@ namespace pwiz.SkylineTestUtil
             if (Equals(expected, actual))
                 return;
 
-            if (ForceMzml)
+            if (!IsRecordAuditLogForTutorials && ForceMzml)
             {
                 // If the only difference is in the mention of a raw file extension, ignore that
                 var extMzml = @".mzml";
@@ -1544,10 +1544,13 @@ namespace pwiz.SkylineTestUtil
                 if (actualParts.Length > 1)
                 {
                     var index = expected.IndexOf(actualParts[1], StringComparison.InvariantCultureIgnoreCase);
-                    var extExpected = expected.Substring(actualParts[0].Length, index - actualParts[0].Length);
-                    if (expected.Replace(extExpected, extMzml).Equals(actual, StringComparison.InvariantCultureIgnoreCase))
+                    if (index >= actualParts[0].Length)
                     {
-                        return;
+                        var extExpected = expected.Substring(actualParts[0].Length, index - actualParts[0].Length);
+                        if (expected.Replace(extExpected, extMzml).Equals(actual, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            return;
+                        }
                     }
                 }
             }
@@ -1651,7 +1654,7 @@ namespace pwiz.SkylineTestUtil
             {
                 using (var sw = new StreamWriter(fs))
                 {
-                    sw.WriteLine(AuditLogEntryToString(entry, cultureInfo));
+                    sw.WriteLine(TranslateUnlocalizableParts(AuditLogEntryToString(entry, cultureInfo), cultureInfo));
                 }
             }
         }
@@ -1671,6 +1674,26 @@ namespace pwiz.SkylineTestUtil
                 result += string.Format("Extra Info: {0}\r\n", LogMessage.ParseLogString(entry.ExtraInfo, logFormat));
 
             return result;
+        }
+
+        private string TranslateUnlocalizableParts(string str, CultureInfo cultureInfo)
+        {
+            var searchStrings = ListUntranslatedAuditLogStrings().ToList();
+            var replacements = LocalizationHelper.CallWithCulture(cultureInfo,
+                () => ListUntranslatedAuditLogStrings().ToList());
+            Assert.AreEqual(searchStrings.Count, replacements.Count);
+            var lines = str.Split(new []{Environment.NewLine}, StringSplitOptions.None);
+            for (int iLine = 0; iLine < lines.Length; iLine++)
+            {
+                string strLine = lines[iLine];
+                int index = searchStrings.IndexOf(strLine);
+                if (index >= 0)
+                {
+                    lines[iLine] = replacements[index];
+                }
+            }
+
+            return string.Join(Environment.NewLine, lines);
         }
 
         private string FormatLogMessage(LogMessage logMessage, LogFormat logFormat)
@@ -2126,7 +2149,16 @@ namespace pwiz.SkylineTestUtil
             }
         }
 
-        #region Modification helpers
+        public virtual IEnumerable<string> ListUntranslatedAuditLogStrings()
+        {
+            System.ComponentModel.ComponentResourceManager pasteDlgResources = new System.ComponentModel.ComponentResourceManager(typeof(PasteDlg));
+            yield return "Extra Info: " + string.Join("\t", pasteDlgResources.GetString("colPeptideSequence.HeaderText"),
+                pasteDlgResources.GetString("colTransitionProteinName.HeaderText"),
+                pasteDlgResources.GetString("colTransitionProteinDescription.HeaderText"));
+
+        }
+
+#region Modification helpers
 
         public static PeptideSettingsUI ShowPeptideSettings()
         {
@@ -2215,9 +2247,9 @@ namespace pwiz.SkylineTestUtil
             });
         }
 
-        #endregion
+#endregion
 
-        #region Results helpers
+#region Results helpers
 
         public void ImportResultsFile(string fileName, int waitForLoadSeconds = 420, string expectedErrorMessage = null,
             LockMassParameters lockMassParameters = null)
@@ -2337,9 +2369,9 @@ namespace pwiz.SkylineTestUtil
             WaitForDocumentChange(doc);
         }
 
-        #endregion
+#endregion
 
-        #region Spectral library test helpers
+#region Spectral library test helpers
 
         public static IList<DbRefSpectra> GetRefSpectra(string filename)
         {
@@ -2452,6 +2484,6 @@ namespace pwiz.SkylineTestUtil
             Assert.Fail("{0} [{1}], precursor charge {2}, precursor m/z {3}, RT {4} with {5} peaks not found", peptideSeq, peptideModSeq, precursorCharge, precursorMz, rT, numPeaks);
         }
 
-        #endregion
+#endregion
     }
 }

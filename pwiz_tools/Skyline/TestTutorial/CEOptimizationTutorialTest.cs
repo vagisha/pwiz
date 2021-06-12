@@ -28,6 +28,7 @@ using pwiz.Skyline.Controls;
 using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
@@ -373,6 +374,13 @@ namespace pwiz.SkylineTestTutorial
 
             // Check last precusor set.
             Assert.IsTrue(ceValues.Count == ceCount);
+        }
+
+        public override IEnumerable<string> ListUntranslatedAuditLogStrings()
+        {
+            return base.ListUntranslatedAuditLogStrings()
+                .Append("Import results settings > Optimizing is " + LogMessage.Quote(ExportOptimize.CE))
+                .Append("Optimizing = " + LogMessage.Quote(ExportOptimize.CE) + ",");
         }
     }
 }

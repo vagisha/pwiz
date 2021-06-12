@@ -19,10 +19,12 @@
 
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.DataBinding;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.Controls.Graphs.Calibration;
@@ -47,9 +49,11 @@ namespace pwiz.SkylineTestTutorial
         [TestMethod]
         public void TestAbsoluteQuantificationTutorial()
         {
+            RecordAuditLogs = true;
+            // LocalizationHelper.CurrentCulture = LocalizationHelper.CurrentUICulture = CultureInfo.GetCultureInfo("ja");
             // Set true to look at tutorial screenshots.
-//            IsPauseForScreenShots = true;
-//            IsCoverShotMode = true;
+            //            IsPauseForScreenShots = true;
+            //            IsCoverShotMode = true;
             CoverShotName = "AbsoluteQuant";
 
             ForceMzml = true;   // Mzml is ~8x faster for this test.

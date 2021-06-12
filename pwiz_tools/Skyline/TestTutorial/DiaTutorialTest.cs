@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -30,6 +31,7 @@ using pwiz.Skyline.EditUI;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.FileUI.PeptideSearch;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
@@ -492,6 +494,12 @@ namespace pwiz.SkylineTestTutorial
                 Settings.Default.StaticModList.Clear();
                 Settings.Default.SpectralLibraryList.Clear();
             });
+        }
+
+        public override IEnumerable<string> ListUntranslatedAuditLogStrings()
+        {
+            return base.ListUntranslatedAuditLogStrings()
+                .Append("Settings > Transition Settings -- Full-Scan > Isotope labeling enrichment changed from Missing to " + LogMessage.Quote(Resources.IsotopeEnrichments_DEFAULT_Default));
         }
     }
 }
