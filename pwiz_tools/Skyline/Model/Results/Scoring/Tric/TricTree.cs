@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using pwiz.Common.DataAnalysis;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.RetentionTimes;
 using pwiz.Skyline.Properties;
@@ -132,7 +133,7 @@ namespace pwiz.Skyline.Model.Results.Scoring.Tric
             {
                 GetAnchorPoints(edge.AVertex.FileIndex, edge.BVertex.FileIndex, aList, bList);
                 edge.Aligner = GetAligner(edge.AVertex.FileIndex, edge.BVertex.FileIndex);
-                edge.Aligner.Train(aList.ToArray(), bList.ToArray());
+                edge.Aligner.Train(aList.ToArray(), bList.ToArray(), CustomCancellationToken.NONE);
                 edgesCompleted++;
 
                 if (verbose)

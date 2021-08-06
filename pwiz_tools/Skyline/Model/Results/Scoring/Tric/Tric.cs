@@ -272,8 +272,10 @@ namespace pwiz.Skyline.Model.Results.Scoring.Tric
                 //train final model
                 var initParams = new LinearModelParams(initWeights);
                 var finalModel = new MProphetPeakScoringModel("FinalModel", initParams, null, true);
-                finalModel = (MProphetPeakScoringModel) finalModel.Train(targets, decoys, initParams,
-                    null, false, false, progressMonitor, documentPath);
+
+                // TODO(tric): targetdecoygenerator
+                finalModel = (MProphetPeakScoringModel) finalModel.Train(targets, decoys, null, initParams,
+                    null, null, false, false, progressMonitor, documentPath);
 
                 //Write final model parameters to console
                 if (output != null)

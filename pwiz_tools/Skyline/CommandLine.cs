@@ -2283,7 +2283,6 @@ namespace pwiz.Skyline
             return new MProphetPeakScoringModel(modelName, (LinearModelParams) null, calcs, decoys, secondBest);
         }
 
-        private bool Reintegrate(ModelAndFeatures modelAndFeatures, bool isOverwritePeaks, bool logTraining)
         private bool Reintegrate(ModelAndFeatures modelAndFeatures, bool isOverwritePeaks, bool useTric, bool logTraining)
         {
             try

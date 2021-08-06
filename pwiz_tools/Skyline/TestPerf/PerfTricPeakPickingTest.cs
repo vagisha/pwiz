@@ -124,7 +124,7 @@ namespace TestPerf
             OpenDocument(GetTestPath("SkylineResult500Peptides-corrected-12.sky", true));
 
             // Compare peaks picked 
-            var comparePeaksDlg = ShowDialog<ComparePeakPickingDlg>(SkylineWindow.ShowCompareModelsDlg);
+            var comparePeaksDlg = ShowDialog<ComparePeakPickingDlg>(SkylineWindow.RefineMenu.ShowCompareModelsDlg);
             AddPeakBoundariesFile(comparePeaksDlg, tricBoundariesPath,"tric", 2);
             AddPeakBoundariesFile(comparePeaksDlg, noAlignBoundariesPath, "noalign", 2);
 

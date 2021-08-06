@@ -668,15 +668,6 @@ namespace pwiz.Skyline
             return true;
         }
 
-        // For reintegration
-        private const string ARG_REINTEGRATE_MODEL_NAME = "reintegrate-model-name"; // Not L10N
-        private const string ARG_REINTEGRATE_CREATE_MODEL = "reintegrate-create-model"; // Not L10N
-        private const string ARG_REINTEGRATE_MODEL_ITERATION_COUNT = "reintegrate-model-iteration-count"; // Not L10N
-        private const string ARG_REINTEGRATE_MODEL_SECOND_BEST = "reintegrate-model-second-best"; // Not L10N
-        private const string ARG_REINTEGRATE_MODEL_BOTH = "reintegrate-model-both"; // Not L10N
-        private const string ARG_REINTEGRATE_OVERWRITE_PEAKS = "reintegrate-overwrite-peaks"; // Not L10N
-        private const string ARG_REINTEGRATE_USE_TRIC = "reintegrate-use-tric"; // Not L10N
-        private const string ARG_REINTEGRATE_LOG_TRAINING = "reintegrate-log-training"; // Not L10N
         private bool MonotonicallyDecreasing(List<double> values, double maxValue)
         {
             double? lastValue = null;
@@ -2238,71 +2229,6 @@ namespace pwiz.Skyline
             {
             }
 
-                else if (IsNameValue(pair, "remove-all")) // Not L10N
-                {
-                    RemovingResults = true;
-                    RequiresSkylineDocument = true;
-                    RemoveBeforeDate = null;
-                }
-                else if (IsNameValue(pair, "remove-before")) // Not L10N
-                {
-                    var removeBeforeDate = pair.Value;
-                    RemovingResults = true;
-                    RequiresSkylineDocument = true;
-                    if (removeBeforeDate != null)
-                    {
-                        try
-                        {
-                            RemoveBeforeDate = Convert.ToDateTime(removeBeforeDate);
-                        }
-                        catch (Exception e)
-                        {
-                            _out.WriteLine(Resources.CommandArgs_ParseArgsInternal_Error__Date__0__cannot_be_parsed_, removeBeforeDate);
-                            _out.WriteLine(e.Message);
-                            return false;
-                        }
-                    }
-                }
-                else if (IsNameValue(pair, ARG_REINTEGRATE_MODEL_NAME))
-                {
-                    ReintegratModelName = pair.Value;
-                }
-                else if (IsNameOnly(pair, ARG_REINTEGRATE_CREATE_MODEL))
-                {
-                    IsCreateScoringModel = true;
-                    if (!IsSecondBestModel)
-                        IsDecoyModel = true;
-                }
-                else if (IsNameValue(pair, ARG_REINTEGRATE_MODEL_ITERATION_COUNT))
-                {
-                    ReintegrateModelIterationCount = pair.ValueInt;
-                }
-                else if (IsNameOnly(pair, ARG_REINTEGRATE_OVERWRITE_PEAKS))
-                {
-                    IsOverwritePeaks = true;
-                }
-                else if (IsNameOnly(pair, ARG_REINTEGRATE_MODEL_SECOND_BEST))
-                {
-                    IsSecondBestModel = true;
-                    IsDecoyModel = false;
-                }
-                else if (IsNameOnly(pair, ARG_REINTEGRATE_MODEL_BOTH))
-                {
-                    IsSecondBestModel = IsDecoyModel = true;
-                }
-                else if (IsNameOnly(pair, ARG_REINTEGRATE_USE_TRIC))
-                {
-                    UsesTRIC = true;
-                }
-                else if (IsNameOnly(pair, ARG_REINTEGRATE_LOG_TRAINING))
-                {
-                    IsLogTraining = true;
-                }
-                else if (IsNameValue(pair, "report-name")) // Not L10N
-                {
-                    ReportName = pair.Value;
-                    RequiresSkylineDocument = true;
-                }
             public RefineArgument(string name, string[] values, Func<CommandArgs, NameValuePair, bool> processValue)
                 : base(name, values, (c, p) => ProcessValueOverride(c, p, processValue))
             {

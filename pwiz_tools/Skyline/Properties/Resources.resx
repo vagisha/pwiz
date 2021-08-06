@@ -9271,7 +9271,6 @@ If your transition list format combines formulas and adducts in a single column 
   <data name="TricTree_Traverse__0______1____RMSD__2_" xml:space="preserve">
     <value>{0} -&gt; {1} : RMSD {2}</value>
   </data>
-</root>
   <data name="SkylineWindow_importAssayLibraryMenuItem_Click_Import_Assay_Library" xml:space="preserve">
     <value>Import Assay Library</value>
   </data>
