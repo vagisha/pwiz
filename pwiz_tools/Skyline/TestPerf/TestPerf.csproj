@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>TestPerf</RootNamespace>
     <AssemblyName>TestPerf</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ProjectTypeGuids>{3AC096D0-A1C2-E12C-1390-A8335801FDAB};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <FileUpgradeFlags>
@@ -87,9 +87,9 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\Shared\Lib\DigitalRune.Windows.Docking.dll</HintPath>
     </Reference>
-    <Reference Include="Ionic.Zip, Version=1.9.1.8, Culture=neutral, PublicKeyToken=edbe51ad942a3f5c, processorArchitecture=MSIL">
+    <Reference Include="DotNetZip">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\Shared\Lib\DotNetZip\Release\Ionic.Zip.dll</HintPath>
+      <HintPath>..\..\Shared\Lib\DotNetZip\DotNetZip.dll</HintPath>
     </Reference>
     <Reference Include="log4net">
       <SpecificVersion>False</SpecificVersion>
@@ -101,7 +101,7 @@
     </Reference>
     <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="Microsoft.VisualStudio.QualityTools.UnitTestFramework, Version=10.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL" />
-    <Reference Include="Newtonsoft.Json, Version=4.5.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+    <Reference Include="Newtonsoft.Json">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\Shared\Lib\Newtonsoft.Json.dll</HintPath>
     </Reference>
@@ -109,7 +109,7 @@
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
-    <Reference Include="System.Data.SQLite, Version=1.0.79.0, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=$(PLATFORM)">
+    <Reference Include="System.Data.SQLite, Version=1.0.105.2, Culture=neutral, PublicKeyToken=db937bc2d44ff139, processorArchitecture=$(PLATFORM)">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\..\..\libraries\SQLite\$(PLATFORM)\System.Data.SQLite.dll</HintPath>
       <Private>True</Private>
@@ -134,12 +134,21 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="MeasuredDriftTimesTutorialTest.cs" />
+    <Compile Include="AreaCVHistogramQValueAndRatioTest.cs" />
+    <Compile Include="DdaTutorialTest.cs" />
+    <Compile Include="DiaUmpireTutorialTest.cs" />
+    <Compile Include="DiaSwathTutorialTest.cs" />
+    <Compile Include="PerfImportHundredsOfReplicatesTest.cs" />
+    <Compile Include="HiResMetabolomicsTutorial.cs" />
+    <Compile Include="ImportMassOnlyMoleculesTest.cs" />
+    <Compile Include="DriftTimePredictorTutorialTest.cs" />
     <Compile Include="PeakSortingTest.cs" />
-    <Compile Include="PerfChorusGenerateChromatograms.cs" />
     <Compile Include="PerfDecoysMatchTest.cs" />
-    <Compile Include="PerfGenerateChorusRequests.cs" />
+    <Compile Include="PerfElectronIonizationAllIonsTest.cs" />
     <Compile Include="PerfImportAgilentSpectrumMillRampedIMSTest.cs" />
+    <Compile Include="PerfImportDiaPasefTest.cs" />
+    <Compile Include="PerfImportPasefMascotTest.cs" />
+    <Compile Include="PerfImportPrmPasefTest.cs" />
     <Compile Include="PerfImportResultsAgilentIMSTest.cs" />
     <Compile Include="PerfImportResultsAgilentSpectrumMillIMSTest.cs" />
     <Compile Include="PerfImportResultsHugeTest.cs" />
@@ -147,6 +156,8 @@
     <Compile Include="PerfLockmassCmdlineTest.cs" />
     <Compile Include="PerfLockmassTest.cs" />
     <Compile Include="PerfMeasuredDriftTimes.cs" />
+    <Compile Include="PerfMeasuredInverseK0.cs" />
+    <Compile Include="PerfMs3ChromatogramTest.cs" />
     <Compile Include="PerfNegativeIonDIATest.cs" />
     <Compile Include="PerfOpenSwathConvert.cs" />
     <Compile Include="PerfOptimizeCEImportResultsNativeVsMz5Test.cs" />
@@ -154,8 +165,14 @@
     <Compile Include="PerfMinimizeResultsTest.cs" />
     <Compile Include="PerfPeakTest.cs" />
     <Compile Include="PerfPeakViewConvert.cs" />
+    <Compile Include="PerfThermoFAIMSTest.cs" />
+    <Compile Include="PerfThermoNegativeFAIMSTest.cs" />
+    <Compile Include="PerfTicAreaTest.cs" />
     <Compile Include="PerfUniquePeptidesTest.cs" />
     <Compile Include="PerfTricPeakPickingTest.cs" />
+    <Compile Include="PerfWatersSonarTest.cs" />
+    <Compile Include="SmallMolDriftTimePredictorTest.cs" />
+    <Compile Include="SmallMolLibrariesTutorialTest.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Shared\BiblioSpec\BiblioSpec.csproj">
@@ -219,6 +236,17 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="ThermoDIA.ChorusRequest.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="DdaTutorialViews.zip" />
+    <None Include="DiaSwathQEViews.zip" />
+    <None Include="DiaSwathTTOFViews.zip" />
+    <None Include="DriftTimePredictorExtra.zip" />
+    <None Include="DriftTimePredictorViews.zip" />
+    <None Include="PerfImportHundredsOfReplicatesTest.zip" />
+    <None Include="HiResMetabolomicsViews.zip" />
+    <None Include="PerfMs3ChromatogramTest.zip" />
+    <None Include="SmallMolLibrariesTutorialViews.zip" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

@@ -87,7 +87,7 @@ void txt2mzml(const char* filenameIn, const char* filenameOut)
         // parse stream one line at a time 
 
         string buffer;
-        getline(is, buffer);
+        getlinePortable(is, buffer);
 
         // if we're done, flush one last time and break
 
@@ -151,7 +151,7 @@ int main(int argc, char* argv[])
                  << "           2           ms1     1999.7273         26.49\n"
                  << "           2           ms1     1999.8182          0.00\n"
                  << "\n" 
-                 << "http://proteowizard.sourceforge.net\n"
+                 << "https://github.com/ProteoWizard\n"
                  << "support@proteowizard.org\n";
             return 1;
         }

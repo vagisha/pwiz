@@ -24,6 +24,7 @@
 #define _SPECTRUMLIST_BRUKER_HPP_
 
 #include "pwiz/utility/misc/Export.hpp"
+#include "pwiz/data/msdata/Reader.hpp"
 #include "pwiz/data/msdata/SpectrumListBase.hpp"
 #include "pwiz/utility/misc/IntegerSet.hpp"
 #include "pwiz/utility/misc/Filesystem.hpp"
@@ -43,7 +44,7 @@ using boost::shared_ptr;
 //
 // SpectrumList_Bruker
 //
-class PWIZ_API_DECL SpectrumList_Bruker : public SpectrumListBase
+class PWIZ_API_DECL SpectrumList_Bruker : public SpectrumListIonMobilityBase
 {
     public:
 
@@ -54,12 +55,19 @@ class PWIZ_API_DECL SpectrumList_Bruker : public SpectrumListBase
     virtual SpectrumPtr spectrum(size_t index, DetailLevel detailLevel) const;
     virtual SpectrumPtr spectrum(size_t index, bool getBinaryData, const pwiz::util::IntegerSet& msLevelsToCentroid) const;
     virtual SpectrumPtr spectrum(size_t index, DetailLevel detailLevel, const pwiz::util::IntegerSet& msLevelsToCentroid) const;
+    virtual bool hasIonMobility() const;
+    virtual bool hasPASEF() const;
+    virtual bool canConvertIonMobilityAndCCS() const;
+    virtual bool hasCombinedIonMobility() const;
+    virtual double ionMobilityToCCS(double inverseK0, double mz, int charge) const;
+    virtual double ccsToIonMobility(double ccs, double mz, int charge) const;
 
 #ifdef PWIZ_READER_BRUKER
     SpectrumList_Bruker(MSData& msd,
                         const string& rootpath,
                         Bruker::Reader_Bruker_Format format,
-                        CompassDataPtr compassDataPtr);
+                        CompassDataPtr compassDataPtr,
+                        const Reader::Config& config);
 
     MSSpectrumPtr getMSSpectrumPtr(size_t index, vendor_api::Bruker::DetailLevel detailLevel) const;
 
@@ -69,6 +77,7 @@ class PWIZ_API_DECL SpectrumList_Bruker : public SpectrumListBase
     bfs::path rootpath_;
     Bruker::Reader_Bruker_Format format_;
     mutable CompassDataPtr compassDataPtr_;
+    const Reader::Config config_;
     size_t size_;
     vector<bfs::path> sourcePaths_;
 

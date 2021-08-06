@@ -86,8 +86,17 @@ namespace pwiz.MSGraph
             _scaledMin = min;
             _scaledMax = max;
             _scaleRange = max - min;
-            if( _scaleRange == 0 )
-                return;
+            if (_scaleRange == 0)
+            {
+                if (_fullPointList.Count == 1)
+                {
+                    _scaleRange = 1; // Single point in graph
+                }
+                else
+                {
+                    return; // Multiple points scaled down to nothing
+                }
+            }
             _scaleFactor = width / _scaleRange;
 
             // store 4 points for each bin (entry, min, max, exit)
@@ -158,9 +167,9 @@ namespace pwiz.MSGraph
                 } else // same bin, set exit point
                 {
                     curBinExitIndex = i;
-                    if( point.Y > _fullPointList[curBinMaxIndex].Y )
+                    if( Math.Abs(point.Y) > Math.Abs(_fullPointList[curBinMaxIndex].Y) )
                         curBinMaxIndex = i;
-                    else if( point.Y < _fullPointList[curBinMinIndex].Y )
+                    else if(Math.Abs(point.Y) < Math.Abs(_fullPointList[curBinMinIndex].Y) )
                         curBinMinIndex = i;
                 }
             }

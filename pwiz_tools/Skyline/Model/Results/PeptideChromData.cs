@@ -90,6 +90,8 @@ namespace pwiz.Skyline.Model.Results
             get { return DataSets.Count > 0 ? DataSets[0].FirstKey : ChromKey.EMPTY; }
         }
 
+        public int IndexInFile { get; set; }
+
         private IEnumerable<IEnumerable<ChromDataSet>> ComparableDataSets
         {
             get
@@ -139,7 +141,7 @@ namespace pwiz.Skyline.Model.Results
             foreach (var set in _dataSets.ToArray())
             {
                 Color peptideColor = NodePep != null ? NodePep.Color : PeptideDocNode.UNKNOWN_COLOR;
-                if (!set.Load(provider, NodePep != null ? NodePep.RawTextId : null, peptideColor))
+                if (!set.Load(provider, NodePep != null ? NodePep.ModifiedTarget : null, peptideColor))
                     _dataSets.Remove(set);
             }
             //Console.Out.WriteLine("Ending {0} {1} {2}", NodePep, _dataSets.Count, RuntimeHelpers.GetHashCode(this));
@@ -148,15 +150,46 @@ namespace pwiz.Skyline.Model.Results
 
         public void PickChromatogramPeaks()
         {
+            TimeIntervals intersectedTimeIntervals = null;
+            if (_document.Settings.TransitionSettings.Instrument.TriggeredAcquisition && NodePep != null)
+            {
+                var triggeredAcquisition = new TriggeredAcquisition();
+                foreach (var chromDataSet in _dataSets)
+                {
+                    var timeIntervals = triggeredAcquisition.InferTimeIntervals(
+                        chromDataSet.Chromatograms.Where(chrom => null != chrom.DocNode)
+                            .Select(chrom => chrom.RawTimes));
+                    chromDataSet.TimeIntervals = timeIntervals;
+                    if (timeIntervals != null)
+                    {
+                        if (intersectedTimeIntervals == null)
+                        {
+                            intersectedTimeIntervals = timeIntervals;
+                        }
+                        else
+                        {
+                            intersectedTimeIntervals = intersectedTimeIntervals.Intersect(timeIntervals);
+                        }
+                    }
+                }
+            }
             // Make sure times are evenly spaced before doing any peak detection.
             EvenlySpaceTimes();
             var explicitPeakBounds = _document.Settings.GetExplicitPeakBounds(NodePep, FileInfo.FilePath);
+
+            // If an explicit retention time was provided, limit peak picking to that window
+            var explicitRetentionTime = NodePep?.ExplicitRetentionTime;
+            if (explicitRetentionTime != null && !explicitRetentionTime.RetentionTimeWindow.HasValue)
+            {
+                // If no explicit window, use the one in Peptide Settings
+                explicitRetentionTime = new ExplicitRetentionTimeInfo(explicitRetentionTime.RetentionTime, _document.Settings.PeptideSettings.Prediction.MeasuredRTWindow);
+            }
             // Pick peak groups at the precursor level
             foreach (var chromDataSet in _dataSets)
             {
                 if (explicitPeakBounds == null)
                 {
-                    chromDataSet.PickChromatogramPeaks(_retentionTimes, _isAlignedTimes);
+                    chromDataSet.PickChromatogramPeaks(_retentionTimes, _isAlignedTimes, explicitRetentionTime);
                 }
                 else
                 {
@@ -171,11 +204,12 @@ namespace pwiz.Skyline.Model.Results
 
             // Adjust peak dimensions based on peak picking
             foreach (var chromDataSet in _dataSets)
-                chromDataSet.GeneratePeakData();
+                chromDataSet.GeneratePeakData(intersectedTimeIntervals);
 
             var detailedCalcs = DetailedPeakFeatureCalculators.Select(calc => (IPeakFeatureCalculator)calc).ToList();
-            foreach (var listPeakSets in _listListPeakSets)
+            for (int i = 0; i < _listListPeakSets.Count; i++)
             {
+                var listPeakSets = _listListPeakSets[i];
                 var maxPossibleShift = GetMaxPossibleShift(listPeakSets);
 
                 // Score the peaks under the legacy model score
@@ -187,7 +221,7 @@ namespace pwiz.Skyline.Model.Results
                     peakSet.ScorePeptideSets(context, detailedCalcs);
                 }
 
-                SortAndLimitPeaks(listPeakSets);
+                _listListPeakSets[i] = SortAndLimitPeaks(listPeakSets);
             }
 
             // Propagate sorting down to precursor level
@@ -209,35 +243,35 @@ namespace pwiz.Skyline.Model.Results
             return new MaxPossibleShift(maxAnalyteShift, maxStandardShift);
         }
 
-        private void SortAndLimitPeaks(List<PeptideChromDataPeakList> listPeakSets)
+        private List<PeptideChromDataPeakList> SortAndLimitPeaks(List<PeptideChromDataPeakList> listPeakSets)
         {
             // Sort descending by the peak picking score
-            listPeakSets.Sort(ComparePeakLists);
-
+            // In order to ensure it is a stable sort, we use "OrderBy" and then copy back to the original list.
+            // CONSIDER(nicksh): See if we can reliably target .Net 4.5 during unit tests and just use List.Sort
             // Remove peaks contained in higher scoring peaks and limit to max peaks
-            int i = 0;
-            while (i < listPeakSets.Count)
+            var listNew = new List<PeptideChromDataPeakList>(MAX_PEAK_GROUPS);
+            foreach (var peakSet in listPeakSets.OrderBy(p => p, Comparer<PeptideChromDataPeakList>.Create(ComparePeakLists)))
             {
-                var peakSet = listPeakSets[i];
-                if (i >= MAX_PEAK_GROUPS || ContainedPeak(peakSet, listPeakSets, i))
+                if (listNew.Count < MAX_PEAK_GROUPS && !ContainedPeak(peakSet, listNew))
+                    listNew.Add(peakSet);
+                else
                 {
                     // Remove peaks from their data sets
                     foreach (var chromDataPeak in peakSet)
                         chromDataPeak.Data.RemovePeak(chromDataPeak.PeakGroup);
-                    listPeakSets.RemoveAt(i);
-                    continue;
                 }
-                i++;
             }
+
+            return listNew;
         }
 
-        private bool ContainedPeak(IEnumerable<PeptideChromDataPeak> peakSet, List<PeptideChromDataPeakList> listPeakSets, int peakIndex)
+        private bool ContainedPeak(IEnumerable<PeptideChromDataPeak> peakSet, List<PeptideChromDataPeakList> listPeakSets)
         {
             // O(n^2) algorithm, but for never more than 10 items
             var peak = peakSet.First();
-            for (int i = 0; i < peakIndex; i++)
+            foreach (var peakSetBetter in listPeakSets)
             {
-                var peakBetter = listPeakSets[i].First();
+                var peakBetter = peakSetBetter.First();
                 // If contained by a better peak, or a better peak contains this peak
                 if (peakBetter.IsContained(peak) || peak.IsContained(peakBetter))
                     return true;
@@ -271,6 +305,11 @@ namespace pwiz.Skyline.Model.Results
             while (ThermoZerosFix())
             {
             }
+            if (!FullScanAcquisitionMethod.DDA.Equals(_document.Settings.TransitionSettings.FullScan.AcquisitionMethod))
+            {
+                ChromDataSet.TruncateMs1ForScheduledMs2(_dataSets);
+            }
+
             // Moved to ProteoWizard
             //                else if (WiffZerosFix())
             //                {
@@ -440,9 +479,18 @@ namespace pwiz.Skyline.Model.Results
             get
             {
                 // We do not save raw times if there is an optimization function because it is too hard.
+                return OptimizableRegression == null;
+            }
+        }
+
+        public OptimizableRegression OptimizableRegression
+        {
+            get
+            {
+                // We do not save raw times if there is an optimization function because it is too hard.
                 var chromatogramSet = _document.Settings.MeasuredResults.Chromatograms.FirstOrDefault(
                     c => null != c.GetFileInfo(FileInfo.FileId));
-                return chromatogramSet == null || null == chromatogramSet.OptimizationFunction;
+                return chromatogramSet?.OptimizationFunction;
             }
         }
 
@@ -820,6 +868,7 @@ namespace pwiz.Skyline.Model.Results
                 }
             }
 
+            bool multiTranMatch = OptimizableRegression != null;
             // Only accept if mz is as good or better fit than what's already in list - if better, chuck out any previous values.
             // (If mz fit is the same, that will have been dealt with in FindAndMerge.)
             for (var i = DataSets.Count-1; i >= 0; i--)
@@ -831,7 +880,7 @@ namespace pwiz.Skyline.Model.Results
                     //           The test has been improved to also consider matching transition count
                     //           but this may still need to be improved not to entirely discard sets
                     //           of chromatograms.
-                    int comp = Compare(chromDataSet, DataSets[i], chromDataSet.NodeGroup.PrecursorMz);
+                    int comp = Compare(chromDataSet, DataSets[i], chromDataSet.NodeGroup.PrecursorMz, multiTranMatch);
                     if (comp > 0)
                     {
                         DataSets.RemoveAt(i); // Proposed addition has better mz match than what we had before, so toss old values
@@ -845,11 +894,11 @@ namespace pwiz.Skyline.Model.Results
             DataSets.Add(chromDataSet);
         }
 
-        private int Compare(ChromDataSet d1, ChromDataSet d2, double expectedMz)
+        private int Compare(ChromDataSet d1, ChromDataSet d2, double expectedMz, bool multiTranMatch)
         {
             // Larger is better for transition match count
-            int trans1 = d1.TranCount;
-            int trans2 = d2.TranCount;
+            int trans1 = multiTranMatch ? d1.TranCount : d1.UniqueTranCount;
+            int trans2 = multiTranMatch ? d2.TranCount : d2.UniqueTranCount;
             if (trans1 != trans2)
                 return trans1.CompareTo(trans2);
             // Smaller is better for m/z delta
@@ -922,7 +971,7 @@ namespace pwiz.Skyline.Model.Results
                 return true;
             if (nodeGroup1 == null || nodeGroup2 == null)
                 return false;
-            return nodeGroup1.TransitionGroup.PrecursorCharge == nodeGroup2.TransitionGroup.PrecursorCharge &&
+            return Equals(nodeGroup1.TransitionGroup.PrecursorAdduct, nodeGroup2.TransitionGroup.PrecursorAdduct) &&
                    ReferenceEquals(nodeGroup1.TransitionGroup.LabelType, nodeGroup2.TransitionGroup.LabelType);
         }
     }

@@ -29,9 +29,11 @@
  * information.
  */
 
-#include <string>
+#include <set>
 #include <vector>
-#include "boost/lexical_cast.hpp"
+#include "pwiz/utility/misc/optimized_lexical_cast.hpp"
+#include "SmallMolMetadata.h"
+#include "BlibUtils.h" // For IONMOBILITY_TYPE enum
 
 /**
  * \struct SeqMod
@@ -52,12 +54,20 @@ struct SeqMod{
   : position(pos), deltaMass(mass) {};
 };
 
+struct Protein {
+  std::string accession;
+  Protein() {}
+  Protein(const std::string& s): accession(s) {}
+};
+
 /**
  * \struct PSM
  * \brief A Peptide Spectrum Match (PSM) is a data type to hold
  * information for what will become a reference spectrum in the library. 
  * There are three ways if identifying a spectrum: by name, by scan
  * number or by index.  Most filetypes will use only one of the three.
+ * N.B. as we extend Skyline to generalized small molecules, "PSM" is
+ * a misnomer, like a lot of things in Skyline
  */
 struct PSM{
   int charge;      ///< charge of the spectrum precursor
@@ -67,25 +77,19 @@ struct PSM{
   int specKey;     ///< a key for identifying a spectrum
   int specIndex;   ///< the index of a spectrum in its file
   double score;    ///< score associated with this paring of spec and seq
+  double ionMobility; ///< e.g. drift time, inverse reduced ion mobility, or compensation voltage
+  BiblioSpec::IONMOBILITY_TYPE ionMobilityType;
+  double ccs; // collisional cross section (ion mobility information)
   std::string specName; ///< the parentFileName attribute from the scanOrigin element
+  std::set<const Protein*> proteins;
+
+  // Small molecule stuff
+  SmallMolMetadata smallMolMetadata;
 
   PSM()
-  : charge(0), specKey(-1), specIndex(-1), score(0) {};
-
+  : charge(0), specKey(-1), specIndex(-1), score(0), ionMobility(0), ionMobilityType(BiblioSpec::IONMOBILITY_NONE), ccs(0) {};
+  
   virtual ~PSM(){ };
-
-  PSM& operator= (const PSM& rhs)
-  {
-    charge = rhs.charge;
-    unmodSeq = rhs.unmodSeq;
-    modifiedSeq = rhs.modifiedSeq;
-    mods = rhs.mods;
-    specKey = rhs.specKey;
-    specIndex = rhs.specIndex;
-    score = rhs.score;
-    specName = rhs.specName;
-    return *this;
-  }
 
   void clear(){
     charge = 0;
@@ -95,10 +99,22 @@ struct PSM{
     specKey = -1;
     specIndex = -1;
     score = 0;
+    ionMobility = 0;
+    ionMobilityType = BiblioSpec::IONMOBILITY_NONE;
+    ccs = 0;
     specName.clear();
+    smallMolMetadata.clear();
+    proteins.clear();
   };
 
-  std::string idAsString(){
+  bool IsCompleteEnough() const
+  {
+      return (specKey >= 0 || specIndex >= 0 || !specName.empty()) && 
+          (smallMolMetadata.IsCompleteEnough() ||
+           (charge != 0 && !unmodSeq.empty()));
+  }
+
+  std::string idAsString() const {
     std::string result;
         if( ! specName.empty() ){
             result = specName;

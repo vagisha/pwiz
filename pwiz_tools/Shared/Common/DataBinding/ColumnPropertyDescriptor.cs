@@ -17,7 +17,6 @@
  * limitations under the License.
  */
 using System;
-using System.ComponentModel;
 using System.Linq;
 
 namespace pwiz.Common.DataBinding
@@ -25,13 +24,13 @@ namespace pwiz.Common.DataBinding
     /// <summary>
     /// PropertyDescriptor which uses a <see cref="ColumnDescriptor"/> to obtain the property value.
     /// </summary>
-    public class ColumnPropertyDescriptor : PropertyDescriptor
+    public class ColumnPropertyDescriptor : DataPropertyDescriptor
     {
         public ColumnPropertyDescriptor(DisplayColumn displayColumn, string name) : this(displayColumn, name, displayColumn.PropertyPath, null)
         {
         }
         public ColumnPropertyDescriptor(DisplayColumn displayColumn, string name, PropertyPath propertyPath, PivotKey pivotKey)
-            : base(name, displayColumn.GetAttributes(pivotKey).ToArray())
+            : base(name, displayColumn.GetColumnCaption(pivotKey), displayColumn.DataSchema.DataSchemaLocalizer, displayColumn.GetAttributes(pivotKey).ToArray())
         {
             DisplayColumn = displayColumn;
             PropertyPath = propertyPath;
@@ -91,11 +90,24 @@ namespace pwiz.Common.DataBinding
                 return DisplayColumn.GetColumnCaption(PivotKey, ColumnCaptionType.localized);
             }
         }
-        public delegate void HookPropertyChange(object component, PropertyDescriptor propertyDescriptor);
 
         public override string Description
         {
             get { return DisplayColumn.GetColumnDescription(PivotKey); }
+        }
+
+        public override PivotedColumnId PivotedColumnId
+        {
+            get
+            {
+                IColumnCaption pivotCaption = null;
+                if (PivotKey != null)
+                {
+                    pivotCaption = CaptionComponentList.SpaceSeparate(PivotKey.KeyPairs.Select(kvp => kvp.Value));
+                }
+
+                return new PivotedColumnId(PivotKey, pivotCaption, DisplayColumn.PropertyPath, DisplayColumn.GetColumnCaption(null));
+            }
         }
 
         #region Equality Members
@@ -104,7 +116,8 @@ namespace pwiz.Common.DataBinding
             return base.Equals(other) 
                 && Equals(PropertyPath, other.PropertyPath) 
                 && Equals(PivotKey, other.PivotKey) 
-                && Equals(DisplayColumn, other.DisplayColumn);
+                && Equals(DisplayColumn, other.DisplayColumn)
+                && Attributes.OfType<Attribute>().SequenceEqual(other.Attributes.OfType<Attribute>());
         }
 
         public override bool Equals(object obj)
@@ -126,6 +139,8 @@ namespace pwiz.Common.DataBinding
                 return hashCode;
             }
         }
+
+
         #endregion
     }
 }

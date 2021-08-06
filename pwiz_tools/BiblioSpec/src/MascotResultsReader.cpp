@@ -25,9 +25,10 @@
  * the MascotSpecReader so the file only has to be opened and parsed once.
  */
 
-#include <sys/stat.h>
 #include "MascotResultsReader.h"
 #include "BlibUtils.h"
+#include "pwiz/utility/misc/String.hpp"
+#include "pwiz/utility/misc/Filesystem.hpp"
 
 namespace BiblioSpec {
 
@@ -46,7 +47,28 @@ MascotResultsReader::MascotResultsReader(BlibBuilder& maker,
         cachePath = ".";
     }
 
-    ms_file_ = new ms_mascotresfile(datFileName, 0, "", 
+    string datFileNameStr(datFileName), realDatFilePath;
+    if (pwiz::util::findUnicodeBytes(datFileNameStr) != datFileNameStr.end())
+    {
+        Verbosity::warn("Mascot Parser does not support Unicode in filepaths ('%s'): copying file to a temporary non-Unicode path", datFileName);
+        string sanitizedFilename = bfs::path(datFileNameStr).filename().string();
+        string::const_iterator unicodeByteItr;
+        while ((unicodeByteItr = pwiz::util::findUnicodeBytes(sanitizedFilename)) != sanitizedFilename.end())
+        {
+            sanitizedFilename[unicodeByteItr - sanitizedFilename.cbegin()] = '_';
+        }
+
+        realDatFilePath = (bfs::temp_directory_path() / sanitizedFilename).string();
+        if (!bfs::exists(realDatFilePath))
+        {
+            bfs::copy_file(datFileNameStr, realDatFilePath);
+            tmpDatFile_.reset(new TempFileDeleter(realDatFilePath));
+        }
+    }
+    else
+        realDatFilePath = datFileNameStr;
+
+    ms_file_ = new ms_mascotresfile(realDatFilePath.c_str(), 0, "",
                                     cacheFlag,
                                     cachePath);
 
@@ -55,7 +77,7 @@ MascotResultsReader::MascotResultsReader(BlibBuilder& maker,
         if( error !=  ms_mascotresfile::ERR_NO_ERROR ) {
             string msg = getErrorMessage(error);
             throw BlibException(true, "Error with '%s'. %s", 
-                                datFileName, msg.c_str());
+                                realDatFilePath.c_str(), msg.c_str());
         }
     }
 
@@ -63,20 +85,25 @@ MascotResultsReader::MascotResultsReader(BlibBuilder& maker,
     scoreThreshold_ = getScoreThreshold(MASCOT);
 
     // create the results objects
-    ms_results_ = 
-        new ms_peptidesummary(*ms_file_, 
-                              ms_mascotresults::MSRES_DUPE_REMOVE_NONE, 
-                              0, // get all results and filter later 
-                              0, // get all ranks 
-                              0, // no unigene index file
-                              0, // ignoreIonsScoreBelow 
-                              0, // min peptide length
-                              0, // singleHit 
-                       ms_peptidesummary::MSPEPSUM_NO_PROTEIN_GROUPING |
-                       ms_peptidesummary::MSPEPSUM_USE_HOMOLOGY_THRESH); 
+    unsigned int flags = ms_mascotresults::MSRES_DUPE_REMOVE_NONE;
+    unsigned int flags2 = ms_peptidesummary::MSPEPSUM_USE_HOMOLOGY_THRESH |
+                          ms_peptidesummary::MSPEPSUM_NO_PROTEIN_GROUPING;
+    if (ms_file_->isErrorTolerant()) {
+        flags |= ms_peptidesummary::MSRES_INTEGRATED_ERR_TOL;
+        flags2 &= ~ms_peptidesummary::MSPEPSUM_NO_PROTEIN_GROUPING; // this flag does not work with error tolerant searches
+    }
+    ms_results_ = new ms_peptidesummary(*ms_file_, 
+                                        flags,
+                                        0, // get all results and filter later
+                                        0, // get all ranks
+                                        0, // no unigene index file
+                                        0, // ignoreIonsScoreBelow
+                                        0, // min peptide length
+                                        0, // singleHit
+                                        flags2);
 
     // register the name with BuildParser, but don't try to open it
-    this->setSpecFileName(datFileName, false);
+    this->setSpecFileName(realDatFilePath.c_str(), false);
 
     ms_params_ = new ms_searchparams(*ms_file_);
 
@@ -85,7 +112,7 @@ MascotResultsReader::MascotResultsReader(BlibBuilder& maker,
 
     // create the spec reader, sharing the file and results objects
     delete specReader_;  
-    specReader_ = new MascotSpecReader(datFileName, ms_file_, ms_results_, rawFiles_);
+    specReader_ = new MascotSpecReader(realDatFilePath.c_str(), ms_file_, ms_results_, rawFiles_, tmpDatFile_);
 
     // get modifications information
     for(int i=1; 0 != ms_params_->getFixedModsDelta(i); i++){
@@ -132,8 +159,12 @@ MascotResultsReader::MascotResultsReader(BlibBuilder& maker,
     specFileExtensions_.push_back(".RAW]");
     specFileExtensions_.push_back(".d]");
     specFileExtensions_.push_back(".wiff]");
-    specFileExtensions_.push_back(".mzXML]");
-    specFileExtensions_.push_back(".mzML]");
+	specFileExtensions_.push_back(".wiff2]");
+	specFileExtensions_.push_back(".lcd]");
+	specFileExtensions_.push_back(".mzXML]");
+	specFileExtensions_.push_back(".mzxml]");
+	specFileExtensions_.push_back(".mzML]");
+	specFileExtensions_.push_back(".mzml]");
 
     // separately count reading .dat file and adding spec to the library
     initReadAddProgress();
@@ -256,8 +287,8 @@ bool MascotResultsReader::parseFile(){
         }
     }
 
-    MascotSpecReader* mascotSpecReader = NULL;
-    if ((mascotSpecReader = dynamic_cast<MascotSpecReader*>(specReader_)) && mascotSpecReader->needsRtConversion()) {
+    MascotSpecReader* mascotSpecReader;
+    if (((mascotSpecReader = dynamic_cast<MascotSpecReader*>(specReader_)) != NULL) && mascotSpecReader->needsRtConversion()) {
         Verbosity::status("Converting retention times to minutes for RefSpectra with id > %d.", maxRefSpectraId);
         char stmtBuf[128];
         sprintf(stmtBuf, "UPDATE RefSpectra SET retentionTime = retentionTime / 60.0 WHERE id > %d", maxRefSpectraId);
@@ -289,9 +320,9 @@ void MascotResultsReader::parseMods(PSM* psm, string modstr,
 
     // first parse the terminal character
     if( modstr.at(0) == 'X' ){
-        addErrorTolerantMod(psm, readableModStr, first_mod_pos);
+        addErrorTolerantMod(psm, readableModStr, 0);
     } else {
-        addVarMod(psm, modstr.at(0), first_mod_pos);
+        addVarMod(psm, modstr.at(0), 0);
     }
 
     // for characters first to last in modstr, 
@@ -306,17 +337,24 @@ void MascotResultsReader::parseMods(PSM* psm, string modstr,
 
     // now get terminal character at the other end
     if( modstr.at(last_mod_pos+1) == 'X' ){
-        addErrorTolerantMod(psm, readableModStr, last_mod_pos);
+        addErrorTolerantMod(psm, readableModStr, psm->unmodSeq.length()+1);
     } else {
-        addVarMod(psm, modstr.at(last_mod_pos+1), last_mod_pos);
+        addVarMod(psm, modstr.at(last_mod_pos+1), psm->unmodSeq.length()+1);
     }
 
     // for static mods look up each residue in the staticMods collection
     for (size_t i = 0; i < psm->unmodSeq.length(); i++) {
-        addStaticMods(psm, psm->unmodSeq[i], i + 1, true);
+        addStaticMods(psm, psm->unmodSeq[i], i + 1);
     }
-    addStaticMods(psm, N_TERM_POS, 1, false);
-    addStaticMods(psm, C_TERM_POS, psm->unmodSeq.length(), false);
+    addStaticMods(psm, N_TERM_POS, 0);
+    addStaticMods(psm, C_TERM_POS, psm->unmodSeq.length()+1);
+
+    // now consolidate terminal mods with residue-terminal mods (i.e. position 0 to 1, position N+1 to N)
+    for (auto& mod : psm->mods)
+        if (mod.position == 0)
+            mod.position = 1;
+        else if (mod.position == psm->unmodSeq.length() + 1)
+            mod.position = psm->unmodSeq.length();
 }
 
 /**
@@ -342,14 +380,13 @@ void MascotResultsReader::addVarMod(PSM* psm,
  * A-Z, N_TERM_POS, or C_TERM_POS that will be used to look up all masses of mods
  * for that particular residue. aaPosition is the location of this mod in the peptide.
  */
-void MascotResultsReader::addStaticMods(PSM* psm, char staticLookUpChar, int aaPosition, bool checkExisting){
-    if (checkExisting) {
-        for (vector<SeqMod>::const_iterator i = psm->mods.begin(); i != psm->mods.end(); i++) {
-            if (i->position == aaPosition) {
-                return; // don't add any static mods if there is already a mod at this position
-            }
+void MascotResultsReader::addStaticMods(PSM* psm, char staticLookUpChar, int aaPosition){
+    for (vector<SeqMod>::const_iterator i = psm->mods.begin(); i != psm->mods.end(); i++) {
+        if (i->position == aaPosition) {
+            return; // don't add any static mods if there is already a mod at this position
         }
     }
+
     MultiModTable::iterator found = staticMods_.find(staticLookUpChar);
     if (found != staticMods_.end())
     {
@@ -609,6 +646,28 @@ void MascotResultsReader::getDistillerRawFiles(const ms_searchparams* searchpara
 }
 
 /**
+ * examine a string to see if it looks like a reasonable raw file name
+ */
+bool MascotResultsReader::IsPlausibleRawFileName(const string &name) const
+{
+    string test = name + "]"; // so it looks like an entry in the specFileExtensions_ table
+    for (int extIdx = 0; extIdx < specFileExtensions_.size();)
+    {
+        if (boost::algorithm::ends_with(test, specFileExtensions_[extIdx++]))
+            return true;
+    }
+    return false;
+}
+
+/**
+ * examine a string to see if it looks like a reasonable mgf file name
+*/
+bool MascotResultsReader::IsPlausibleMGFFileName(const string &name) const
+{
+    return boost::algorithm::ends_with(name, ".mgf") || boost::algorithm::ends_with(name, ".MGF");
+}
+
+/**
  * Look in the title string of the spectrum for the name of the file it
  * originally came from.  Return an empty string if no file found.
  */
@@ -708,6 +767,22 @@ string MascotResultsReader::getFilename(ms_inputquery& spec){
                                    "label-free)' checkbox. Title string was: '%s'", idStr.c_str());
     }
 
+    if (filename.empty())
+    {
+        // often the filename is in the comment "COM=" or uploaded file "FILE=" or uploaded file url "URL="
+        string globalFilename;
+        if (IsPlausibleRawFileName(globalFilename = ms_params_->getFILENAME()) ||
+            IsPlausibleRawFileName(globalFilename = ms_params_->getDATAURL()) ||
+            IsPlausibleRawFileName(globalFilename = ms_params_->getCOM()) ||
+            // MGF filename is a reasonable clue for Skyline to find raw file name
+            IsPlausibleMGFFileName(globalFilename = ms_params_->getFILENAME()) ||
+            IsPlausibleMGFFileName(globalFilename = ms_params_->getDATAURL()) ||
+            IsPlausibleMGFFileName(globalFilename = ms_params_->getCOM()))
+        {
+            filename = globalFilename;
+        }
+    }
+
     return filename;
 }
 
@@ -790,15 +865,11 @@ unsigned int MascotResultsReader::getCacheFlag(const char* filename,
   unsigned int flag = ms_mascotresfile::RESFILE_NOFLAG;
 
   // determine the size of the .dat file
-  struct stat fileStats;
-  int gotStats = stat(filename, &fileStats);
-  if( gotStats != 0 ){
-    throw BlibException(true, "Unable to read filesize of %s.", filename);
-  }
+  auto size = bfs::file_size(filename);
   Verbosity::debug("File size in bytes is %d and threshold is %d.",
-                   fileStats.st_size , threshold);
+      size, threshold);
 
-  if( fileStats.st_size > threshold  ){
+  if (size > threshold  ){
     flag = ms_mascotresfile::RESFILE_USE_CACHE;
   }
 

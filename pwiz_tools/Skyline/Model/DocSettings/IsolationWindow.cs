@@ -31,11 +31,15 @@ namespace pwiz.Skyline.Model.DocSettings
     [XmlRoot("isolation_window")]
     public sealed class IsolationWindow : Immutable, IXmlSerializable
     {
+        [Track]
         public double Start { get; private set; }
+        [Track]
         public double End { get; private set; }
         public double? Target { get; private set; }
+        [Track(defaultValues:typeof(DefaultValuesNull))]
         public double? StartMargin { get; private set; }
         public double? EndMargin { get; private set; }
+        [Track(defaultValues: typeof(DefaultValuesNull))]
         public double? CERange { get; private set; }
 
         public double MethodStart { get { return Math.Max(Start - (StartMargin ?? 0), TransitionFullScan.MIN_RES_MZ); } }

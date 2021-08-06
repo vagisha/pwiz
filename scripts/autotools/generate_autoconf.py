@@ -299,6 +299,16 @@ if (not dryrun) :
 					if dbug :
 						print ("add "+f+" as "+tarname)
 					z.add(f,tarname)
+
+	# make sure doctest.h etc get shipped
+	for inc in ac.explicitIncludes: 
+		f = ac.get_pwizroot()+"/"+inc
+		if (os.path.exists(f)) :
+			tarname = ac.replace_pwizroot(f,"pwiz")
+			if dbug :
+				print ("add "+f+" as "+tarname)
+			z.add(f,tarname)
+					
 	for file in os.listdir(logdir) : # assume we also did the autoconf stuff in this dir
 		f = logdir+"/"+file
 		ext = file.partition(".")[2]

@@ -28,7 +28,7 @@ namespace pwiz.Skyline.Model.Lib
     [XmlRoot("spectrast_lib_spec")]
     public sealed class SpectrastSpec : NistLibSpecBase
     {
-        public const string EXT = ".sptxt"; // Not L10N
+        public const string EXT = ".sptxt";
 
         public static string FILTER_SPTXT
         {
@@ -116,7 +116,7 @@ namespace pwiz.Skyline.Model.Lib
     [XmlRoot("spectrast_library")]
     public sealed class SpectrastLibrary : NistLibraryBase
     {
-        public const string EXT_CACHE = ".splc"; // Not L10N
+        public const string EXT_CACHE = ".splc";
 
         public static SpectrastLibrary Load(LibrarySpec spec, ILoadMonitor loader)
         {
@@ -136,7 +136,7 @@ namespace pwiz.Skyline.Model.Lib
         {
             get
             {
-                LibraryDetails details = new LibraryDetails { Format = "SpectraST", SpectrumCount = SpectrumCount }; // Not L10N
+                LibraryDetails details = new LibraryDetails { Format = @"SpectraST", SpectrumCount = SpectrumCount };
 
                 if (!string.IsNullOrEmpty(Id))
                 {
@@ -165,9 +165,9 @@ namespace pwiz.Skyline.Model.Lib
             return new SpectrastSpectrumHeaderInfo(Name, info.TFRatio, info.RT, info.iRT, info.TotalIntensity, info.Copies);
         }
 
-        public override LibrarySpec CreateSpec(string path)
+        protected override LibrarySpec CreateSpec()
         {
-            return new SpectrastSpec(Name, path);
+            return new SpectrastSpec(Name, FilePath);
         }
 
         public override string SpecFilter

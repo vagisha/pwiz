@@ -31,22 +31,35 @@ namespace SkylineTester
 {
     partial class SkylineTesterWindow
     {
-        private void Run(object sender, EventArgs e)
+        public void RunByTimer(TabBase fromTab)
         {
-            ShiftKeyPressed = (ModifierKeys == Keys.Shift);
+            RunUI(() => Run(fromTab));
+        }
 
+        private void RunOrStopByUser()
+        {
             // Stop running task.
-            if (_runningTab != null)
+            if (_runningTab != null && (_runningTab.IsRunning() || _runningTab.IsWaiting()))
             {
-                Stop(null, null);
-                AcceptButton = DefaultButton;
+                if (StopByUser())
+                    AcceptButton = DefaultButton;   // Only change if the stop is successful
                 return;
             }
 
+            Run();
+        }
+
+        private void Run()
+        {
+            Run(null);
+        }
+
+        private void Run(TabBase fromTab)
+        { 
             commandShell.ClearLog();
 
             // Prepare to start task.
-            _runningTab = _tabs[tabs.SelectedIndex];
+            _runningTab = fromTab ?? _tabs[tabs.SelectedIndex];
             if (!_runningTab.Run())
                 _runningTab = null;
             if (_runningTab == null)    // note: may be cleared by Run() (e.g., Cancel in DeleteWindow)
@@ -55,10 +68,11 @@ namespace SkylineTester
             foreach (var runButton in _runButtons)
                 runButton.Text = "Stop";
             buttonStop.Enabled = true;
+            EnableButtonSelectFailedTests(false); // Until we have failures to select
             AcceptButton = null;
 
             // Update elapsed time display.
-            _runStartTime = DateTime.Now;
+            ResetElapsedTime();
             commandShell.RunStartTime = _runStartTime;
             if (_runTimer != null)
             {
@@ -68,10 +82,31 @@ namespace SkylineTester
             _runTimer = new Timer { Interval = 1000 };
             _runTimer.Tick += (s, a) =>
             {
-                var elapsedTime = DateTime.Now - _runStartTime;
+                var elapsedTime = RunElapsedTime;
                 statusRunTime.Text = "{0}:{1:D2}:{2:D2}".With(elapsedTime.Hours, elapsedTime.Minutes, elapsedTime.Seconds);
             };
             _runTimer.Start();
+        }
+
+        /// <summary>
+        /// Can be either Run or Stop to the user, because the text is changed once something is running
+        /// </summary>
+        private void RunOrStop_Clicked(object sender, EventArgs e)
+        {
+            // Used only in the nightly tab to invoke an immediate nightly run
+            ShiftKeyPressed = (ModifierKeys == Keys.Shift);
+
+            RunOrStopByUser();
+
+            ShiftKeyPressed = false;
+        }
+
+        /// <summary>
+        /// Select failed tests from current run, deselecting others
+        /// </summary>
+        private void SelectFailedTests(object sender, EventArgs e)
+        {
+            _tabTests.SetTests(_tabOutput.FailedTests);
         }
 
         /// <summary>
@@ -86,19 +121,48 @@ namespace SkylineTester
             tabs.SelectTab(tabQuality);
         }
 
+        public TimeSpan RunElapsedTime
+        {
+            get { return DateTime.UtcNow - _runStartTime; }  // Use UtcNow to avoid hiccups with tests running during DST changeover
+        }
+
         public void ResetElapsedTime()
         {
-            _runStartTime = DateTime.Now;
+            _runStartTime = DateTime.UtcNow; // Use UtcNow to avoid hiccups with tests running during DST changeover
         }
 
-        public void Stop()
+        public void StopByTimer()
         {
-            RunUI(() => Stop(null, null));
+            // Make sure the stop happens on the UI thread
+            RunUI(Stop);
         }
 
-        private void Stop(object sender, EventArgs e)
+        public bool StopByUser()
+        {
+            if (IsNightlyRun()) // Ask for confirmation if user clicked Stop during a SkylineNightly run (sender is null for programatic shutdown)
+            {
+                var message =
+                    "The currently running tests are part of a SkylineNightly run. Are you sure you want to end all tests and close SkylineTester?  No report will be sent to the server if you do.";
+                if (MessageBox.Show(message, Text, MessageBoxButtons.OKCancel) != DialogResult.OK)
+                {
+                    return false;
+                }
+                Program.UserKilledTestRun = true;
+            }
+
+            Stop();
+
+            return true;
+        }
+
+        private void Stop()
         {
             _runningTab.Cancel();
+        }
+
+        private void Stop_Clicked(object sender, EventArgs e)
+        {
+            StopByUser();
         }
 
         public void Done()
@@ -122,7 +186,7 @@ namespace SkylineTester
             if (_restart)
             {
                 _restart = false;
-                Run(null, null);
+                Run();
             }
         }
 
@@ -150,6 +214,11 @@ namespace SkylineTester
             if (!string.IsNullOrEmpty(buildRoot.Text) && GetBuildRoot().StartsWith(nRoot) && GetBuildRoot().Contains("SkylineTesterForNightly"))
                 return GetBuildRoot();
             return nRoot;
+        }
+
+        public string GetMinidumpDir()
+        {
+            return Path.Combine(GetNightlyRoot(), "Minidumps");
         }
 
         public string GetLogsDir()
@@ -187,7 +256,7 @@ namespace SkylineTester
             if (repeatCount > 1 && args.Contains("test=\"@"))
             {
                 // Pick apart a string like to get at the filename for the list of tests
-                // offscreen=True loop=1 testsmallmolecules=on repeat=100 language=en-US,fr-FR perftests=on test=\"@I:\\Dev\\bg_trunk\\pwiz_tools\\Skyline\\SkylineTester test list.txt\"
+                // offscreen=True loop=1 repeat=100 language=en-US,fr-FR perftests=on test=\"@I:\\Dev\\bg_trunk\\pwiz_tools\\Skyline\\SkylineTester test list.txt\"
                 var argparts = args.Split(new[] { "test=\"@" }, StringSplitOptions.None);
                 var newArgs = argparts[0] + argparts[1].Split('\"')[1];
                 var tests = File.ReadAllLines(argparts[1].Split('\"')[0]);
@@ -339,10 +408,20 @@ namespace SkylineTester
 
         public void AddRun(Summary.Run run, ComboBox combo)
         {
+            combo.Items.Insert(0, GetRunDisplayText(run));
+        }
+
+        public void UpdateRun(Summary.Run run, ComboBox combo)
+        {
+            combo.Items[0] = GetRunDisplayText(run);
+        }
+
+        private static string GetRunDisplayText(Summary.Run run)
+        {
             var text = run.Date.ToString("M/d  h:mm tt");
-            if (run.Revision > 0)
+            if (!string.IsNullOrEmpty(run.Revision))
                 text += "    (rev. " + run.Revision + ")";
-            combo.Items.Insert(0, text);
+            return text;
         }
 
         public string GetSelectedLog(ComboBox combo)
@@ -369,8 +448,9 @@ namespace SkylineTester
 
         private ZedGraphControl CreateMemoryGraph()
         {
-            var graph = InitGraph("Memory used");
+            var graph = InitGraph(LABEL_TITLE_MEMORY);
             graph.IsShowPointValues = true;
+            graph.IsZoomOnMouseCenter = true;
             graph.PointValueEvent += GraphOnPointValueEvent;
             graph.MouseDownEvent += GraphOnMouseDownEvent;
             graph.MouseUpEvent += GraphOnMouseUpEvent;
@@ -390,7 +470,7 @@ namespace SkylineTester
             pane.YAxis.Scale.FontSpec.Size = 12;
             pane.YAxis.Scale.Align = AlignP.Inside;
             pane.YAxis.MinorTic.IsAllTics = false;
-            pane.YAxis.Title.Text = "MB";
+            pane.YAxis.Title.Text = LABEL_UNITS_MEMORY;
             pane.YAxis.Scale.Format = "#";
             pane.YAxis.Scale.Mag = 0;
             pane.Legend.IsVisible = true;
@@ -426,7 +506,7 @@ namespace SkylineTester
 
         private bool GraphOnMouseDownEvent(ZedGraphControl sender, MouseEventArgs mouseEventArgs)
         {
-            if (mouseEventArgs.Button == MouseButtons.Left)
+            if (mouseEventArgs.Button == MouseButtons.Left && sender.MasterPane.FindPane(mouseEventArgs.Location) != null)
                 _mouseDownLocation = mouseEventArgs.Location;
             return false;
         }
@@ -434,24 +514,37 @@ namespace SkylineTester
         private void InitQuality()
         {
             graphMemory = CreateMemoryGraph();
+            graphMemory.ContextMenuBuilder += (s, ms, m, o) => GraphControlOnContextMenuBuilder(_tabQuality, s, ms);
             panelMemoryGraph.Controls.Add(graphMemory);
         }
 
         public void InitNightly()
         {
-            nightlyGraphMemory = CreateMemoryGraph();
+            AssignGraph(ref nightlyGraphMemory, CreateMemoryGraph(), nightlyGraphPanel);
+            nightlyGraphMemory.ContextMenuBuilder += (s, ms, m, o) => GraphControlOnContextMenuBuilder(_tabNightly, s, ms);
             nightlyGraphPanel.Controls.Add(nightlyGraphMemory);
 
-            graphTestsRun = InitGraph("Tests run");
-            graphDuration = InitGraph("Duration");
-            graphFailures = InitGraph("Failures");
-            graphMemoryHistory = InitGraph("Memory used");
-
             nightlyTrendsTable.Controls.Clear();
+
+            AssignGraph(ref graphTestsRun, InitGraph("Tests run"), nightlyTrendsTable);
+            AssignGraph(ref graphDuration, InitGraph("Duration"), nightlyTrendsTable);
+            AssignGraph(ref graphFailures, InitGraph("Failures"), nightlyTrendsTable);
+            AssignGraph(ref graphMemoryHistory, InitGraph("Memory used"), nightlyTrendsTable);
+
             nightlyTrendsTable.Controls.Add(graphMemoryHistory, 0, 0);
             nightlyTrendsTable.Controls.Add(graphFailures, 0, 0);
             nightlyTrendsTable.Controls.Add(graphDuration, 0, 0);
             nightlyTrendsTable.Controls.Add(graphTestsRun, 0, 0);
+        }
+
+        private void AssignGraph(ref ZedGraphControl graphControl, ZedGraphControl newGraphControl, Panel parentPanel)
+        {
+            if (graphControl != null)
+            {
+                parentPanel.Controls.Remove(graphControl);
+                graphControl.Dispose();
+            }
+            graphControl = newGraphControl;
         }
 
         private ZedGraphControl InitGraph(string title)
@@ -493,15 +586,15 @@ namespace SkylineTester
             {
                 GetBuildPrerequisites();
 
-                if (Subversion == null)
+                if (Git == null)
                 {
-                    MessageBox.Show("Subversion is required to build Skyline.  You can install it from http://sourceforge.net/projects/win32svn/");
+                    MessageBox.Show("Git.exe is required to build Skyline.  You can install it from https://gitforwindows.org/");
                     return false;
                 }
 
                 if (Devenv == null)
                 {
-                    MessageBox.Show("Visual Studio 12.0 is required to build Skyline.");
+                    MessageBox.Show("Visual Studio 2017 is required to build Skyline.");
                     return false;
                 }
 
@@ -512,15 +605,32 @@ namespace SkylineTester
         public void GetBuildPrerequisites()
         {
             // Try to find where subversion is available.
-            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-            Subversion = Path.Combine(programFiles, @"Subversion\bin\svn.exe");
-            if (!File.Exists(Subversion))
-                Subversion = null;
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            Git = Path.Combine(programFiles, @"Git\cmd\git.exe");
+            if (!File.Exists(Git))
+                Git = null;
 
             // Find Visual Studio, if available.
-            Devenv = Path.Combine(programFiles, @"Microsoft Visual Studio 12.0\Common7\IDE\devenv.exe");
-            if (!File.Exists(Devenv))
-                Devenv = null;
+            Devenv = GetExistingVsIdeFilePath("devenv.exe");
+        }
+
+        public static string GetExistingVsIdeFilePath(string relativePath)
+        {
+            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            string[] pathTrials = 
+            {
+                @"Microsoft Visual Studio\2017\Enterprise\Common7\IDE",  // Enterprise edition of VS 2017
+                @"Microsoft Visual Studio\2017\Community\Common7\IDE",  // Community edition of VS 2017
+                @"Microsoft Visual Studio 12.0\Common7\IDE" // Prior installation of VS 2013
+            };
+            foreach (var pathTrial in pathTrials)
+            {
+                string path = Path.Combine(Path.Combine(programFiles, pathTrial), relativePath);
+                if (File.Exists(path))
+                    return path;
+            }
+
+            return null;
         }
 
         public void RunUI(Action action, int delayMsec = 0)

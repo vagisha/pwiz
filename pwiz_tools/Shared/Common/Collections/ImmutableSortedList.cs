@@ -229,7 +229,7 @@ namespace pwiz.Common.Collections
 
         public KeyValuePair<TKey, TValue> this[int index]
         {
-            get { return new KeyValuePair<TKey, TValue>(Keys[index],Values[index]); }
+            get { return new KeyValuePair<TKey, TValue>(Keys[index], Values[index]); }
             set { throw new NotSupportedException(); }
         }
 
@@ -275,6 +275,17 @@ namespace pwiz.Common.Collections
                 ImmutableList.ValueOf(Values.Take(range.Start).Concat(new[] {value}).Concat(Values.Skip(range.End)));
             return new ImmutableSortedList<TKey, TValue>(keys, values, KeyComparer);
         }
+
+        public ImmutableSortedList<TKey, TNewValue> ReplaceValues<TNewValue>(IEnumerable<TNewValue> newValues)
+        {
+            var newValueList = ImmutableList.ValueOf(newValues);
+            if (newValueList.Count != Count)
+            {
+                throw new ArgumentException();
+            }
+            return new ImmutableSortedList<TKey, TNewValue>(Keys, newValueList, KeyComparer);
+        }
+
 
         #region object overrides
 		public bool Equals(ImmutableSortedList<TKey, TValue> other)

@@ -83,42 +83,18 @@ namespace pwiz.Skyline.Controls
         }
 
         public bool ValidateDecimalTextBox(TextBox control,
-                                           double? min, double? max, out double val)
+                                           double? min, double? max, out double val, bool includeMin = true, bool includeMax = true)
         {
             if (!ValidateDecimalTextBox(control, out val))
                 return false;
 
             bool valid = false;
-            if (min.HasValue && val < min.Value)
-                ShowTextBoxError(control, Resources.MessageBoxHelper_ValidateDecimalTextBox__0__must_be_greater_than_or_equal_to__1__, null, min);
-            else if (max.HasValue && val > max.Value)
-                ShowTextBoxError(control, Resources.MessageBoxHelper_ValidateDecimalTextBox__0__must_be_less_than_or_equal_to__1__, null, max);
+            if (min.HasValue && (includeMin ? val < min.Value : val <= min.Value))
+                ShowTextBoxError(control, includeMin ? Resources.MessageBoxHelper_ValidateDecimalTextBox__0__must_be_greater_than_or_equal_to__1__ : Resources.MessageBoxHelper_ValidateDecimalTextBox__0__must_be_greater_than__1__, null, min);
+            else if (max.HasValue && (includeMax ? val > max.Value : val >= max.Value))
+                ShowTextBoxError(control, includeMax ? Resources.MessageBoxHelper_ValidateDecimalTextBox__0__must_be_less_than_or_equal_to__1__ : Resources.MessageBoxHelper_ValidateDecimalTextBox__0__must_be_less_than__1__, null, max);
             else
                 valid = true;
-            return valid;
-        }
-
-        public bool ValidateDecimalTextBox(TabControl tabControl, int tabIndex,
-            TextBox control, double? min, double? max, out double val)
-        {
-            bool valid = ValidateDecimalTextBox(control, min, max, out val);
-            if (!valid && tabControl.SelectedIndex != tabIndex && _showMessages)
-            {
-                tabControl.SelectedIndex = tabIndex;
-                control.Focus();
-            }
-            return valid;
-        }
-
-        public bool ValidateDecimalListTextBox(TabControl tabControl, int tabIndex,
-                                              TextBox control, double? min, double? max, out double[] val)
-        {
-            bool valid = ValidateDecimalListTextBox(control, min, max, out val);
-            if (!valid && tabControl.SelectedIndex != tabIndex)
-            {
-                tabControl.SelectedIndex = tabIndex;
-                control.Focus();
-            }
             return valid;
         }
 
@@ -208,30 +184,6 @@ namespace pwiz.Skyline.Controls
             return valid;
         }
 
-        public bool ValidateNumberTextBox(TabControl tabControl, int tabIndex,
-            TextBox control, int? min, int? max, out int val)
-        {
-            bool valid = ValidateNumberTextBox(control, min, max, out val);
-            if (!valid && tabControl.SelectedIndex != tabIndex && _showMessages)
-            {
-                tabControl.SelectedIndex = tabIndex;
-                control.Focus();                
-            }
-            return valid;
-        }
-
-        public bool ValidateNumberListTextBox(TabControl tabControl, int tabIndex,
-                                              TextBox control, int min, int max, out int[] val)
-        {
-            bool valid = ValidateNumberListTextBox(control, min, max, out val);
-            if (!valid && tabControl.SelectedIndex != tabIndex)
-            {
-                tabControl.SelectedIndex = tabIndex;
-                control.Focus();
-            }
-            return valid;
-        }
-
         public bool ValidateNumberListTextBox(TextBox control,
                                               int min, int max, out int[] val)
         {
@@ -239,17 +191,10 @@ namespace pwiz.Skyline.Controls
             if (val.Length > 0 && !val.Contains(i => min > i || i > max))
                 return true;
 
-            ShowTextBoxError(control, Resources. MessageBoxHelper_ValidateNumberListTextBox__0__must_contain_a_comma_separated_list_of_integers_from__1__to__2__,
+            ShowTextBoxError(control, Resources.MessageBoxHelper_ValidateNumberListTextBox__0__must_contain_a_comma_separated_list_of_integers_from__1__to__2__,
                              null, min, max);
 
             return false;
-        }
-
-        public void ShowTextBoxError(TabControl tabControl, int tabIndex, TextBox control, string message)
-        {
-            ShowTextBoxError(control, message);
-            tabControl.SelectedIndex = tabIndex;
-            control.Focus();
         }
 
         /// <summary>
@@ -265,6 +210,7 @@ namespace pwiz.Skyline.Controls
         {
             if(!_showMessages)
                 return;
+            EnsureControlTabPagesVisible(control);
             if (vals.Length > 0 && vals[0] == null)
                 vals[0] = GetControlMessage(control);
             MessageDlg.Show(_parent, string.Format(message, vals));
@@ -282,7 +228,7 @@ namespace pwiz.Skyline.Controls
         public string GetControlMessage(Control control)
         {
             Control label = control;
-            while(label != null && !(label is Label))
+            while(label != null && !(label is Label && label.Visible))
                 label = _parent.GetNextControl(label, false);
             string message = (label == null ? Resources.MessageBoxHelper_GetControlMessage_Field : label.Text);
             int ampIndex = message.IndexOf('&');
@@ -296,7 +242,7 @@ namespace pwiz.Skyline.Controls
             else
             {
                 // For roman character languages, just remove the ambersand
-                message = message.Replace("&", string.Empty); // Not L10N
+                message = message.Replace(@"&", string.Empty);
             }
             if (message.Length > 0 && message[message.Length - 1] == ':')
                 message = message.Substring(0, message.Length - 1);
@@ -320,6 +266,26 @@ namespace pwiz.Skyline.Controls
                 return;
             string messageException = XmlUtil.GetInvalidDataMessage(path, x);
             MessageDlg.ShowWithException(_parent, TextUtil.LineSeparate(firstLine, messageException), x);
+        }
+
+        /// <summary>
+        /// If the control is inside of one or more tab controls, make sure that the SelectedTab
+        /// is correct so that the control will be visible.
+        /// </summary>
+        public void EnsureControlTabPagesVisible(Control control)
+        {
+            for (;control != null; control = control.Parent)
+            {
+                var tabPage = control as TabPage;
+                if (tabPage != null)
+                {
+                    var tabControl = tabPage.Parent as TabControl;
+                    if (tabControl != null && tabControl.SelectedTab != tabPage)
+                    {
+                        tabControl.SelectedTab = tabPage;
+                    }
+                }
+            }
         }
     }
 }

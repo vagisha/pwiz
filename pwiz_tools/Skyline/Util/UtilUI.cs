@@ -17,10 +17,12 @@
  * limitations under the License.
  */
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Net;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using pwiz.Common.SystemUtil;
@@ -196,6 +198,49 @@ namespace pwiz.Skyline.Util
         public int Position { get; set; }
         public int Width { get; set; }
         public bool IsPlainText { get; set; }
+
+        public static IEnumerable<TextSequence> Coalesce(IEnumerable<TextSequence> sequences)
+        {
+            TextSequence lastSequence = null;
+            StringBuilder stringBuilder = new StringBuilder();
+
+            foreach (var textSequence in sequences)
+            {
+                if (lastSequence == null)
+                {
+                    lastSequence = textSequence;
+                    continue;
+                }
+
+                if (Equals(lastSequence.Color, textSequence.Color) &&
+                    ReferenceEquals(lastSequence.Font, textSequence.Font))
+                {
+                    stringBuilder.Append(textSequence.Text);
+                    continue;
+                }
+
+                yield return new TextSequence
+                {
+                    Text = lastSequence.Text + stringBuilder,
+                    Font = lastSequence.Font,
+                    Color = lastSequence.Color,
+                    IsPlainText = lastSequence.IsPlainText
+                };
+                stringBuilder.Clear();
+                lastSequence = textSequence;
+            }
+
+            if (lastSequence != null)
+            {
+                yield return new TextSequence
+                {
+                    Text = lastSequence.Text + stringBuilder,
+                    Font = lastSequence.Font,
+                    Color = lastSequence.Color,
+                    IsPlainText = lastSequence.IsPlainText
+                };
+            }
+        }
     }
 
     /// <summary>
@@ -246,7 +291,7 @@ namespace pwiz.Skyline.Util
             }
         }
 
-        private const string SKYLINE_SITE_ROOT = "https://skyline.ms"; // Not L10N
+        private const string SKYLINE_SITE_ROOT = "https://skyline.ms";
 
         public static string GetSkylineLink(string linkRelative)
         {
@@ -260,12 +305,17 @@ namespace pwiz.Skyline.Util
 
         public static string GetSkylineShortLink(string shortName)
         {
-            return GetSkylineLink("/" + shortName + ".url");  // Not L10N
+            return GetSkylineLink(@"/" + shortName + @".url");
         }
 
         public static void OpenSkylineShortLink(IWin32Window parent, string shortName)
         {
             OpenLink(parent, GetSkylineShortLink(shortName));
+        }
+
+        public static void OpenRegexDocLink(IWin32Window parent)
+        {
+            OpenLink(parent, @"http://www.regular-expressions.info/reference.html");
         }
 
         /// <summary>
@@ -284,7 +334,7 @@ namespace pwiz.Skyline.Util
         /// <param name="postData">Report text</param>
         public static void PostToLink(string link, string postData)
         {
-            string filePath = Path.GetTempFileName() + ".html"; // Not L10N
+            string filePath = Path.GetTempFileName() + @".html";
 
             string javaScript = string.Format(
 
@@ -297,7 +347,7 @@ window.onload = submitForm;
 </script>
 <form id=""my_form"" action=""{0}"" method=""post"" style=""visibility: hidden;"">
 <textarea name=""SkylineReport"">{1}</textarea>
-</form>", // Not L10N
+</form>", 
 
                 link, WebUtility.HtmlEncode(postData));
 
@@ -381,9 +431,9 @@ window.onload = submitForm;
             foreach (var item in items)
             {
                 var tag = (string)item.Tag;
-                if (tag == "set_default" || tag == "show_val" || item is ToolStripSeparator) // Not L10N
+                if (tag == @"set_default" || tag == @"show_val" || item is ToolStripSeparator)
                     menuStrip.Items.Remove(item);
-                else if (tag == "unzoom" || tag == "undo_all") // Not L10N
+                else if (tag == @"unzoom" || tag == @"undo_all")
                 {
                     if (!keepZoom)
                         menuStrip.Items.Remove(item);

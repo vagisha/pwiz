@@ -21,24 +21,32 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using SkylineNightly.Properties;
 
 namespace SkylineNightly
 {
     static class Program
     {
-        private static void PerformTests(Nightly.RunMode runMode, string arg, string decorateSrcDirName = null)
+        private static bool PerformTests(Nightly.RunMode runMode, string arg, string decorateSrcDirName = null)
         {
             var nightly = new Nightly(runMode, decorateSrcDirName);
+            var nightlyTask = Nightly.NightlyTask;
+            if (nightlyTask != null && DateTime.UtcNow.Add(nightly.TargetDuration).ToLocalTime() > nightlyTask.NextRunTime)
+            {
+                // Don't run, because the projected end time is after the start of the next scheduled start
+                return false;
+            }
             var errMessage = nightly.RunAndPost();
-            var message = string.Format("Completed {0}", arg); // Not L10N
+            var message = string.Format(@"Completed {0}", arg);
             nightly.Finish(message, errMessage);
+            return string.IsNullOrEmpty(errMessage);
         }
 
         private static void PerformTests(Nightly.RunMode runMode1, Nightly.RunMode runMode2, string arg)
         {
-            PerformTests(runMode1, string.Format("part one of {0}", arg), runMode1 == runMode2 ? "A" : null);  // Not L10N
+            PerformTests(runMode1, string.Format(@"part one of {0}", arg), runMode1 == runMode2 ? @"A" : null);
             // Don't kill existing test processes for the second run, we'd like to keep any hangs around for forensics
-            PerformTests(runMode2, string.Format("part two of {0}", arg), runMode1 == runMode2 ? "B" : null);  // Not L10N
+            PerformTests(runMode2, string.Format(@"part two of {0}", arg), runMode1 == runMode2 ? @"B" : null);
         }
 
         /// <summary>
@@ -47,6 +55,13 @@ namespace SkylineNightly
         [STAThread]
         static void Main(string[] args)
         {
+            if (Settings.Default.SettingsUpgradeRequired)
+            {
+                Settings.Default.Upgrade();
+                Settings.Default.SettingsUpgradeRequired = false;
+                Settings.Default.Save();
+            }
+
             if (args.Length == 0)
             {
                 Application.EnableVisualStyles();
@@ -57,7 +72,7 @@ namespace SkylineNightly
 
             try
             {
-                args[0] = args[0].ToLower();
+                var command = args[0].ToLower();
 
                 Nightly.RunMode runMode;
 
@@ -65,9 +80,9 @@ namespace SkylineNightly
                 string errMessage = string.Empty;
                 Nightly nightly;
 
-                switch (args[0])
+                switch (command)
                 {
-					case "run": // Not L10N
+					case @"run":
                     {
                         switch (args.Length)
                         {
@@ -80,41 +95,49 @@ namespace SkylineNightly
                             {
                                 PerformTests((Nightly.RunMode) Enum.Parse(typeof(Nightly.RunMode), args[1]),
                                     (Nightly.RunMode) Enum.Parse(typeof(Nightly.RunMode), args[2]),
-									args[1] + " then " + args[2]); // Not L10N
+									args[1] + @" then " + args[2]);
                                 break;
                             }
-							default: throw new Exception("Wrong number of run modes specified, has to be 1 or 2"); // Not L10N
+							default: throw new Exception(@"Wrong number of run modes specified, has to be 1 or 2");
                         }
 
                         break;
                     }
-					case "/?": // Not L10N
+                    case "indefinitely":
+                    {
+                        while (PerformTests((Nightly.RunMode) Enum.Parse(typeof(Nightly.RunMode), args[1]), args[1]))
+                        {
+                        }
+
+                        break;
+                    }
+                    case @"/?":
                     {
                         nightly = new Nightly(Nightly.RunMode.trunk);
-						string commands = string.Join(" | ", // Not L10N
+						string commands = string.Join(@" | ",
                             SkylineNightly.RunModes.Select(r => r.ToString()).ToArray());
-                        message = string.Format("Usage: SkylineNightly run [{0}] [{1}]", commands, commands); // Not L10N
+                        message = string.Format(@"Usage: SkylineNightly run [{0}] [{1}]", commands, commands);
                         nightly.Finish(message, errMessage);
                         break;
                     }
-					case "parse": // Not L10N
+					case @"parse":
                     {
                         nightly = new Nightly(Nightly.RunMode.parse);
-                        message = string.Format("Parse and post log {0}", nightly.GetLatestLog()); // Not L10N
+                        message = string.Format(@"Parse and post log {0}", nightly.GetLatestLog());
                         nightly.StartLog(Nightly.RunMode.parse);
                         runMode = nightly.Parse();
-                        message += string.Format(" as runmode {0}", runMode); // Not L10N
+                        message += string.Format(@" as runmode {0}", runMode);
                         errMessage = nightly.Post(runMode);
                         nightly.Finish(message, errMessage);
                         break;
                     }
-					case "post": // Not L10N
+					case @"post":
                     {
                         nightly = new Nightly(Nightly.RunMode.post);
-                        message = string.Format("Post existing XML for {0}", nightly.GetLatestLog()); // Not L10N
+                        message = string.Format(@"Post existing XML for {0}", nightly.GetLatestLog());
                         nightly.StartLog(Nightly.RunMode.post);
                         runMode = nightly.Parse(null, true); // "true" means skip XML generation, just parse to figure out mode
-                        message += string.Format(" as runmode {0}", runMode); // Not L10N
+                        message += string.Format(@" as runmode {0}", runMode);
                         errMessage = nightly.Post(runMode);
                         nightly.Finish(message, errMessage);
                         break;
@@ -122,22 +145,22 @@ namespace SkylineNightly
                     default:
                     {
                         var extension = Path.GetExtension(args[0]).ToLower();
-                        if (extension == ".log") // Not L10N
+                        if (extension == @".log")
                         {
                             nightly = new Nightly(Nightly.RunMode.parse);
                             nightly.StartLog(Nightly.RunMode.parse);
-                            message = string.Format("Parse and post log {0}", args[0]); // Not L10N
+                            message = string.Format(@"Parse and post log {0}", args[0]);
                             runMode = nightly.Parse(args[0]); // Create the xml for this log file
                         }
                         else
                         {
                             nightly = new Nightly(Nightly.RunMode.post);
                             nightly.StartLog(Nightly.RunMode.post);
-                            message = string.Format("Post existing XML {0}", args[0]); // Not L10N
-                            runMode = nightly.Parse(Path.ChangeExtension(args[0], ".log"), true); // Scan the log file for this XML // Not L10N
+                            message = string.Format(@"Post existing XML {0}", args[0]);
+                            runMode = nightly.Parse(Path.ChangeExtension(args[0], @".log"), true); // Scan the log file for this XML
                         }
-                        message += string.Format(" as runmode {0}", runMode); // Not L10N
-                        errMessage = nightly.Post(runMode, Path.ChangeExtension(args[0], ".xml")); // Not L10N
+                        message += string.Format(@" as runmode {0}", runMode);
+                        errMessage = nightly.Post(runMode, Path.ChangeExtension(args[0], @".xml"));
                         nightly.Finish(message, errMessage);
                         break;
                     }
@@ -145,7 +168,7 @@ namespace SkylineNightly
             }
             catch (Exception ex)
             {
-				MessageBox.Show(@"Exception Caught: " + ex.Message); // Not L10N
+				MessageBox.Show(@"Exception Caught: " + ex.Message, @"SkylineNightly.exe");
             }
         }
     }

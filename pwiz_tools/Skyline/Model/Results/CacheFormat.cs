@@ -36,8 +36,9 @@ namespace pwiz.Skyline.Model.Results
         Ten = 10, // Introduces waters lockmass correction in MSDataFileUri syntax
         Eleven = 11, // Adds chromatogram start, stop times, and uncompressed size info, and new flag bit for SignedMz
         Twelve = 12, // Adds structure sizes to CacheHeaderStruct
-        Thirteen = 13,
-        CURRENT = Thirteen,
+        Thirteen = 13,  // Adds TIC to CachedFileHeaderStruct
+        Fourteen = 14,  // Adds SampleId and SerialNumber to CachedFileHeaderStruct and moves centroiding from ChromCachedFile.FilePath to Flags
+        CURRENT = Fourteen,
     }
     
     [StructLayout(LayoutKind.Sequential, Pack = 4)]
@@ -75,13 +76,13 @@ namespace pwiz.Skyline.Model.Results
             }
             if (cacheFormatVersion >= CacheFormatVersion.Nine)
             {
-                return Marshal.SizeOf<CacheHeaderStruct>() - (int) Marshal.OffsetOf<CacheHeaderStruct>("locationScanIds"); // Not L10N
+                return Marshal.SizeOf<CacheHeaderStruct>() - (int) Marshal.OffsetOf<CacheHeaderStruct>(@"locationScanIds");
             }
             if (cacheFormatVersion >= CacheFormatVersion.Five)
             {
-                return Marshal.SizeOf<CacheHeaderStruct>() - (int) Marshal.OffsetOf<CacheHeaderStruct>("numScoreTypes"); // Not L10N
+                return Marshal.SizeOf<CacheHeaderStruct>() - (int) Marshal.OffsetOf<CacheHeaderStruct>(@"numScoreTypes");
             }
-            return Marshal.SizeOf<CacheHeaderStruct>() - (int) Marshal.OffsetOf<CacheHeaderStruct>("formatVersion"); // Not L10N
+            return Marshal.SizeOf<CacheHeaderStruct>() - (int) Marshal.OffsetOf<CacheHeaderStruct>(@"formatVersion");
         }
 
         public static CacheHeaderStruct Read(Stream stream)
@@ -124,6 +125,26 @@ namespace pwiz.Skyline.Model.Results
             formatVersion = cacheFormat.FormatVersion;
             versionRequired = cacheFormat.VersionRequired;
         }
+
+        public bool IsCorrupted(long cacheFileSize)
+        {
+            if (numFiles < 0 || numChromatograms < 0 || numTransitions < 0 || numPeaks < 0)
+            {
+                return true;
+            }
+
+            if (locationFiles < 0 || locationHeaders < 0 || locationTransitions < 0 || locationPeaks < 0)
+            {
+                return true;
+            }
+
+            if (locationFiles > cacheFileSize || locationHeaders > cacheFileSize || locationTransitions > cacheFileSize || locationPeaks > cacheFileSize)
+            {
+                return true;
+            }
+
+            return false;
+        }
     }
 
     /// <summary>
@@ -137,7 +158,7 @@ namespace pwiz.Skyline.Model.Results
         public static readonly CacheFormat CURRENT = new CacheFormat
         {
             FormatVersion = CacheFormatVersion.CURRENT,
-            VersionRequired = CacheFormatVersion.Eleven,
+            VersionRequired = CacheFormatVersion.Fourteen,
             CachedFileSize = Marshal.SizeOf<CachedFileHeaderStruct>(),
             ChromGroupHeaderSize = Marshal.SizeOf<ChromGroupHeaderInfo>(),
             ChromPeakSize = Marshal.SizeOf<ChromPeak>(),
@@ -154,10 +175,19 @@ namespace pwiz.Skyline.Model.Results
             {
                 throw new NotSupportedException();
             }
+            CacheFormatVersion versionRequired;
+            if (formatVersion.CompareTo(CacheHeaderStruct.WithStructSizes) >= 0)
+            {
+                versionRequired = CacheHeaderStruct.WithStructSizes;
+            }
+            else
+            {
+                versionRequired = formatVersion;
+            }
             return new CacheFormat
             {
                 FormatVersion = formatVersion,
-                VersionRequired = formatVersion,
+                VersionRequired = versionRequired,
                 ChromPeakSize = ChromPeak.GetStructSize(formatVersion),
                 ChromTransitionSize = ChromTransition.GetStructSize(formatVersion),
                 CachedFileSize = CachedFileHeaderStruct.GetStructSize(formatVersion),

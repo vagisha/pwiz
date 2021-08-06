@@ -22,6 +22,7 @@ using System.IO;
 using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 
@@ -73,16 +74,18 @@ namespace pwiz.Skyline.Model.DocSettings
             return !string.IsNullOrEmpty(s) ? s : null;
         }
 
+        [Track]
         public bool IsSemiCleaving { get; private set; }
-
+        [Track]
         public string CleavageC { get; private set; }
-
+        [Track]
         public string RestrictC { get; private set; }
-
+        [Track]
         public string CleavageN { get; private set; }
-
+        [Track]
         public string RestrictN { get; private set; }
 
+        [Track]
         public SequenceTerminus? Type
         {
             get
@@ -217,7 +220,7 @@ namespace pwiz.Skyline.Model.DocSettings
                     if (!minPeptideSequenceLength.HasValue || count >= minPeptideSequenceLength.Value)
                     {
                         // Single amino acid peptides have no fragment ions.
-                        if (count > 1 && sequence.IndexOfAny(nonAAs, begin, count) == -1) // Not L10N
+                        if (count > 1 && sequence.IndexOfAny(nonAAs, begin, count) == -1)
                         {
                             if (!tooLong)
                             {
@@ -440,10 +443,15 @@ namespace pwiz.Skyline.Model.DocSettings
             string textC = ToString(CleavageC, RestrictC, SequenceTerminus.C);
             string textN = ToString(CleavageN, RestrictN, SequenceTerminus.N);
             if (string.IsNullOrEmpty(textN))
-                return string.Format("{0} {1}", Name, textC); // Not L10N
+                return string.Format(@"{0} {1}", Name, textC);
             if (string.IsNullOrEmpty(textC))
-                return string.Format("{0} {1} n-term", Name, textN); // Not L10N
-            return string.Format("{0} {1} c-term & {2} n-term", Name, textC, textN); // Not L10N
+                return string.Format(@"{0} {1} n-term", Name, textN);
+            return string.Format(@"{0} {1} c-term & {2} n-term", Name, textC, textN);
+        }
+
+        public override string AuditLogText
+        {
+            get { return ToString(); }
         }
 
         private static string ToString(string cleavage, string restrict, SequenceTerminus term)
@@ -451,10 +459,10 @@ namespace pwiz.Skyline.Model.DocSettings
             if (string.IsNullOrEmpty(cleavage))
                 return string.Empty;
             if (string.IsNullOrEmpty(restrict))
-                restrict = "-";  // Not L10N
+                restrict = @"-";
             return term == SequenceTerminus.C
-                ? "[" + cleavage + " | " + restrict + "]"   // Not L10N
-                : "[" + restrict + " | " + cleavage + "]";  // Not L10N
+                ? @"[" + cleavage + @" | " + restrict + @"]"
+                : @"[" + restrict + @" | " + cleavage + @"]";
         }
 
         private bool Equals(Enzyme other)
@@ -508,8 +516,10 @@ namespace pwiz.Skyline.Model.DocSettings
             ExcludeRaggedEnds = excludeRaggedEnds;
         }
 
+        [Track]
         public int MaxMissedCleavages { get; private set; }
 
+        [Track]
         public bool ExcludeRaggedEnds { get; private set; }
 
         #region Implementation of IXmlSerializable
@@ -627,14 +637,17 @@ namespace pwiz.Skyline.Model.DocSettings
         /// The regular expression string to exclude, if a peptide
         /// sequence matches
         /// </summary>
+        [Track]
         public string Regex { get; private set; }
-
+        //TODO: custom localzier? might need a newer one
+        [Track]
         public bool IsIncludeMatch { get; private set; }
 
         /// <summary>
         /// True if the filter should be applied to the light strutural
         /// modified sequence string.
         /// </summary>
+        [Track]
         public bool IsMatchMod { get; private set; }
 
         #region Implementation of IXmlSerializable

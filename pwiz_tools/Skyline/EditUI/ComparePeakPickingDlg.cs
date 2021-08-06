@@ -24,7 +24,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
-using NHibernate.Util;
 using pwiz.Common.DataBinding;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
@@ -72,7 +71,9 @@ namespace pwiz.Skyline.EditUI
         public ComparePeakPickingDlg(SrmDocument document)
         {
             InitializeComponent();
-            
+
+            Icon = Resources.Skyline;
+
             _axisLabelScaler = new AxisLabelScaler(zedGraphFiles.GraphPane);
             _colors =
                 Settings.Default.ColorSchemes.GetDefaults()
@@ -191,7 +192,7 @@ namespace pwiz.Skyline.EditUI
             }
             else
             {
-                throw new InvalidDataException("Unrecognized y axis scaling option");  // Not L10N
+                throw new InvalidDataException(@"Unrecognized y axis scaling option");
             }
         }
 
@@ -390,7 +391,7 @@ namespace pwiz.Skyline.EditUI
 
         private class SelectionInfo
         {
-            public SelectionInfo(int targetIndex, string sequence, int charge, MsDataFileUri filePath)
+            public SelectionInfo(int targetIndex, Target sequence, Adduct charge, MsDataFileUri filePath)
             {
                 TargetIndex = targetIndex;
                 Sequence = sequence;
@@ -399,8 +400,8 @@ namespace pwiz.Skyline.EditUI
             }
 
             public int TargetIndex { get; private set; }
-            public string Sequence { get; private set; }
-            public int Charge { get; private set; }
+            public Target Sequence { get; private set; }
+            public Adduct Charge { get; private set; }
             public MsDataFileUri FilePath {get; private set; }
         }
 
@@ -470,7 +471,7 @@ namespace pwiz.Skyline.EditUI
                 {
                     comboBox.Items.Add(comparer);
                 }
-                comboBox.SelectedIndex = comboBox.Items.Any() ? 0 : -1;
+                comboBox.SelectedIndex = comboBox.Items.OfType<object>().Any() ? 0 : -1;
             }
         }
 
@@ -690,9 +691,9 @@ namespace pwiz.Skyline.EditUI
             {
                 double y = closestPointToCutoff.Y;
                 string labelText = closestPointToCutoff.Tag == null
-                    ? string.Format("{0:F04}", y) // Not L10N
-                    : string.Format("{0:0.##} (q: {1:F04})", y, closestPointToCutoff.Tag); // Not L10N
-                TextObj text = new TextObj(labelText, cutoff, y) // Not L10N
+                    ? string.Format(@"{0:F04}", y)
+                    : string.Format(@"{0:0.##} (q: {1:F04})", y, closestPointToCutoff.Tag);
+                TextObj text = new TextObj(labelText, cutoff, y)
                 {
                     FontSpec = {FontColor = Color.Black, StringAlignment = StringAlignment.Center, Size = 11.0F}
                 };
@@ -861,7 +862,7 @@ namespace pwiz.Skyline.EditUI
                         return;
                     }
                 }
-                throw new InvalidDataException("Invalid Y-axis selection");    // Not L10N
+                throw new InvalidDataException(@"Invalid Y-axis selection");
             }
         }
 
@@ -960,6 +961,11 @@ namespace pwiz.Skyline.EditUI
             return new List<ComparePeakBoundaries>();
         }
 
+        public string GetDisplayName(ComparePeakBoundaries item)
+        {
+            return item.GetKey();
+        }
+
         public int RevisionIndexCurrent {get { return 1; } }
 
         public int ExcludeDefaults { get { return 0; } }
@@ -1008,8 +1014,8 @@ namespace pwiz.Skyline.EditUI
         public string FileName { get { return Match1.FileName; } }
         public string ReplicateName { get { return Match1.ReplicateName; } }
         public int TargetIndex { get { return Match1.TargetIndex; } }
-        public string Sequence { get { return Match1.ModifiedSequence; } }
-        public int Charge { get { return Match1.Charge; } }
+        public Target Sequence { get { return Match1.ModifiedSequence; } }
+        public Adduct Charge { get { return Match1.Charge; } }
         public double? Score1 { get { return Match1.Score; } }
         public double? Score2 { get { return Match2.Score; } }
         public double? QValue1 { get { return Match1.QValue; } }

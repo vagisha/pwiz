@@ -48,8 +48,12 @@ class sslPSM : public PSM {
         } else {
             try{// might be a scan number or a string identifier
                 psm.specKey = boost::lexical_cast<int>(trimLeadingZeros(value));
+                psm.specIndex = -1;
             } catch (bad_lexical_cast) {
-                psm.specName = value;
+                if (bal::istarts_with(value, "index="))
+                    psm.specIndex = boost::lexical_cast<int>(value.substr(6));
+                else
+                    psm.specName = value;
             }
         }
     }
@@ -101,17 +105,58 @@ class sslPSM : public PSM {
             }
         }
     }
+    static void setPrecursorAdduct(sslPSM& psm, const std::string& value) {
+        if (value.empty()){
+            throw BlibException(false, "Missing precursor adduct.");
+        }
+        else {
+            psm.smallMolMetadata.precursorAdduct = value;
+        }
+    }
+    static void setChemicalFormula(sslPSM& psm, const std::string& value) {
+        if (value.empty()){
+            throw BlibException(false, "Missing chemical formula.");
+        }
+        else {
+            psm.smallMolMetadata.chemicalFormula = value;
+        }
+    }
+    static void setInchiKey(sslPSM& psm, const std::string& value) {
+        if (value.empty()){
+            throw BlibException(false, "Missing InChiKey.");
+        }
+        else {
+            psm.smallMolMetadata.inchiKey = value;
+        }
+    }
+    static void setMoleculeName(sslPSM& psm, const std::string& value) {
+        if (value.empty()){
+            throw BlibException(false, "Missing molecule name.");
+        }
+        else {
+            psm.smallMolMetadata.moleculeName = value;
+        }
+    }
+    static void setotherKeys(sslPSM& psm, const std::string& value) {
+        if (value.empty()){
+            throw BlibException(false, "Missing otherKeys.");
+        }
+        else {
+            psm.smallMolMetadata.otherKeys = value;
+        }
+    }
 
   private:
-    static std::string trimLeadingZeros(std::string s) {
-        if (s.empty()) {
+     static std::string trimLeadingZeros(std::string s) {
+         if (s.empty()) {
             return s;
-        }
-        size_t nonZero = s.find_first_not_of('0');
-        return nonZero != string::npos
+         }
+         size_t nonZero = s.find_first_not_of('0');
+         return nonZero != string::npos
             ? s.substr(nonZero)
             : "0"; // just return a single zero if the string consists of only zeros
-    }
+     }
+
 };
 
 /**

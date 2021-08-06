@@ -26,7 +26,6 @@
 #include "PrideXmlReader.h"
 #include "BlibMaker.h"
 
-using namespace std;
 
 namespace BiblioSpec {
 
@@ -340,7 +339,7 @@ void PrideXmlReader::endData()
     {
         // decode mzs
         BinaryDataEncoder encoder(curBinaryConfig_);
-        vector<double> decoded;
+        pwiz::util::BinaryData<double> decoded;
         encoder.decode(charBuf_, decoded);
 
         if (decoded.size() != numMzs_)
@@ -364,7 +363,7 @@ void PrideXmlReader::endData()
     {
         // decode intensities
         BinaryDataEncoder encoder(curBinaryConfig_);
-        vector<double> decoded;
+        pwiz::util::BinaryData<double> decoded;
         encoder.decode(charBuf_, decoded);
 
         if (decoded.size() != numIntensities_)

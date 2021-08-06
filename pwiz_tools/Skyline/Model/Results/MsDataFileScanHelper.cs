@@ -21,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using pwiz.Common.Chemistry;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -29,13 +30,14 @@ namespace pwiz.Skyline.Model.Results
 {
     public class MsDataFileScanHelper : IDisposable
     {
-        public MsDataFileScanHelper(Action<MsDataSpectrum[]> successAction, Action<Exception> failureAction)
+        private ChromSource _chromSource;
+        public MsDataFileScanHelper(Action<MsDataSpectrum[]> successAction, Action<Exception> failureAction, bool ignoreZeroIntensityPoints)
         {
-            ScanProvider = new BackgroundScanProvider(successAction, failureAction);
+            ScanProvider = new BackgroundScanProvider(successAction, failureAction, ignoreZeroIntensityPoints);
             SourceNames = new string[Helpers.CountEnumValues<ChromSource>()];
-            SourceNames[(int)ChromSource.ms1] = Resources.GraphFullScan_GraphFullScan_MS1;
-            SourceNames[(int)ChromSource.fragment] = Resources.GraphFullScan_GraphFullScan_MS_MS;
-            SourceNames[(int)ChromSource.sim] = Resources.GraphFullScan_GraphFullScan_SIM;
+            SourceNames[(int) ChromSource.ms1] = Resources.GraphFullScan_GraphFullScan_MS1;
+            SourceNames[(int) ChromSource.fragment] = Resources.GraphFullScan_GraphFullScan_MS_MS;
+            SourceNames[(int) ChromSource.sim] = Resources.GraphFullScan_GraphFullScan_SIM;
         }
 
         public BackgroundScanProvider ScanProvider { get; private set; }
@@ -50,7 +52,33 @@ namespace pwiz.Skyline.Model.Results
 
         public string[] SourceNames { get; set; }
 
-        public ChromSource Source { get; set; }
+        public ChromSource Source
+        {
+            get { return _chromSource; }
+            set
+            {
+                if (Source == value)
+                {
+                    return;
+                }
+
+                var oldTimeIntensities = GetTimeIntensities(Source);
+                _chromSource = value;
+                var newTimeIntensities = GetTimeIntensities(Source);
+                if (newTimeIntensities != null)
+                {
+                    if (oldTimeIntensities != null && ScanIndex >= 0 && ScanIndex < oldTimeIntensities.Times.Count)
+                    {
+                        var oldTime = oldTimeIntensities.Times[ScanIndex];
+                        ScanIndex = newTimeIntensities.IndexOfNearestTime(oldTime);
+                    }
+                    else
+                    {
+                        ScanIndex = Math.Min(ScanIndex, newTimeIntensities.NumPoints - 1);
+                    }
+                }
+            }
+        }
 
         public ChromSource SourceFromName(string name)
         {
@@ -62,70 +90,142 @@ namespace pwiz.Skyline.Model.Results
             return SourceNames[(int) source];
         }
 
-        public MsDataSpectrum[] GetFilteredScans()
+        public MsDataSpectrum[] GetFilteredScans(out double minIonMobilityVal, out double maxIonMobilityVal)
         {
             var fullScans = MsDataSpectra;
-            double minDrift, maxDrift;
-            if (Settings.Default.FilterDriftTimesFullScan && GetDriftRange(out minDrift, out maxDrift, Source))
-                fullScans = fullScans.Where(s => minDrift <= s.DriftTimeMsec && s.DriftTimeMsec <= maxDrift).ToArray();
+            double minIonMobility, maxIonMobility;
+            if (Settings.Default.FilterIonMobilityFullScan &&
+                GetIonMobilityFilterRange(out minIonMobility, out maxIonMobility, Source))
+            {
+                if (IsWatersSonarData)
+                {
+                    // "ion mobility" range is actually SONAR mz filtering range, caller will want that expressed as bin numbers
+                    minIonMobility = ScanProvider.SonarMzToBinRange(minIonMobility, 0).Item1;
+                    maxIonMobility = ScanProvider.SonarMzToBinRange(maxIonMobility, 0).Item2;
+                }
+                fullScans = fullScans.Where(s =>
+                        minIonMobility <= s.IonMobility.Mobility && s.IonMobility.Mobility <= maxIonMobility // im-per-scan case
+                        || minIonMobility <= s.MaxIonMobility && maxIonMobility >= s.MinIonMobility // 3-array case
+                ).ToArray();
+            }
+            else
+            {
+                minIonMobility = double.MinValue;
+                maxIonMobility = double.MaxValue;
+            }
+
+            minIonMobilityVal = minIonMobility;
+            maxIonMobilityVal = maxIonMobility;
             return fullScans;
         }
 
-        public bool GetDriftRange(out double minDrift, out double maxDrift, ChromSource sourceType)
+        // Determine the lower and upper bound of any ion mobility filtering
+        // In the case of Waters SONAR data, it's actually precursor m/z filtering so we return bin values (which need to be converted to SONAR bins for filtering)
+        public bool GetIonMobilityFilterRange(out double minIonMobility, out double maxIonMobility, ChromSource sourceType)
         {
-            minDrift = double.MaxValue;
-            maxDrift = double.MinValue;
-            var hasDriftInfo = false;
+            minIonMobility = double.MaxValue;
+            maxIonMobility = double.MinValue;
+            var hasIonMobilityInfo = false;
+            int i = 0;
             foreach (var transition in ScanProvider.Transitions)
             {
-                if (!transition.DriftTimeInfo.HasDriftTime || !transition.DriftTimeInfo.DriftTimeExtractionWindowWidthMsec.HasValue)
+                if (IsWatersSonarData)
+                {
+                    // Waters SONAR uses IM hardware to filter on precursor m/z and presents those data bins as if they were drift bins
+                    // So actual filter range is the same m/z window used in the m/z dimension.
+                    var mz = transition.PrecursorMz.Value;
+                    var halfWin = (transition.ExtractionWidth ?? 0) / 2;
+                    var mzLow = mz - halfWin;
+                    var mzHigh = mz + halfWin;
+                    minIonMobility = Math.Min(minIonMobility, mzLow); // Yes, this is a misnomer
+                    maxIonMobility = Math.Max(maxIonMobility, mzHigh); 
+                    hasIonMobilityInfo = true; // Well, not really ion mobility info - the drift time dimension is really precursor m/z space
+                }
+                else if (!transition._ionMobilityInfo.HasIonMobilityValue || !transition._ionMobilityInfo.IonMobilityExtractionWindowWidth.HasValue)
                 {
                     // Accept all values
-                    minDrift = double.MinValue;
-                    maxDrift = double.MaxValue;
+                    minIonMobility = double.MinValue;
+                    maxIonMobility = double.MaxValue;
                 }
-                else if (sourceType == ChromSource.unknown || transition.Source == sourceType)
+                else if (sourceType == ChromSource.unknown || (transition.Source == sourceType && i == TransitionIndex))
                 {
-                    // Products and precursors may have different expected drift time values in Waters MsE
-                    double startDrift = transition.DriftTimeInfo.DriftTimeMsec.Value -
-                                        transition.DriftTimeInfo.DriftTimeExtractionWindowWidthMsec.Value / 2;
-                    double endDrift = startDrift + transition.DriftTimeInfo.DriftTimeExtractionWindowWidthMsec.Value;
-                    minDrift = Math.Min(minDrift, startDrift);
-                    maxDrift = Math.Max(maxDrift, endDrift);
-                    hasDriftInfo = true;
+                    // Products and precursors may have different expected ion mobility values in Waters MsE
+                    double startIM = transition._ionMobilityInfo.IonMobility.Mobility.Value -
+                                        transition._ionMobilityInfo.IonMobilityExtractionWindowWidth.Value / 2;
+                    double endIM = startIM + transition._ionMobilityInfo.IonMobilityExtractionWindowWidth.Value;
+                    minIonMobility = Math.Min(minIonMobility, startIM);
+                    maxIonMobility = Math.Max(maxIonMobility, endIM);
+                    hasIonMobilityInfo = true;
                 }
+                i++;
             }
-            return hasDriftInfo;
+            return hasIonMobilityInfo;
+        }
+
+        // Determine the lower and upper bound of any ion mobility filtering, and for Waters SONAR display purposes include the effect
+        // of m/z values potentially covering more than one bin
+        public bool GetIonMobilityFilterDisplayRange(out double minIonMobility, out double maxIonMobility, ChromSource sourceType)
+        {
+            var hasIonMobilityInfo = GetIonMobilityFilterRange(out minIonMobility, out maxIonMobility, sourceType);
+
+            if (hasIonMobilityInfo && IsWatersSonarData)
+            {
+                // "Ion mobility" range is actually SONAR mz filtering range, i.e. the m/z extraction window from Settings.Transitions.FullScan
+                // But a single m/z value can cover multiple bins, so the actual quadrupole m/z selection range is probably wider than that and
+                // a wider m/z band was actually admitted into the collision cell to ensure sampling the precursor actually wanted.
+                // So take that into account when determining the edges of the purple "ion mobility" band for display
+                var mzAvg = 0.5 * (maxIonMobility + minIonMobility);
+                var mzTol = 0.5 * (maxIonMobility - minIonMobility);
+                var binRange = ScanProvider.SonarMzToBinRange(mzAvg, mzTol);
+                minIonMobility = Math.Min(minIonMobility, ScanProvider.SonarBinToPrecursorMz(binRange.Item1) ?? 0);
+                maxIonMobility = Math.Max(maxIonMobility, ScanProvider.SonarBinToPrecursorMz(binRange.Item2) ?? 0);
+            }
+            return hasIonMobilityInfo;
         }
 
         /// <summary>
-        /// Return a collisional cross section for this drift time at this mz, if reader supports this
+        /// Return a collisional cross section for this ion mobility at this mz, if reader supports this
         /// </summary>
-        public double? CCSFromDriftTime(double driftTime, double mz, int charge)
+        public double? CCSFromIonMobility(IonMobilityValue ionMobility, double mz, int charge)
         {
             if (ScanProvider == null)
             {
                 return null;
             }
-            return ScanProvider.CCSFromDriftTime(driftTime, mz, charge);
+            return ScanProvider.CCSFromIonMobility(ionMobility, mz, charge);
         }
+
+        public bool IsWatersSonarData { get {  return ScanProvider?. IsWatersSonarData ?? false; } } // For SONAR the drift dimension is actually precursor m/z filter dimension
 
         public bool ProvidesCollisionalCrossSectionConverter
         {
             get { return ScanProvider != null && ScanProvider.ProvidesCollisionalCrossSectionConverter; }
         }
 
-        public IList<int> GetScanIndexes(ChromSource source)
+        public eIonMobilityUnits IonMobilityUnits
+        {
+            get
+            {
+                return ScanProvider.IonMobilityUnits;
+            }
+        }
+
+        public TimeIntensities GetTimeIntensities(ChromSource source)
         {
             if (ScanProvider != null)
             {
                 foreach (var transition in ScanProvider.Transitions)
                 {
                     if (transition.Source == source)
-                        return transition.ScanIndexes;
+                        return transition.TimeIntensities;
                 }
             }
             return null;
+        }
+
+        public IList<int> GetScanIndexes(ChromSource source)
+        {
+            return GetTimeIntensities(source)?.ScanIds;
         }
 
         public int GetScanIndex()
@@ -192,13 +292,13 @@ namespace pwiz.Skyline.Model.Results
             private IScanProvider _scanProvider;
             private readonly List<IScanProvider> _cachedScanProviders;
             private readonly List<IScanProvider> _oldScanProviders;
-            // ReSharper disable once PrivateFieldCanBeConvertedToLocalVariable
             private readonly Thread _backgroundThread;
+            private bool _ignoreZeroIntensityPoints;
 
             private readonly Action<MsDataSpectrum[]> _successAction;
             private readonly Action<Exception> _failureAction;
 
-            public BackgroundScanProvider(Action<MsDataSpectrum[]> successAction, Action<Exception> failureAction)
+            public BackgroundScanProvider(Action<MsDataSpectrum[]> successAction, Action<Exception> failureAction, bool ignoreZeroIntensityPoints)
             {
                 _scanIndexNext = -1;
 
@@ -209,6 +309,7 @@ namespace pwiz.Skyline.Model.Results
 
                 _successAction = successAction;
                 _failureAction = failureAction;
+                _ignoreZeroIntensityPoints = ignoreZeroIntensityPoints;
             }
 
             public MsDataFileUri DataFilePath
@@ -240,18 +341,37 @@ namespace pwiz.Skyline.Model.Results
             }
 
             /// <summary>
-            /// Return a collisional cross section for this drift time at this mz, if reader supports this
+            /// Return a collisional cross section for this ion mobility at this mz, if reader supports this
             /// </summary>
-            public double? CCSFromDriftTime(double driftTime, double mz, int charge)
+            public double? CCSFromIonMobility(IonMobilityValue ionMobility, double mz, int charge)
             {
                 if (_scanProvider == null)
                 {
                     return null;
                 }
-                return _scanProvider.CCSFromDriftTime(driftTime, mz, charge);
+                return _scanProvider.CCSFromIonMobility(ionMobility, mz, charge);
             }
 
+            public eIonMobilityUnits IonMobilityUnits
+            {
+                get
+                {
+                    return _scanProvider != null
+                        ? _scanProvider.IonMobilityUnits
+                        : eIonMobilityUnits.none;
+                } }
+
             public bool ProvidesCollisionalCrossSectionConverter { get { return _scanProvider != null && _scanProvider.ProvidesCollisionalCrossSectionConverter; } }
+
+            public bool IsWatersSonarData { get { return _scanProvider != null && _scanProvider.IsWatersSonarData; } }
+            public Tuple<int, int> SonarMzToBinRange(double mz, double tolerance)
+            {
+                return _scanProvider?.SonarMzToBinRange(mz, tolerance);
+            }
+            public double? SonarBinToPrecursorMz(int bin)
+            {
+                return _scanProvider?.SonarBinToPrecursorMz(bin);
+            }
 
             /// <summary>
             /// Always run on a specific background thread to avoid changing threads when dealing
@@ -259,44 +379,57 @@ namespace pwiz.Skyline.Model.Results
             /// </summary>
             private void Work()
             {
-                while (!_disposing)
+                try
                 {
-                    IScanProvider scanProvider;
-                    int internalScanIndex;
+                    while (!_disposing)
+                    {
+                        IScanProvider scanProvider;
+                        int internalScanIndex;
 
+                        lock (this)
+                        {
+                            while (!_disposing && (_scanProvider == null || _scanIndexNext < 0) && _oldScanProviders.Count == 0)
+                                Monitor.Wait(this);
+                            if (_disposing)
+                                break;
+
+                            scanProvider = _scanProvider;
+                            internalScanIndex = _scanIndexNext;
+                            _scanIndexNext = -1;
+                        }
+
+                        if (scanProvider != null && internalScanIndex != -1)
+                        {
+                            try
+                            {
+                                var msDataSpectra = scanProvider.GetMsDataFileSpectraWithCommonRetentionTime(internalScanIndex, _ignoreZeroIntensityPoints); // Get a collection of scans with changing ion mobility but same retention time, or single scan if no ion mobility info
+                                _successAction(msDataSpectra);
+                            }
+                            catch (Exception ex)
+                            {
+                                try
+                                {
+                                    _failureAction(ex);
+                                }
+                                catch (Exception exFailure)
+                                {
+                                    Program.ReportException(exFailure);
+                                }
+                            }
+                        }
+
+                        DisposeAllProviders();
+                    }
+                }
+                finally
+                {
                     lock (this)
                     {
-                        while (!_disposing && (_scanProvider == null || _scanIndexNext < 0) && _oldScanProviders.Count == 0)
-                            Monitor.Wait(this);
-                        if (_disposing)
-                            break;
+                        SetScanProvider(null);
+                        DisposeAllProviders();
 
-                        scanProvider = _scanProvider;
-                        internalScanIndex = _scanIndexNext;
-                        _scanIndexNext = -1;
+                        Monitor.PulseAll(this);
                     }
-
-                    if (scanProvider != null && internalScanIndex != -1)
-                    {
-                        try
-                        {
-                            var msDataSpectra = scanProvider.GetMsDataFileSpectraWithCommonRetentionTime(internalScanIndex); // Get a collection of scans with increasing drift time but same retention time, or single scan if no drift info
-                            _successAction(msDataSpectra);
-                        }
-                        catch (Exception ex)
-                        {
-                            _failureAction(ex);
-                        }
-                    }
-
-                    DisposeAllProviders();
-                }
-
-                lock (this)
-                {
-                    DisposeAllProviders();
-
-                    Monitor.PulseAll(this);
                 }
             }
 
@@ -377,6 +510,8 @@ namespace pwiz.Skyline.Model.Results
                     _disposing = true;
                     SetScanProvider(null);
                 }
+                // Make sure the background thread goes away
+                _backgroundThread.Join();
             }
         }
 

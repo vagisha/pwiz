@@ -335,7 +335,7 @@ namespace pwiz.SkylineTestFunctional
             {
                 // Keep OK button from doing anything ever
                 dlg.TestRunProcess = new TestRunProcess { ExitCode = 0 };
-                dlg.ShowDialog();
+                dlg.ShowDialog(SkylineWindow);
             }
         }
 
@@ -363,8 +363,9 @@ namespace pwiz.SkylineTestFunctional
                 return RProgramPath ?? string.Empty;
             }
 
-            public bool CheckForInternetConnection()
+            public bool CheckForInternetConnection(out string site)
             {
+                site = null;
                 return !InternetConnectionDoesNotExists;
             }
         }

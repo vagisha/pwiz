@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -36,14 +36,15 @@ namespace pwiz.Skyline.Model.Esp
     /// 
     /// http://www.nature.com/nbt/journal/v27/n2/abs/nbt.1524.html
     /// </summary>
-    public class EspFeatureCalc
+    public static class EspFeatureCalc
     {
-        public const string EXT = ".csv"; // Not L10N
+        public const string EXT = ".csv";
 
-        private static readonly SequenceMassCalc MASS_CALC = new SequenceMassCalc(MassType.Monoisotopic);
+        private static readonly SequenceMassCalc MASS_CALC = new SequenceMassCalc(MassType.MonoisotopicMassH);
 
-        public static double CalculateFeature(EspFeatureDb.FeatureDef feature, string seq)
+        public static double CalculateFeature(EspFeatureDb.FeatureDef feature, Target target)
         {
+            var seq = target.Sequence ?? string.Empty;
             switch (feature)
             {
                 case EspFeatureDb.FeatureDef.length:
@@ -55,25 +56,25 @@ namespace pwiz.Skyline.Model.Esp
                 case EspFeatureDb.FeatureDef.AVG_Gas_phase_basicity:
                     return GasPhaseBasicityCalc.Calculate(seq).Average();
                 case EspFeatureDb.FeatureDef.nAcidic:
-                    return AminoAcid.Count(seq, 'D', 'E');// Not L10N: Amino acid
+                    return AminoAcid.Count(seq, 'D', 'E');// Amino acid
                 case EspFeatureDb.FeatureDef.nBasic:
-                    return AminoAcid.Count(seq, 'R', 'H', 'K'); // Not L10N: Amino acid
+                    return AminoAcid.Count(seq, 'R', 'H', 'K'); // Amino acid
                 default:
                     return EspFeatureDb.CalculateFeature(feature, seq);
             }
         }
 
-        public static IEnumerable<double> CalculateFeatures(IEnumerable<EspFeatureDb.FeatureDef> features, string seq)
+        public static IEnumerable<double> CalculateFeatures(IEnumerable<EspFeatureDb.FeatureDef> features, Target seq)
         {
             return features.Select(f => CalculateFeature(f, seq));
         }
 
-        public static IEnumerable<double> CalculateAllFeatures(string seq)
+        public static IEnumerable<double> CalculateAllFeatures(Target seq)
         {
             return CalculateFeatures(EspFeatureDb.AllFeatures, seq);
         }
 
-        public static void WriteFeatures(string filePath, IEnumerable<string> seqs, CultureInfo cultureInfo)
+        public static void WriteFeatures(string filePath, IEnumerable<Target> seqs, CultureInfo cultureInfo)
         {
             using (var writer = new StreamWriter(filePath))
             {
@@ -81,12 +82,12 @@ namespace pwiz.Skyline.Model.Esp
             }
         }
 
-        public static void WriteFeatures(TextWriter writer, IEnumerable<string> seqs, CultureInfo cultureInfo)
+        public static void WriteFeatures(TextWriter writer, IEnumerable<Target> seqs, CultureInfo cultureInfo)
         {
-            WriteRow(writer, "sequence", EspFeatureDb.AllFeatures.Cast<object>(), // Not L10N
+            WriteRow(writer, @"sequence", EspFeatureDb.AllFeatures.Cast<object>(),
                      cultureInfo);
             foreach (var seq in seqs)
-                WriteRow(writer, seq, CalculateAllFeatures(seq).Cast<object>(), cultureInfo);
+                WriteRow(writer, seq.ToString(), CalculateAllFeatures(seq).Cast<object>(), cultureInfo);
         }
 
         private static void WriteRow(TextWriter writer,
@@ -101,7 +102,7 @@ namespace pwiz.Skyline.Model.Esp
             {
                 writer.Write(separator);
                 if (featureColumn is double)
-                    writer.Write(((double) featureColumn).ToString("0.######", cultureInfo)); // Not L10N
+                    writer.Write(((double) featureColumn).ToString(@"0.######", cultureInfo));
                 else
                     writer.Write(featureColumn);
             }
@@ -109,3 +110,4 @@ namespace pwiz.Skyline.Model.Esp
         }
     }
 }
+

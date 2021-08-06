@@ -51,7 +51,7 @@ namespace pwiz.Skyline.SettingsUI
         private readonly IEnumerable<IPeakScoringModel> _existing;
         private IPeakScoringModel _peakScoringModel;
         private IPeakScoringModel _lastTrainedScoringModel;
-        private const string UNNAMED = "<UNNAMED>"; // Not L10N
+        private const string UNNAMED = "<UNNAMED>";
         private string _originalName;
         private TargetDecoyGenerator _targetDecoyGenerator;
         private readonly PeakCalculatorGridViewDriver _gridViewDriver;
@@ -136,7 +136,7 @@ namespace pwiz.Skyline.SettingsUI
             using (var longWaitDlg = new LongWaitDlg { Text = Resources.EditPeakScoringModelDlg_TrainModelClick_Scoring })
             {
                 longWaitDlg.PerformWork(owner, 800, progressMonitor =>
-                    _targetDecoyGenerator = CreateTargetDecoyGenerator(document, scoringModel, scoreProvider, progressMonitor));
+                    _targetDecoyGenerator = new TargetDecoyGenerator(document, scoringModel, scoreProvider, progressMonitor));
                 if (longWaitDlg.IsCanceled)
                     return false;
             }
@@ -165,17 +165,6 @@ namespace pwiz.Skyline.SettingsUI
             UpdateCalculatorGraph(0);
             UpdateModelGraph();
             return true;
-        }
-
-        private TargetDecoyGenerator CreateTargetDecoyGenerator(SrmDocument document,
-                                                                IPeakScoringModel scoringModel,
-                                                                IFeatureScoreProvider scoreProvider,
-                                                                IProgressMonitor progressMonitor)
-        {
-            var featureScores = scoreProvider != null
-                ? scoreProvider.GetFeatureScores(document, scoringModel, progressMonitor)
-                : document.GetPeakFeatures(scoringModel.PeakFeatureCalculators, progressMonitor);
-            return new TargetDecoyGenerator(scoringModel, featureScores);
         }
 
         /// <summary>
@@ -279,8 +268,8 @@ namespace pwiz.Skyline.SettingsUI
             {
                 longWaitDlg.PerformWork(this, 800, progressMonitor => 
                 {
-                    _peakScoringModel = peakScoringModel.Train(targetTransitionGroups, decoyTransitionGroups, initialParams,
-                        null, secondBestCheckBox.Checked, true, progressMonitor);
+                    _peakScoringModel = peakScoringModel.Train(targetTransitionGroups, decoyTransitionGroups, _targetDecoyGenerator, initialParams,
+                        null, null, secondBestCheckBox.Checked, true, progressMonitor);
                 });
                 if (longWaitDlg.IsCanceled)
                     return;
@@ -304,6 +293,8 @@ namespace pwiz.Skyline.SettingsUI
                         {
                             var item = _gridViewDriver.Items[i];
                             double weight = _peakScoringModel.Parameters.Weights[i];
+                            var contribution = _peakScoringModel.Parameters.PercentContributions[i];
+                            var percentContribution = double.IsNaN(contribution) ? (double?) null : contribution;
                             if (double.IsNaN(weight))
                             {
                                 item.Weight = null;
@@ -315,8 +306,7 @@ namespace pwiz.Skyline.SettingsUI
                                 progressMonitor.ProgressValue = (seenContributingScores*100)/totalContributingScores;
 
                                 item.Weight = weight;
-                                item.PercentContribution = _targetDecoyGenerator.GetPercentContribution(
-                                    _peakScoringModel, i);
+                                item.PercentContribution = percentContribution;
 
                                 Interlocked.Increment(ref seenContributingScores);
                                 progressMonitor.ProgressValue = (seenContributingScores*100)/totalContributingScores;
@@ -394,11 +384,6 @@ namespace pwiz.Skyline.SettingsUI
             }
         }
 
-        public static bool IsUnknown(double d)
-        {
-            return (double.IsNaN(d) || double.IsInfinity(d));
-        }
-
         /// <summary>
         /// Has this weight been assigned a score opposite to that expected in its definition?
         /// </summary>
@@ -416,7 +401,7 @@ namespace pwiz.Skyline.SettingsUI
 
         private static void ProcessScores(double score, ref double min, ref double max, ref int countUnknownScores)
         {
-            if (IsUnknown(score))
+            if (TargetDecoyGenerator.IsUnknown(score))
                 countUnknownScores++;
             else
             {
@@ -532,10 +517,17 @@ namespace pwiz.Skyline.SettingsUI
                                                     Resources.EditPeakScoringModelDlg_EditPeakScoringModelDlg_Composite_Score__Normalized_;
             graphPaneQ.Title.Text = hasUnknownScores ?
                                                     Resources.EditPeakScoringModelDlg_UpdateModelGraph_Trained_model_is_not_applicable_to_current_dataset_ :
-                                                    Resources.EditPeakScoringModelDlg_UpdateQValueGraph_Q_values_of_target_peptides;
+                                                    GetModeUIHelper().Translate(Resources.EditPeakScoringModelDlg_UpdateQValueGraph_Q_values_of_target_peptides);
             graphPaneP.Title.Text = hasUnknownScores ?
                                                     Resources.EditPeakScoringModelDlg_UpdateModelGraph_Trained_model_is_not_applicable_to_current_dataset_ :
-                                                    Resources.EditPeakScoringModelDlg_UpdateModelGraph_P_values_of_target_peptides;
+                                                    GetModeUIHelper().Translate(Resources.EditPeakScoringModelDlg_UpdateModelGraph_P_values_of_target_peptides);
+
+            if (ModeUI == SrmDocument.DOCUMENT_TYPE.small_molecules)
+            {
+                decoyCheckBox.Checked = decoyCheckBox.Enabled = false; // No decoys for small molecules
+                secondBestCheckBox.Checked = true; // Must have at least one of these two checked
+                secondBestCheckBox.Enabled = false;
+            }
 
             // Add bar graphs.
             if (decoyCheckBox.Checked)
@@ -560,29 +552,21 @@ namespace pwiz.Skyline.SettingsUI
             if (_peakScoringModel.Parameters != null && !allUnknownScores)
             {
                 // Calculate scale value for normal curve by calculating area of decoy histogram.
-                double yScaleDecoy = 0;
-                double yScaleSecondBest = 0;
+                double yScaleDecoy = GetTrapezoidalArea(decoyPoints.Select(p => p.Y));
+                double yScaleSecondBest = GetTrapezoidalArea(secondBestPoints.Select(p => p.Y));
                 double yScale = 0;
-                double previousY = 0;
-                foreach (var decoyPoint in decoyPoints)
-                {
-                    // Add trapezoidal area.
-                    yScaleDecoy += Math.Max(previousY, decoyPoint.Y) - Math.Abs(previousY - decoyPoint.Y)/2;
-                    previousY = decoyPoint.Y;
-                }
-                previousY = 0;
-                foreach (var secondBestPoint in secondBestPoints)
-                {
-                    // Add trapezoidal area.
-                    yScaleSecondBest += Math.Max(previousY, secondBestPoint.Y) - Math.Abs(previousY - secondBestPoint.Y) / 2;
-                    previousY = secondBestPoint.Y;
-                }
                 if (_peakScoringModel.UsesDecoys && _peakScoringModel.UsesSecondBest)
                     yScale = (yScaleDecoy + yScaleSecondBest) / 2.0;
                 else if (_peakScoringModel.UsesSecondBest)
                     yScale = yScaleSecondBest;
                 else if (_peakScoringModel.UsesDecoys)
                     yScale = yScaleDecoy;
+                if (yScale == 0)
+                {
+                    // If no decoys, use target points to scale the normal curve
+                    // as if there were an equal number of targets and decoys
+                    yScale = GetTrapezoidalArea(targetPoints.Select(p => p.Y));
+                }
                 double binWidth = (max - min)/HISTOGRAM_BAR_COUNT;
                 yScale *= binWidth;
 
@@ -639,6 +623,19 @@ namespace pwiz.Skyline.SettingsUI
             zedGraphMProphet.Refresh();
             zedGraphQValues.Refresh();
             tabControl1.Refresh();
+        }
+
+        private static double GetTrapezoidalArea(IEnumerable<double> heights)
+        {
+            double area = 0;
+            double previousHeight = 0;
+            foreach (var height in heights)
+            {
+                // Add trapezoidal area.
+                area += Math.Max(previousHeight, height) - Math.Abs(previousHeight - height) / 2;
+                previousHeight = height;
+            }
+            return area;
         }
 
         private static void ScaleGraph(GraphPane graphPane, double min, double max, bool hasUnknownScores)
@@ -809,11 +806,28 @@ namespace pwiz.Skyline.SettingsUI
 
             public HistogramGroup(ICollection<List<double>> scoreGroups)
             {
-                int nGroups = scoreGroups.Count;
                 var histogramList = scoreGroups.Select(scoreGroup => new HistogramData(scoreGroup)).ToList();
-                Min = histogramList.Select(histogram => histogram.Min).Min();
+
+                double binWidth = InitBinGroups(histogramList);
+
+                HasUnknownScores = histogramList.Sum(histogram => histogram.CountUnknowns) > 0;
+                if (HasUnknownScores)
+                {
+                    Max += (Max - Min) * 0.2;
+                    for (int i = 0; i < scoreGroups.Count; ++i)
+                    {
+                        BinGroups[i].Add(new PointPair(Max, histogramList[i].CountUnknowns));
+                    }
+
+                    Max += binWidth;
+                }
+            }
+
+            private double InitBinGroups(IList<HistogramData> histogramList, double? min = null)
+            {
+                Min = min ?? histogramList.Select(histogram => histogram.Min).Min();
                 Max = histogramList.Select(histogram => histogram.Max).Max();
-                BinGroups = scoreGroups.Select(group => new PointPairList()).ToList();
+                BinGroups = histogramList.Select(group => new PointPairList()).ToList();
                 double binWidth = (Max - Min) / HISTOGRAM_BAR_COUNT;
                 AllUnknownScores = histogramList.All(histogram => histogram.Scores.Count == histogram.CountUnknowns);
                 if (AllUnknownScores)
@@ -825,18 +839,22 @@ namespace pwiz.Skyline.SettingsUI
                 else
                 {
                     double minTemp = Min;
-                    BinGroups = histogramList.Select(histogram => histogram.ComputeHistogram(minTemp, binWidth, HISTOGRAM_BAR_COUNT)).ToList();
+                    BinGroups = histogramList
+                        .Select(histogram => histogram.ComputeHistogram(minTemp, binWidth, HISTOGRAM_BAR_COUNT)).ToList();
+
+                    int minVisibleBinIndex = GetMinVisibleBinIndex();
+                    if (minVisibleBinIndex > 0)
+                        return InitBinGroups(histogramList, Min + binWidth * minVisibleBinIndex);
                 }
-                HasUnknownScores = histogramList.Sum(histogram => histogram.CountUnknowns) > 0;
-                if (HasUnknownScores)
-                {
-                    Max += (Max - Min) * 0.2;
-                    for (int i = 0; i < nGroups; ++i)
-                    {
-                        BinGroups[i].Add(new PointPair(Max, histogramList[i].CountUnknowns));
-                    }
-                    Max += binWidth;
-                }
+
+                return binWidth;
+            }
+
+            private int GetMinVisibleBinIndex()
+            {
+                const double minPercentOfMax = 0.0001;
+                double maxBar = BinGroups.SelectMany(g => g).Max(p => p.Y);
+                return BinGroups.Select(g => g.IndexOf(p => p.Y / maxBar >= minPercentOfMax)).Min();
             }
 
             protected bool Equals(HistogramGroup other)
@@ -904,7 +922,7 @@ namespace pwiz.Skyline.SettingsUI
                 }
                 foreach (var score in Scores)
                 {
-                    if (IsUnknown(score))
+                    if (TargetDecoyGenerator.IsUnknown(score))
                         continue;
                     int bin = Math.Max(0, Math.Min(listBins.Count - 1, (int)((score - min) / binWidth)));
                     listBins[bin].Y++;
@@ -953,13 +971,6 @@ namespace pwiz.Skyline.SettingsUI
                     cell.Style = new DataGridViewCellStyle();
                     cell.ReadOnly = false;
                     cell.ToolTipText = string.Empty;
-                }
-                if (unsortedIndex == 0)
-                {
-                    // The score used for bootstrap cannot be disabled
-                    var bootstrapCell = gridPeakCalculators.Rows[row].Cells[(int)ColumnNames.enabled];
-                    bootstrapCell.ReadOnly = true;
-                    bootstrapCell.Style = inactiveStyle;
                 }
                 // Show row in red if weight is the wrong sign
                 if (IsWrongSignWeight(row))
@@ -1074,7 +1085,7 @@ namespace pwiz.Skyline.SettingsUI
             get
             {
                 var name = textName.Text.Trim();
-                return name.Length > 0 ? name : UNNAMED;    // Not L10N
+                return name.Length > 0 ? name : UNNAMED;
             }
             set { textName.Text = (value == UNNAMED) ? string.Empty : value; }
         }

@@ -23,6 +23,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.Chemistry;
 using pwiz.Common.SystemUtil;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline;
@@ -45,7 +46,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
         {
             Log.AddMemoryAppender();
 
-            TestFilesZip = "https://skyline.gs.washington.edu/perftests/PerfImportResultsAgilentIMSv5.zip";
+            TestFilesZip = GetPerfTestDataURL(@"PerfImportResultsAgilentIMSv5.zip");
             TestFilesPersistent = new[] { "19pep_1700V_pos_3May14_Legolas.d", "19pep_1700V_CE22_pos_5May14_Legolas.d" }; // list of files that we'd like to unzip alongside parent zipFile, and (re)use in place
 
             MsDataFileImpl.PerfUtilFactory.IssueDummyPerfUtils = false; // turn on performance measurement
@@ -112,6 +113,8 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             AssertEx.IsDocumentState(doc1, null, 19, 19, 28, 607);
              
             var chroms0 = doc0.Settings.MeasuredResults.Chromatograms[chromIndex];
+            // Original file was saved before we had a sense of ion mobility type
+            chroms0 = chroms0.ChangeMSDataFileInfos(chroms0.MSDataFileInfos.Select(m => m.ChangeIonMobilityUnits(eIonMobilityUnits.drift_time_msec)).ToList());
             var chroms1 = doc1.Settings.MeasuredResults.Chromatograms[chromIndex];
             Assert.AreEqual(StripPathInfo(chroms0), StripPathInfo(chroms1));
 
@@ -147,7 +150,7 @@ namespace TestPerf // Note: tests in the "TestPerf" namespace only run when the 
             // Remove the everything but the filename from the FilePath, and zero out the FileModifiedTime.
             var chromCachedFile = new ChromCachedFile(new MsDataFilePath(chromFileInfo.FilePath.GetFileName()), 0,
                 new DateTime(0), chromFileInfo.RunStartTime, (float) chromFileInfo.MaxRetentionTime,
-                (float) chromFileInfo.MaxIntensity, chromFileInfo.InstrumentInfoList);
+                (float) chromFileInfo.MaxIntensity, chromFileInfo.IonMobilityUnits, null, null, chromFileInfo.InstrumentInfoList);
             return chromFileInfo.ChangeInfo(chromCachedFile);
         }
     }

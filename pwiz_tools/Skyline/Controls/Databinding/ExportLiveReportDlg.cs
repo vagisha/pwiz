@@ -172,10 +172,16 @@ namespace pwiz.Skyline.Controls.Databinding
 
         private SkylineViewContext GetViewContext(bool clone)
         {
-            var dataSchema = new SkylineDataSchema(_documentUiContainer, GetDataSchemaLocalizer());
+            SkylineDataSchema dataSchema;
             if (clone)
             {
-                dataSchema = dataSchema.Clone();
+                var documentContainer = new MemoryDocumentContainer();
+                documentContainer.SetDocument(_documentUiContainer.DocumentUI, documentContainer.Document);
+                dataSchema = new SkylineDataSchema(documentContainer, GetDataSchemaLocalizer());
+            }
+            else
+            {
+                dataSchema = new SkylineDataSchema(_documentUiContainer, GetDataSchemaLocalizer());
             }
             return new DocumentGridViewContext(dataSchema) {EnablePreview = true};
         }
@@ -206,10 +212,10 @@ namespace pwiz.Skyline.Controls.Databinding
             var viewInfo = viewContext.GetViewInfo(SelectedViewName);
             var form = new DocumentGridForm(viewContext)
             {
-                ViewInfo = viewInfo,
                 Text = Resources.ExportLiveReportDlg_ShowPreview_Preview__ + viewInfo.Name,
                 ShowViewsMenu = false,
             };
+            form.BindingListSource.SetViewContext(viewContext, viewInfo);
             form.Show(Owner);
         }
 

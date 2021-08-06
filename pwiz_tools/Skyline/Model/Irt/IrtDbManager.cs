@@ -31,7 +31,7 @@ namespace pwiz.Skyline.Model.Irt
             // Not loaded if the calculator is not usable
             var calc = GetIrtCalculator(document);
             if (calc != null && !calc.IsUsable)
-                return "IrtDbManager: GetIrtCalculator(document) not usable"; // Not L10N
+                return @"IrtDbManager: GetIrtCalculator(document) not usable";
             // Auto-calc of all replicates can wait until the bulk load completes
             if (document.Settings.IsResultsJoiningDisabled)
                 return null;
@@ -40,7 +40,7 @@ namespace pwiz.Skyline.Model.Irt
             if (rtRegression == null)
                 return null;
             if (rtRegression.IsAutoCalcRequired(document, null))
-                return "IrtDbManager: rtRegression IsAutoCalcRequired"; // Not L10N
+                return @"IrtDbManager: rtRegression IsAutoCalcRequired";
             return null;
         }
 
@@ -161,13 +161,13 @@ namespace pwiz.Skyline.Model.Irt
                                                                    RetentionTimeRegression rtRegression)
         {
             var document = container.Document;
-            var dictSeqToPeptide = new Dictionary<string, PeptideDocNode>();
-            foreach (var nodePep in document.Peptides)
+            var dictSeqToPeptide = new Dictionary<Target, PeptideDocNode>();
+            foreach (var nodePep in document.Molecules)
             {
                 if (nodePep.IsDecoy)
                     continue;
 
-                string seqMod = document.Settings.GetSourceTextId(nodePep);
+                var seqMod = document.Settings.GetSourceTarget(nodePep);
                 if (!dictSeqToPeptide.ContainsKey(seqMod))
                     dictSeqToPeptide.Add(seqMod, nodePep);
             }
@@ -175,7 +175,7 @@ namespace pwiz.Skyline.Model.Irt
             try
             {
                 var regressionPeps = rtRegression.Calculator.ChooseRegressionPeptides(dictSeqToPeptide.Keys, out minCount);
-                var setRegression = new HashSet<string>(regressionPeps);
+                var setRegression = new HashSet<Target>(regressionPeps);
                 dictSeqToPeptide = dictSeqToPeptide.Where(p => setRegression.Contains(p.Key))
                                                    .ToDictionary(p => p.Key, p => p.Value);
             }
@@ -240,8 +240,9 @@ namespace pwiz.Skyline.Model.Irt
             var listTime = listPepCorr.Select(p => p.Time).ToList();
             var listScore = listPepCorr.Select(p => p.Score).ToList();
 
-            RegressionLine line;
-            return RCalcIrt.TryGetRegressionLine(listScore, listTime, minCount, out line) ? line : null;
+            return IrtRegression.TryGet<RegressionLine>(listScore, listTime, minCount, out var line)
+                ? (RegressionLine) line
+                : null;
         }
 
         private struct TimeScorePair

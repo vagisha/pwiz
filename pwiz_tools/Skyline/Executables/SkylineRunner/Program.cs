@@ -24,23 +24,24 @@ using System.IO;
 using System.IO.Pipes;
 using System.Linq;
 using System.Threading;
-using SkylineRunner.Properties;
+using pwiz.SkylineRunner.Properties;
 
-namespace SkylineRunner
+namespace pwiz.SkylineRunner
 {
     class Program
     {
-        public static readonly object SERVER_CONNECTION_LOCK = new object();
+        private static readonly object SERVER_CONNECTION_LOCK = new object();
+
         private bool _connected;
 
         static int Main(string[] args)
         {
-            return new Program().run(args);
+            return new Program().Run(args);
         }
 
-        private int run(IEnumerable<string> args)
+        private int Run(IEnumerable<string> args)
         {
-            const string skylineAppName = "Skyline"; // Not L10N
+            const string skylineAppName = "Skyline-daily"; // Not L10N
             string[] possibleSkylinePaths = ListPossibleSkylineShortcutPaths(skylineAppName);
             string skylinePath = possibleSkylinePaths.FirstOrDefault(File.Exists);
             if (null == skylinePath)
@@ -57,7 +58,7 @@ namespace SkylineRunner
             {
                 CreateNoWindow = true,
                 UseShellExecute = false,
-                Arguments = String.Format("/c \"{0}\" CMD{1}", skylinePath, guidSuffix) // Not L10N
+                Arguments = string.Format("/c \"{0}\" CMD{1}", skylinePath, guidSuffix) // Not L10N
             };
             Process.Start(psiExporter);
 
@@ -73,6 +74,15 @@ namespace SkylineRunner
 
                 using (StreamWriter sw = new StreamWriter(serverStream))
                 {
+                    // Send the console width for SkylineRunner to Skyline
+                    try
+                    {
+                        sw.WriteLine("--sw=" + (Console.BufferWidth - 1));
+                    }
+                    catch
+                    {
+                        // Rely on the default width. The command is being run in an invironment without a screen width
+                    }
                     // Send the directory of SkylineRunner to Skyline
                     sw.WriteLine("--dir=" + Directory.GetCurrentDirectory()); // Not L10N
 
@@ -106,7 +116,7 @@ namespace SkylineRunner
                     //While (!done reading)
                     while ((line = sr.ReadLine()) != null)
                     {
-                        if (line.StartsWith("Error:"))
+                        if (ErrorChecker.IsErrorLine(line))   // In case of Skyline-daily with untranslated text
                         {
                             exitCode = 2;
                         }
@@ -132,10 +142,36 @@ namespace SkylineRunner
             connector.Start();
 
             bool connected;
+            var wait = 5;
             lock (SERVER_CONNECTION_LOCK)
             {
-                Monitor.Wait(SERVER_CONNECTION_LOCK, 5 * 1000);
+                Monitor.Wait(SERVER_CONNECTION_LOCK, wait * 1000);
                 connected = _connected;
+            }
+
+            if (!connected)
+            {
+                // Wait another 10 seconds for a total of 15 seconds.
+                Console.Write(Resources.Program_WaitForConnection_Waiting_for_Skyline);
+
+                wait++;
+                var timer = new System.Timers.Timer(1000);
+                timer.Elapsed += (sender, e) =>
+                {
+                    Console.Write(@".");
+                    wait++;
+                };
+                timer.Start();
+                lock (SERVER_CONNECTION_LOCK)
+                {
+                    Monitor.Wait(SERVER_CONNECTION_LOCK, 10 * 1000);
+                    connected = _connected;
+                } 
+                timer.Stop();
+                timer.Dispose();
+
+                Console.Write($@" {wait}s");
+                Console.WriteLine();
             }
 
             if (!connected)
@@ -150,7 +186,7 @@ namespace SkylineRunner
                     return false;
                 }
                 // ReSharper disable once UnusedVariable
-                catch (Exception ignored)
+                catch (Exception)
                 {
                     return false;
                 }

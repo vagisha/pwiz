@@ -184,6 +184,24 @@ namespace sqlite3pp
         return executef("DETACH '%s'", name.c_str());
     }
 
+    void database::load_extension(const std::string& name)
+    {
+        sqlite3_enable_load_extension(db_, 1);
+        char* errorBuf = NULL;
+        int rc = sqlite3_load_extension(db_, name.c_str(), NULL, &errorBuf);
+        if (rc != SQLITE_OK)
+        {
+            std::string error;
+            if (errorBuf)
+            {
+                error = errorBuf;
+                sqlite3_free(errorBuf);
+            }
+            throw database_error("loading extension \"" + name + "\": " + error);
+        }
+        sqlite3_enable_load_extension(db_, 0);
+    }
+
     int database::load_from_file(const std::string& dbname)
     {
         return loadOrSaveDb(db_, dbname.c_str(), 0);
@@ -227,6 +245,18 @@ namespace sqlite3pp
     sqlite3_int64 database::last_insert_rowid() const
     {
         return sqlite3_last_insert_rowid(db_);
+    }
+
+    bool database::has_table(const std::string& table)
+    {
+        return has_table(table.c_str());
+    }
+
+    bool database::has_table(const char* table)
+    {
+        query q(*this, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?");
+        q.bind(1, table);
+        return q.begin()->get<sqlite3_int64>(0) > 0;
     }
 
     int database::error_code() const
@@ -363,6 +393,11 @@ namespace sqlite3pp
     int statement::bind(int idx, void const* value, int n, bool fstatic)
     {
         return sqlite3_bind_blob(stmt_, idx, value, n, fstatic ? SQLITE_STATIC : SQLITE_TRANSIENT);
+    }
+
+    int statement::bind(int idx, const blob& value)
+    {
+        return bind(idx, value.bytes_, value.n_, value.fstatic_);
     }
 
     int statement::bind(int idx)

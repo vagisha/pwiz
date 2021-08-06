@@ -42,7 +42,6 @@
     // use std min/max instead of Win32 macros
     #define NOMINMAX
 
-    #define _WIN32_WINNT    0x0400
     #ifndef _WINDOWS_
         #if defined(_AFXDLL) || defined(_ATL_STATIC_REGISTRY)
         #include <afx.h>
@@ -121,7 +120,6 @@
 #include "pwiz/utility/misc/optimized_lexical_cast.hpp"
 #include <boost/random.hpp>
 #include <boost/tokenizer.hpp>
-#include <boost/regex.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/binary_iarchive.hpp>
@@ -151,7 +149,7 @@
 #include <boost/foreach.hpp>
 #include <boost/range.hpp>
 #include <boost/format.hpp>
-#include <boost/logic/tribool.hpp>
+#include <boost/logic/tribool_io.hpp>
 
 
 #include "pwiz/utility/misc/Std.hpp"
@@ -270,15 +268,6 @@ using boost::filesystem::extension;
 #define MAKE_PATH_FOR_BOOST(str) (boost::filesystem::path((str), boost::filesystem::native))
 #endif
 
-#ifdef USE_BOOST_REGEX
-using boost::regex_match;
-using boost::regex_search;
-using boost::regex_replace;
-using boost::regex_iterator;
-using boost::regex;
-using boost::smatch;
-#endif
-
 using boost::archive::text_iarchive;
 using boost::archive::text_oarchive;
 using boost::archive::binary_iarchive;
@@ -336,77 +325,6 @@ namespace boost
 namespace std
 {
 #ifndef _INCLUDED_COMMON_H_
-    template< class T1, class T2 >
-    ostream&        operator<< ( ostream& o, const pair< T1, T2 >& p )
-    {
-        return ( o << "( " << p.first << ", " << p.second << " )" );
-    }
-
-    template< class T >
-    ostream&        operator<< ( ostream& o, const vector< T >& v )
-    {
-        o << "(";
-        for( typename vector< T >::const_iterator itr = v.begin(); itr != v.end(); ++itr )
-            o << " " << *itr;
-        o << " )";
-
-        return o;
-    }
-
-    template< class T, class P >
-    ostream&        operator<< ( ostream& o, const set< T, P >& s )
-    {
-        o << "(";
-        for( typename set< T, P >::const_iterator itr = s.begin(); itr != s.end(); ++itr )
-            o << " " << *itr;
-        o << " )";
-
-        return o;
-    }
-
-    inline ostream&        operator<< ( ostream& o, const map< string, string >& m )
-    {
-        o << "(";
-        for( map< string, string >::const_iterator itr = m.begin(); itr != m.end(); ++itr )
-            o << " \"" << itr->first << "\"->\"" << itr->second << "\"";
-        o << " )";
-
-        return o;
-    }
-
-    template< class KeyT >
-    ostream&        operator<< ( ostream& o, const map< KeyT, string >& m )
-    {
-        o << "(";
-        for( typename map< KeyT, string >::const_iterator itr = m.begin(); itr != m.end(); ++itr )
-            o << " " << itr->first << "->\"" << itr->second << "\"";
-        o << " )";
-
-        return o;
-    }
-
-    template< class ValueT >
-    ostream&        operator<< ( ostream& o, const map< string, ValueT >& m )
-    {
-        o << "(";
-        for( typename map< string, ValueT >::const_iterator itr = m.begin(); itr != m.end(); ++itr )
-            o << " \"" << itr->first << "\"->" << itr->second << "";
-        o << " )";
-
-        return o;
-    }
-
-    template< class KeyT, class ValueT >
-    ostream&        operator<< ( ostream& o, const map< KeyT, ValueT >& m )
-    {
-        o << "(";
-        for( typename map< KeyT, ValueT >::const_iterator itr = m.begin(); itr != m.end(); ++itr )
-            o << " " << itr->first << "->" << itr->second << "";
-        o << " )";
-
-        return o;
-    }
-
     template< class KeyT, class ValueT, class PredT >
     vector< KeyT > keys( const map< KeyT, ValueT, PredT >& m )
     {

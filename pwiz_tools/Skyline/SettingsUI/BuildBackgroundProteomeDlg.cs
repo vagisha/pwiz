@@ -18,6 +18,7 @@
  */
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using pwiz.Common.SystemUtil;
@@ -35,7 +36,7 @@ namespace pwiz.Skyline.SettingsUI
     /// Dialog box to create a background proteome database and add one or more FASTA
     /// files to it.
     /// </summary>
-    public partial class BuildBackgroundProteomeDlg : FormEx
+    public partial class BuildBackgroundProteomeDlg : ModeUIInvariantFormEx  // This dialog is inherently proteomic, never wants the "peptide"->"molecule" translation
     {
         private readonly IEnumerable<BackgroundProteomeSpec> _existing;
         private String _databasePath;
@@ -106,6 +107,14 @@ namespace pwiz.Skyline.SettingsUI
             }
             Settings.Default.ProteomeDbDirectory = Path.GetDirectoryName(fileName);
 
+            if (IsFastaFile(fileName))
+            {
+                string fastFileName = fileName;
+                fileName = Path.ChangeExtension(fileName, ProteomeDb.EXT_PROTDB);
+                CreateDb(fileName);
+                AddFastaFile(fastFileName);
+            }
+
             textPath.Text = fileName;
             if (textName.Text.Length == 0)
             {
@@ -133,6 +142,47 @@ namespace pwiz.Skyline.SettingsUI
                 fileName = saveFileDialog.FileName;
             }
 
+            if (!IsFastaFile(fileName))
+                CreateDb(fileName);
+            else
+            {
+                string fastFileName = fileName;
+                fileName = Path.ChangeExtension(fileName, ProteomeDb.EXT_PROTDB);
+                CreateDb(fileName);
+                AddFastaFile(fastFileName);
+            }
+        }
+
+        private bool IsFastaFile(string fileName)
+        {
+            try
+            {
+                if (!File.Exists(fileName))
+                    return false;
+
+                // Check for 5 lines starting with > or letters in a file expected to be a ProtDB
+                int linesRead = 0;
+                foreach (var line in File.ReadLines(fileName))
+                {
+                    if (line.Length == 0)
+                        continue;
+                    char startChar = line[0];
+                    if (startChar != '>' && !char.IsLetter(startChar))
+                        return false;
+                    if (++linesRead >= 5)
+                        return true;
+                }
+
+                return false;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        public void CreateDb(string fileName)
+        {
             // If the file exists, then the user chose to overwrite,
             // so delete the existing file.
             try
@@ -147,24 +197,24 @@ namespace pwiz.Skyline.SettingsUI
 
             Settings.Default.ProteomeDbDirectory = Path.GetDirectoryName(fileName);
 
-            textPath.Text = fileName;
-            if (textName.Text.Length == 0)
-            {
-                textName.Text = Path.GetFileNameWithoutExtension(fileName);
-            }
-
             try
             {
                 ProteomeDb.CreateProteomeDb(fileName);
             }
             catch (Exception x)
             {
-                var message = TextUtil.LineSeparate(string.Format(Resources.BuildBackgroundProteomeDlg_btnCreate_Click_An_error_occurred_attempting_to_create_the_proteome_file__0__,
-                                                                  fileName), x.Message);
+                var message = TextUtil.LineSeparate(string.Format(
+                    Resources
+                        .BuildBackgroundProteomeDlg_btnCreate_Click_An_error_occurred_attempting_to_create_the_proteome_file__0__,
+                    fileName), x.Message);
                 MessageDlg.ShowWithException(this, message, x);
             }
 
-            RefreshStatus();
+            if (textName.Text.Length == 0)
+            {
+                textName.Text = Path.GetFileNameWithoutExtension(fileName);
+            }
+            textPath.Text = fileName;   // This will cause RefreshStatus()
         }
 
         private void btnOk_Click(object sender, EventArgs e)
@@ -223,7 +273,6 @@ namespace pwiz.Skyline.SettingsUI
             _name = textName.Text;
             _backgroundProteomeSpec = new BackgroundProteomeSpec(_name, _databasePath);
             DialogResult = DialogResult.OK;
-            Close();
         }
 
         private void btnAddFastaFile_Click(object sender, EventArgs e)
@@ -363,19 +412,17 @@ namespace pwiz.Skyline.SettingsUI
                 }
                 finally
                 {
-                    if (null != proteomeDb)
-                    {
-                        proteomeDb.Dispose();
-                    }
+                    proteomeDb?.Dispose();
                 }
+                textPath.ForeColor = Color.Black;
             }
             else
             {
                 btnAddFastaFile.Enabled = false;
                 tbxStatus.Text = Resources.BuildBackgroundProteomeDlg_RefreshStatus_Click_the_Open_button_to_choose_an_existing_proteome_file_or_click_the_Create_button_to_create_a_new_proteome_file;
+                textPath.ForeColor = string.IsNullOrEmpty(textPath.Text) ? Color.Black : Color.Red;
             }
         }
-
 
         #region Functional test support
 
@@ -389,6 +436,12 @@ namespace pwiz.Skyline.SettingsUI
         {
             get { return textPath.Text; }
             set { textPath.Text = value; }
+        }
+
+        public void SelToEndBackgroundProteomePath()
+        {
+            textPath.Select();
+            textPath.SelectionStart = textPath.TextLength;
         }
 
         #endregion

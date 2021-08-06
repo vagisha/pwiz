@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Daniel Broudy <daniel.broudy .at. gmail.com>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -44,7 +44,7 @@ namespace pwiz.Skyline.Model.Tools
         /// </summary>
         public static class PropertiesConstants
         {
-            // ReSharper disable NonLocalizedString
+            // ReSharper disable LocalizableElement
             //Required
             public const string TITLE = "Title";                                        
             public const string COMMAND = "Command";                                    
@@ -66,7 +66,7 @@ namespace pwiz.Skyline.Model.Tools
             public const string DESCRIPTION = "Description";                            
             public const string PROVIDER = "Provider";                                  
             public const string IDENTIFIER = "Identifier";
-            // ReSharper restore NonLocalizedString
+            // ReSharper restore LocalizableElement
 
             // Defaults for optional values in the .properties file
             public static readonly Hashtable DEFAULTS = new Hashtable
@@ -232,9 +232,9 @@ namespace pwiz.Skyline.Model.Tools
     
     public static class ToolInstaller
     {
-        public const string TOOL_INF = "tool-inf"; // Not L10N
-        public const string INFO_PROPERTIES = "info.properties"; // Not L10N
-        private const string INSTALL_R_PACKAGES = "InstallPackages.r"; // Not L10N
+        public const string TOOL_INF = "tool-inf";
+        public const string INFO_PROPERTIES = "info.properties";
+        private const string INSTALL_R_PACKAGES = "InstallPackages.r";
 
         /// <summary>
         /// Function for unpacking zipped External tools.
@@ -265,7 +265,7 @@ namespace pwiz.Skyline.Model.Tools
             {
                 throw new ToolExecutionException(Resources.ConfigureToolsDlg_unpackZipTool_Error_unpacking_zipped_tools);
             }
-            string tempFolderPath = Path.Combine(outerToolsFolderPath, "Temp"); // Not L10N
+            string tempFolderPath = Path.Combine(outerToolsFolderPath, @"Temp");
 
             var toolDir = new DirectoryInfo(tempFolderPath);
             if (!toolDir.Exists)
@@ -367,7 +367,7 @@ namespace pwiz.Skyline.Model.Tools
                     }
                 }
 
-                foreach (FileInfo file in toolInfDir.GetFiles("*.properties")) // Not L10N
+                foreach (FileInfo file in toolInfDir.GetFiles(@"*.properties"))
                 {
                     // We will replace the tool Directory value (null below) later when we know the import is sucessful.
                     AddToolFromProperties(file, retval, toolInfo, null, tempToolPath, reportRenameMapping);
@@ -379,7 +379,7 @@ namespace pwiz.Skyline.Model.Tools
                     foreach (var ppc in retval.Installations.Keys)
                     {
                         string pathToPackageInstallScript = null;
-                        if (ppc.ProgramName.Equals("R") && retval.Installations[ppc].Count != 0) // Not L10N
+                        if (ppc.ProgramName.Equals(@"R") && retval.Installations[ppc].Count != 0)
                         {
                             pathToPackageInstallScript = Path.Combine(tempToolPath, TOOL_INF, INSTALL_R_PACKAGES);
                             if (!File.Exists(pathToPackageInstallScript))
@@ -611,7 +611,7 @@ namespace pwiz.Skyline.Model.Tools
 
         private static void HandleLegacyQuaSAR(ToolInfo info)
         {
-            if (info.PackageIdentifier.Equals("URN:LSID:carr.broadinstitute.org:quasar")) // Not L10N
+            if (info.PackageIdentifier.Equals(@"URN:LSID:carr.broadinstitute.org:quasar"))
             {
                 var deprecatedQuaSAR = Settings.Default.ToolList.FirstOrDefault(toolDesc =>
                    toolDesc.Title.Equals(ToolList.DEPRECATED_QUASAR.Title) &&
@@ -665,6 +665,63 @@ namespace pwiz.Skyline.Model.Tools
             }
         }
 
+
+        private static List<ReportOrViewSpec> GetReportsFromFiles(DirectoryInfo toolInfDir, string tempToolPath)
+        {
+            var srmSerialzer = new XmlSerializer(typeof(SrmDocument));
+            var loadedItems = new List<ReportOrViewSpec>();
+            var skyrFiles = toolInfDir.GetFiles(@"*" + ReportSpecList.EXT_REPORTS);
+            if (skyrFiles.Length > 0)
+            {
+                foreach (FileInfo file in skyrFiles)
+                {
+                    try
+                    {
+                        using (var stream = File.OpenRead(file.FullName))
+                        {
+                            loadedItems.AddRange(ReportSharing.DeserializeReportList(stream));
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        DirectoryEx.SafeDelete(tempToolPath);
+                        throw new IOException(
+                            string.Format(Resources.SerializableSettingsList_ImportFile_Failure_loading__0__,
+                                file.FullName), exception);
+                    }
+                }
+            }
+            else
+            {
+                foreach (FileInfo file in toolInfDir.GetFiles().Where(file => file.Extension.Equals(SrmDocument.EXT)))
+                {
+                    SrmDocument document;
+                    try
+                    {
+                        using (var stream = File.OpenRead(file.FullName))
+                        {
+                            document = (SrmDocument) srmSerialzer.Deserialize(stream);
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        throw new IOException(string.Format(
+                            Resources.SerializableSettingsList_ImportFile_Failure_loading__0__,
+                            file.FullName), exception);
+                    }
+
+                    var reports = document.Settings.DataSettings.ViewSpecList.ViewSpecLayouts;
+                    foreach (ViewSpecLayout report in reports)
+                    {
+                        loadedItems.Add(new ReportOrViewSpec(report));
+                    }
+                }
+            }
+
+            return loadedItems;
+        }
+
+
         /// <summary>
         /// Generate the list of Existing Reports that would be modified and the list of new reports
         /// </summary>
@@ -672,54 +729,41 @@ namespace pwiz.Skyline.Model.Tools
         {
             var existingReports = new List<ReportOrViewSpec>();
             newReports = new List<ReportOrViewSpec>();
-            foreach (FileInfo file in toolInfDir.GetFiles("*" + ReportSpecList.EXT_REPORTS)) // Not L10N
+
+            var externalToolReports =
+                Settings.Default.PersistedViews.GetViewSpecList(PersistedViews.ExternalToolsGroup.Id);
+            Dictionary<string, ViewSpecLayout> allExistingReports = new Dictionary<string, ViewSpecLayout>();
+            if (externalToolReports != null)
             {
-                List<ReportOrViewSpec> loadedItems;
-                try
+                foreach (var viewSpec in externalToolReports.ViewSpecLayouts)
                 {
-                    using (var stream = File.OpenRead(file.FullName))
-                    {
-                        loadedItems = ReportSharing.DeserializeReportList(stream);
-                    }
+                    allExistingReports[viewSpec.Name] = viewSpec;
                 }
-                catch (Exception exception)
+            }
+
+            var loadedItems = GetReportsFromFiles(toolInfDir, tempToolPath);
+                
+                
+            foreach (var reportOrViewSpec in loadedItems)
+            {
+                ViewSpecLayout existingView;
+                if (allExistingReports.TryGetValue(reportOrViewSpec.GetKey(), out existingView))
                 {
-                    DirectoryEx.SafeDelete(tempToolPath);
-                    throw new IOException(
-                        string.Format(Resources.SerializableSettingsList_ImportFile_Failure_loading__0__,
-                                      file.FullName), exception);
-                }
-                var externalToolReports =
-                    Settings.Default.PersistedViews.GetViewSpecList(PersistedViews.ExternalToolsGroup.Id);
-                Dictionary<string, ViewSpec> allExistingReports = new Dictionary<string, ViewSpec>();
-                if (externalToolReports != null)
-                {
-                    foreach (var viewSpec in externalToolReports.ViewSpecs)
+                    if (!ReportSharing.AreEquivalent(reportOrViewSpec, new ReportOrViewSpec(existingView)))
                     {
-                        allExistingReports[viewSpec.Name] = viewSpec;
-                    }
-                }
-                foreach (var reportOrViewSpec in loadedItems)
-                {
-                    ViewSpec existingView;
-                    if (allExistingReports.TryGetValue(reportOrViewSpec.GetKey(), out existingView))
-                    {
-                        if (!ReportSharing.AreEquivalent(reportOrViewSpec, new ReportOrViewSpec(existingView)))
-                        {
-                            existingReports.Add(reportOrViewSpec);
-                        }
-                        else
-                        {
-                            newReports.Add(reportOrViewSpec);
-                        }
+                        existingReports.Add(reportOrViewSpec);
                     }
                     else
                     {
                         newReports.Add(reportOrViewSpec);
                     }
                 }
-                // We now have the list of Reports that would have a naming conflict. 
+                else
+                {
+                    newReports.Add(reportOrViewSpec);
+                }
             }
+                // We now have the list of Reports that would have a naming conflict. 
             return existingReports;
         }
 
@@ -740,7 +784,7 @@ namespace pwiz.Skyline.Model.Tools
                 //     We have already ensured they all have the same version number and same unique identifier. If there 
                 //     are different package names then they have installed incorrectly defined tools
                 var tool = toolsToBeOverwritten.First();
-                string toolCollectionName = tool.PackageName + " v" + tool.PackageVersion; // Not L10N
+                string toolCollectionName = tool.PackageName + @" v" + tool.PackageVersion;
                 string toolCollectionVersion = tool.PackageVersion;
 
                 return shouldOverwrite(toolCollectionName, toolCollectionVersion, existingReports,
@@ -814,7 +858,8 @@ namespace pwiz.Skyline.Model.Tools
             if (!string.IsNullOrEmpty(dllPath))
             {
                 // Handle case where they prepended the DllPath with $(ToolDir)\\.
-                if (dllPath.StartsWith(ToolMacros.TOOL_DIR + "\\")) // Not L10N
+                // ReSharper disable once LocalizableElement
+                if (dllPath.StartsWith(ToolMacros.TOOL_DIR + "\\"))
                 {
                     dllPath = dllPath.Substring(ToolMacros.TOOL_DIR.Length + 1);
                 }
@@ -836,7 +881,7 @@ namespace pwiz.Skyline.Model.Tools
                                                command,
                                                readin.Arguments,
                                                readin.Initial_Directory,
-                                               readin.Output_to_Immediate_Window.Contains("True"), // Not L10N
+                                               readin.Output_to_Immediate_Window.Contains(@"True"),
                                                reportTitle,
                                                dllPath,
                                                readin.Args_Collector_Type,
@@ -853,7 +898,8 @@ namespace pwiz.Skyline.Model.Tools
             var programPathContainer = ToolMacros.GetProgramPathContainer(command);
             if (!ToolDescription.IsWebPageCommand(command) && programPathContainer == null)
             {
-                if (command.StartsWith(ToolMacros.TOOL_DIR + "\\")) // Not L10N
+                // ReSharper disable once LocalizableElement
+                if (command.StartsWith(ToolMacros.TOOL_DIR + "\\"))
                 {
                     command = command.Substring(ToolMacros.TOOL_DIR.Length + 1);
                 }
@@ -881,7 +927,7 @@ namespace pwiz.Skyline.Model.Tools
             while (package != null)
             {
                 // if the package is not a uri, it is stored locally in the tool-inf directory
-                //if (!package.StartsWith("http")) // Not L10N
+                //if (!package.StartsWith("http")) 
                 //    package = Path.Combine(tempToolPath, TOOL_INF, package);
 
                 packages.Add(package);
@@ -929,7 +975,7 @@ namespace pwiz.Skyline.Model.Tools
 
         public static string GetUniqueName(string name, Func<string, bool> isUnique)
         {
-            return GetUniqueFormat(name + "{0}", isUnique); // Not L10N
+            return GetUniqueFormat(name + @"{0}", isUnique); 
         }
 
         public static string GetUniqueFormat(string formatString, Func<string, bool> isUnique)

@@ -18,6 +18,7 @@
  */
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -28,6 +29,12 @@ namespace pwiz.Common.Collections
     /// </summary>
     public static class CollectionUtil
     {
+        public static void ForEach<T>(this IEnumerable<T> enumerable, Action<T> action)
+        {
+            foreach (var item in enumerable)
+                action(item);
+        }
+
         public static bool EqualsDeep<TKey,TValue>(IDictionary <TKey,TValue> dict1, IDictionary<TKey,TValue> dict2)
         {
             if (dict1.Count != dict2.Count)
@@ -54,7 +61,14 @@ namespace pwiz.Common.Collections
                 (seed, keyValuePair) => seed ^ keyValuePair.GetHashCode()
             );
         }
-
+        public static bool EqualsDeep<TValue>(IList<TValue> list1, IList<TValue> list2)
+        {
+            if (list1 == null || list2 == null)
+            {
+                return (list2 == null) == (list1 == null);
+            }
+            return list1.SequenceEqual(list2);
+        }
         public static int GetHashCodeDeep<T>(IList<T> list)
         {
             return list.Aggregate(0, (seed, item) => seed*397 + SafeGetHashCode(item));
@@ -67,6 +81,8 @@ namespace pwiz.Common.Collections
         {
             public bool Equals(IList<T> x, IList<T> y)
             {
+                if (x == null || y == null)
+                    return ReferenceEquals(x, y);
                 return x.SequenceEqual(y);
             }
 
@@ -160,6 +176,52 @@ namespace pwiz.Common.Collections
             {
                 destinationList[destinationIndex + i] = sourceList[sourceIndex + i];
             }
+        }
+
+        /// <summary>
+        /// Compare two values that might not necessarily implement IComparable.
+        /// If either of the values implements IComparable, it is assumed that both
+        /// values implement IComparable.
+        /// If the values do not implement IComparable, then they are compared as strings.
+        /// </summary>
+        public static int CompareColumnValues(object o1, object o2)
+        {
+            if (o1 == o2)
+            {
+                return 0;
+            }
+            if (o1 is IComparable || o2 is IComparable)
+            {
+                return Comparer.Default.Compare(o1, o2);
+            }
+            if (o1 == null)
+            {
+                return -1;
+            }
+            if (o2 == null)
+            {
+                return 1;
+            }
+            return Comparer.Default.Compare(o1.ToString(), o2.ToString());
+        }
+
+        public static Comparer<object> ColumnValueComparer
+        {
+            get { return Comparer<object>.Create(CompareColumnValues); }
+        }
+
+        public static Dictionary<TKey, TValue> SafeToDictionary<TKey, TValue>(IEnumerable<KeyValuePair<TKey, TValue>> entries)
+        {
+            var dictionary = new Dictionary<TKey, TValue>();
+            foreach (var entry in entries)
+            {
+                if (!dictionary.ContainsKey(entry.Key))
+                {
+                    dictionary.Add(entry.Key, entry.Value);
+                }
+            }
+
+            return dictionary;
         }
     }
 }

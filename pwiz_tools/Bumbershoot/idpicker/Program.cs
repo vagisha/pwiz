@@ -35,8 +35,9 @@ using System.Threading;
 using System.Net;
 using System.Text.RegularExpressions;
 using IDPicker.Forms;
-//using SharpSvn;
-//using SharpSvn.Security;
+using pwiz.Common.Collections;
+using System.Security.Policy;
+
 
 namespace IDPicker
 {
@@ -83,9 +84,11 @@ namespace IDPicker
                     singleInstanceArgs.RemoveAll(o => o == "--headless");
 
                 // initialize webClient asynchronously
-                //initializeWebClient();
+                initializeWebClient();
 
-                //automaticCheckForUpdates();
+                checkin();
+
+                automaticCheckForUpdates();
 
                 //HibernatingRhinos.Profiler.Appender.NHibernate.NHibernateProfiler.Initialize();
 
@@ -158,7 +161,7 @@ namespace IDPicker
                 e.InnerException.StackTrace.Contains("IDPicker"))
                 e = e.InnerException;
 
-            using (var reportForm = new ReportErrorDlg(e, ReportErrorDlg.ReportChoice.choice))
+            using (var reportForm = new ReportErrorDlg(e, ReportErrorDlg.ReportChoice.never))
             {
                 reportForm.StartPosition = FormStartPosition.CenterParent;
 
@@ -196,15 +199,14 @@ namespace IDPicker
         #endregion
 
         #region Update checking and error reporting
-        /*private static CookieAwareWebClient webClient = new CookieAwareWebClient();
+        private static CookieAwareWebClient webClient = new CookieAwareWebClient();
         public static CookieAwareWebClient WebClient { get { return webClient; } }
 
-        private const string loginAddress = "http://forge.fenchurch.mc.vanderbilt.edu/account/login.php";
-        private const string errorReportAddress = "http://forge.fenchurch.mc.vanderbilt.edu/tracker/index.php?func=add&group_id=10&atid=149";
+        //private const string errorReportAddress = "http://forge.fenchurch.mc.vanderbilt.edu/tracker/index.php?func=add&group_id=10&atid=149";
         
         private static void initializeWebClient ()
         {
-            new Thread(() =>
+            /*new Thread(() =>
             {
                 try
                 {
@@ -234,7 +236,25 @@ namespace IDPicker
                     }
                 }
                 catch {}
-            }).Start();
+            }).Start();*/
+        }
+
+        private static void checkin ()
+        {
+            if (!Properties.GUI.Settings.Default.AutomaticCheckForUpdates)
+                return;
+
+            // create a unique user id if we haven't already done so
+            if (Properties.Settings.Default.UUID == Guid.Empty)
+            {
+                Properties.Settings.Default.UUID = Guid.NewGuid();
+                Properties.Settings.Default.Save();
+            }
+
+            string analyticsToken = "UA-30609227-2";
+            string clientId = Properties.Settings.Default.UUID.ToString();
+            string checkinAddressFormat = "http://www.google-analytics.com/collect?v=1&tid={0}&cid={1}&t=pageview&dh=idpicker.org&dp=/checkin/IDPicker%20{2}";
+            webClient.DownloadStringAsync(new Uri(String.Format(checkinAddressFormat, analyticsToken, clientId, Util.Version)));
         }
 
         private static void automaticCheckForUpdates ()
@@ -259,7 +279,7 @@ namespace IDPicker
         private static string filterRevisionLog (string log)
         {
             var lines = log.Split("\n".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
-            return String.Join("\r\n", lines.Where(o=> o.TrimStart().StartsWith("-")).Select(o=> o.TrimEnd('\r')).ToArray());
+            return String.Join("\r\n", lines.Where(o=> o.TrimStart().StartsWith("- IDPicker: ")).Select(o=> o.TrimEnd('\r')).ToArray());
         }
 
         public static bool CheckForUpdates ()
@@ -267,10 +287,11 @@ namespace IDPicker
             Properties.GUI.Settings.Default.LastCheckForUpdates = DateTime.UtcNow;
             Properties.GUI.Settings.Default.Save();
 
-            string teamcityURL = "http://teamcity.fenchurch.mc.vanderbilt.edu";
-            string buildType = Environment.Is64BitProcess ? "bt123" : "bt31";
-            string buildsURL = String.Format("{0}/httpAuth/app/rest/buildTypes/id:{1}/builds?status=SUCCESS&count=1&guest=1", teamcityURL, buildType);
+            string teamcityURL = "http://teamcity.labkey.org";
+            string buildType = Environment.Is64BitProcess ? "Bumbershoot_Windows_X86_64" : "ProteoWizard_Bumbershoot_Windows_X86";
+            string buildsURL = String.Format("{0}/guestAuth/app/rest/buildTypes/id:{1}/builds?status=SUCCESS&count=1", teamcityURL, buildType);
             string latestArtifactURL;
+            string latestVersionFullString;
             Version latestVersion;
 
             lock (webClient)
@@ -284,14 +305,16 @@ namespace IDPicker
                 string buildId = xml.Substring(startIndex, endIndex - startIndex);
 
                 latestArtifactURL = String.Format("{0}/repository/download/{1}/{2}:id", teamcityURL, buildType, buildId);
-                latestVersion = new Version(webClient.DownloadString(latestArtifactURL + "/VERSION?guest=1"));
+                latestVersionFullString = webClient.DownloadString(latestArtifactURL + "/IDPICKER_VERSION?guest=1");
+                latestVersion = new Version(String.Join(".", latestVersionFullString.Split('.', '-').Take(3)));
             }
 
-            Version currentVersion = new Version(Util.Version);
+            string currentVersionFullString = Util.Version;
+            Version currentVersion = new Version(String.Join(".", currentVersionFullString.Split('.', '-').Take(3)));
 
             if (currentVersion < latestVersion)
             {
-                System.Collections.ObjectModel.Collection<SvnLogEventArgs> logItems = null;
+                /*System.Collections.ObjectModel.Collection<SvnLogEventArgs> logItems = null;
 
                 using (var client = new SvnClient())
                 {
@@ -300,7 +323,7 @@ namespace IDPicker
 
                     try
                     {
-                        client.GetLog(new Uri("http://forge.fenchurch.mc.vanderbilt.edu/svn/idpicker/branches/IDPicker-3/"),
+                        client.GetLog(new Uri("svn://svn.code.sf.net/p/proteowizard/code/trunk/pwiz/pwiz_tools/Bumbershoot/idpicker/"),
                                       new SvnLogArgs(new SvnRevisionRange(currentVersion.Build, latestVersion.Build)),
                                       out logItems);
                     }
@@ -319,14 +342,17 @@ namespace IDPicker
                 {
                     // return if no important revisions have happened
                     filteredLogItems = logItems.Where(o => !filterRevisionLog(o.LogMessage).Trim().IsNullOrEmpty());
-                    if (filteredLogItems.IsNullOrEmpty())
-                        return false;
-
-                    var logEntries = filteredLogItems.Select(o => String.Format("Revision {0}:\r\n{1}",
-                                                                                o.Revision,
-                                                                                filterRevisionLog(o.LogMessage)));
-                    changeLog = String.Join("\r\n\r\n", logEntries.ToArray());
-                }
+                    if (!filteredLogItems.IsNullOrEmpty())
+                    {
+                        var logEntries = filteredLogItems.Select(o => String.Format("Revision {0}:\r\n{1}",
+                                                                                    o.Revision,
+                                                                                    filterRevisionLog(o.LogMessage)));
+                        changeLog = String.Join("\r\n\r\n", logEntries.ToArray());
+                    }
+                    else
+                        changeLog = "Technical changes and bug fixes.";
+                }*/
+                string changeLog = "<unable to get change log>";
 
                 MainWindow.Invoke(new MethodInvoker(() =>
                 {
@@ -343,7 +369,7 @@ namespace IDPicker
                     {
                         string archSuffix = Environment.Is64BitProcess ? "x86_64" : "x86";
                         string guestAccess = Application.ExecutablePath.Contains("build-nt-x86") ? "" : "?guest=1"; // don't log me out of TC session
-                        string installerURL = String.Format("{0}/IDPicker-{1}-{2}.msi{3}", latestArtifactURL, latestVersion, archSuffix, guestAccess);
+                        string installerURL = String.Format("{0}/IDPicker-{1}-{2}.msi{3}", latestArtifactURL, latestVersionFullString, archSuffix, guestAccess);
                         System.Diagnostics.Process.Start(installerURL);
                     }
                 }));
@@ -354,7 +380,7 @@ namespace IDPicker
 
         private static void SendErrorReport (string messageBody, string exceptionType, string email, string username)
         {
-            lock (webClient)
+            /*lock (webClient)
             {
                 string html = webClient.DownloadString(errorReportAddress);
                 Match m = Regex.Match(html, "name=\"form_key\" value=\"(?<key>\\S+)\"");
@@ -380,8 +406,8 @@ namespace IDPicker
                                                };
 
                 webClient.UploadValues(errorReportAddress, form);
-            }
-        }*/
+            }*/
+        }
         #endregion
     }
 }

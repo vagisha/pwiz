@@ -23,6 +23,7 @@ using System.Linq;
 using System.Xml;
 using System.Xml.Serialization;
 using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -30,9 +31,9 @@ using pwiz.Skyline.Util;
 namespace pwiz.Skyline.Model.Optimization
 {
     [XmlRoot("optimized_library")]
-    public class OptimizationLibrary : XmlNamedElement
+    public class OptimizationLibrary : XmlNamedElement, IAuditLogComparable
     {
-        public static readonly OptimizationLibrary NONE = new OptimizationLibrary("None", string.Empty); // Not L10N
+        public static readonly OptimizationLibrary NONE = new OptimizationLibrary(@"None", string.Empty);
 
         private OptimizationDb _database;
 
@@ -42,6 +43,11 @@ namespace pwiz.Skyline.Model.Optimization
             DatabasePath = databasePath;
         }
 
+        [Track]
+        public AuditLogPath DatabasePathAuditLog
+        {
+            get { return AuditLogPath.Create(DatabasePath); }
+        }
         public string DatabasePath { get; private set; }
 
         public bool IsNone
@@ -89,7 +95,8 @@ namespace pwiz.Skyline.Model.Optimization
 
                 // Calculate the minimal set of optimizations needed for this document
                 var persistOptimizations = new List<DbOptimization>();
-                var dictOptimizations = _database.GetOptimizations().ToDictionary(opt => opt.Key);
+                var dictOptimizations = new OptimizationDictionary(_database.GetOptimizations());
+                var persistedKeys = new HashSet<OptimizationKey>();
                 foreach (PeptideGroupDocNode seq in document.MoleculeGroups)
                 {
                     // Skip peptide groups with no transitions
@@ -99,19 +106,20 @@ namespace pwiz.Skyline.Model.Optimization
                     {
                         foreach (TransitionGroupDocNode group in peptide.Children)
                         {
-                            string modSeq = document.Settings.GetSourceTextId(peptide); 
-                            int charge = group.PrecursorCharge;
+                            var modSeq = document.Settings.GetSourceTarget(peptide); 
+                            var charge = group.PrecursorAdduct;
                             foreach (TransitionDocNode transition in group.Children)
                             {
                                 foreach (var optType in Enum.GetValues(typeof(OptimizationType)).Cast<OptimizationType>())
                                 {
-                                    var optimizationKey = new OptimizationKey(optType, modSeq, charge, transition.FragmentIonName, transition.Transition.Charge);
-                                    DbOptimization dbOptimization;
-                                    if (dictOptimizations.TryGetValue(optimizationKey, out dbOptimization))
+                                    var optimizationKey = new OptimizationKey(optType, modSeq, charge, transition.FragmentIonName, transition.Transition.Adduct);
+                                    foreach (var dbOptimization in dictOptimizations.EntriesMatching(optimizationKey))
                                     {
-                                        persistOptimizations.Add(new DbOptimization(dbOptimization.Key, dbOptimization.Value));
-                                        // Only add once
-                                        dictOptimizations.Remove(optimizationKey);
+                                        if (persistedKeys.Add(dbOptimization.Key))
+                                        {
+                                            persistOptimizations.Add(dbOptimization);
+                                        }
+                                        break;
                                     }
                                 }
                             }
@@ -132,7 +140,7 @@ namespace pwiz.Skyline.Model.Optimization
             return _database.GetOptimizations();
         }
 
-        public DbOptimization GetOptimization(OptimizationType type, string seq, int charge, string fragment, int productCharge)
+        public DbOptimization GetOptimization(OptimizationType type, Target seq, Adduct charge, string fragment, Adduct productCharge)
         {
             RequireUsable();
             var key = new OptimizationKey(type, seq, charge, fragment, productCharge);
@@ -142,9 +150,9 @@ namespace pwiz.Skyline.Model.Optimization
                 : null;
         }
 
-        public DbOptimization GetOptimization(OptimizationType type, string seq, int charge)
+        public DbOptimization GetOptimization(OptimizationType type, Target seq, Adduct charge)
         {
-            return GetOptimization(type, seq, charge, null, 0);
+            return GetOptimization(type, seq, charge, null, Adduct.EMPTY);
         }
 
         public bool HasType(OptimizationType type)
@@ -236,5 +244,15 @@ namespace pwiz.Skyline.Model.Optimization
         }
 
         #endregion
+
+        public object GetDefaultObject(ObjectInfo<object> info)
+        {
+            return NONE;
+        }
+
+        public override string AuditLogText
+        {
+            get { return ReferenceEquals(this, NONE) ? LogMessage.NONE : base.AuditLogText; }
+        }
     }
 }

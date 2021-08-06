@@ -53,18 +53,6 @@ namespace pwiz.SkylineTestFunctional
         }
 
         [TestMethod]
-        public void TestExportIsolationListWithSLens()
-        {
-            DoTestExportIsolationList(RefinementSettings.ConvertToSmallMoleculesMode.none, withSLens: true);
-        }
-
-        [TestMethod]
-        public void TestExportIsolationListAsSmallMoleculesWithSLens()
-        {
-            DoTestExportIsolationList(RefinementSettings.ConvertToSmallMoleculesMode.formulas, withSLens: true);
-        }
-
-        [TestMethod]
         public void TestExportIsolationListAsSmallMoleculesNegative()
         {
             DoTestExportIsolationList(RefinementSettings.ConvertToSmallMoleculesMode.formulas, negativeCharges: RefinementSettings.ConvertToSmallMoleculesChargesMode.invert);
@@ -92,10 +80,9 @@ namespace pwiz.SkylineTestFunctional
         private bool AsSmallMoleculesNegative { get; set; }
         private RefinementSettings.ConvertToSmallMoleculesChargesMode AsSmallMoleculesNegativeMode { get; set; }
         private bool AsExplicitRetentionTimes { get; set; }
-        private bool WithSLens { get; set; }
 
         public void DoTestExportIsolationList(RefinementSettings.ConvertToSmallMoleculesMode asSmallMolecules,
-            bool asExplicitRetentionTimes = false, RefinementSettings.ConvertToSmallMoleculesChargesMode negativeCharges = RefinementSettings.ConvertToSmallMoleculesChargesMode.none, bool withSLens = false)
+            bool asExplicitRetentionTimes = false, RefinementSettings.ConvertToSmallMoleculesChargesMode negativeCharges = RefinementSettings.ConvertToSmallMoleculesChargesMode.none)
         {
             if (asSmallMolecules != RefinementSettings.ConvertToSmallMoleculesMode.none && !RunSmallMoleculeTestVersions)
             {
@@ -107,7 +94,6 @@ namespace pwiz.SkylineTestFunctional
             AsSmallMoleculesNegativeMode = negativeCharges;
             AsSmallMoleculesNegative = negativeCharges != RefinementSettings.ConvertToSmallMoleculesChargesMode.none;
             AsExplicitRetentionTimes = asExplicitRetentionTimes;
-            WithSLens = withSLens;
 
             TestFilesZip = @"TestFunctional\ExportIsolationListTest.zip";
             // Avoid trying to reuse the .skyd file while another test is still extant
@@ -117,8 +103,6 @@ namespace pwiz.SkylineTestFunctional
                 TestDirectoryName = "AsSmallMolecules_" + SmallMoleculeTestMode;
             if (AsSmallMoleculesNegative)
                 TestDirectoryName += "_Negative_" + AsSmallMoleculesNegativeMode;
-            if (WithSLens)
-                TestDirectoryName += "WithSLens";
             RunFunctionalTest();
         }
 
@@ -127,15 +111,10 @@ namespace pwiz.SkylineTestFunctional
 
         protected override void DoTest()
         {
-            // This test is quite specific to the input data set - needs results for all nodes to export the list.  Shut off the special non-proteomic test mode, otherwise you get:
-            // To export a scheduled method, you must first choose a retention time predictor in Peptide Settings / Prediction, or import results for all peptides in the document.
-            TestSmallMolecules = false;
-
             // For now, CSV files are produced with invariant culture because some manufacturers do not handle internationalized CSVs.
             _cultureInfo = CultureInfo.InvariantCulture;
             _fieldSeparator = TextUtil.GetCsvSeparator(_cultureInfo);
             string isolationWidth = string.Format(_cultureInfo, "Narrow (~{0:0.0} m/z)", 1.3);
-            const double slens = 1.234;
 
             // Load document which is already configured for DDA, and contains data for scheduling
             string standardDocumentFile = TestFilesDir.GetTestPath("BSA_Protea_label_free_meth3.sky");
@@ -168,18 +147,11 @@ namespace pwiz.SkylineTestFunctional
 
             // Conversion to negative charge states shifts the masses
             var mzFirst = AsSmallMoleculesNegative ? 580.304419 : 582.318971;
-            var mzLast = AsSmallMoleculesNegative ? 442.535467 : 444.55002;
+            var mzLast = AsSmallMoleculesNegative ? 442.535468 : 444.55002;
             var zFirst = AsSmallMoleculesNegative ? -2 : 2;
             var zLast = AsSmallMoleculesNegative ? -3 : 3;
             var ceFirst = AsSmallMoleculesNegative ? 20.3 : 20.4;
-            var ceLast = AsSmallMoleculesNegative ? 16.2 : 19.2;
-            double? slensA = null; 
-            double? slensB = null;
-            if (WithSLens)
-            {
-                slensA = slens;
-                slensB = ThermoMassListExporter.DEFAULT_SLENS;
-            }
+            var ceLast = AsSmallMoleculesNegative ? 19.1 : 19.2;
 
             // Export Agilent unscheduled DDA list.
             ExportIsolationList(
@@ -190,7 +162,8 @@ namespace pwiz.SkylineTestFunctional
                 FieldSeparate("True", mzLast, 20, zLast, "Preferred", 0, string.Empty, isolationWidth, ceLast));
 
             // Export Agilent scheduled DDA list.
-            ExportIsolationList(
+            if (!AsSmallMoleculesNegative) // .skyd file chromatograms are not useful in this conversion due to mass shift
+              ExportIsolationList(
                 "AgilentScheduledDda.csv", 
                 ExportInstrumentType.AGILENT_TOF, FullScanAcquisitionMethod.None, ExportMethodType.Scheduled,
                 AgilentIsolationListExporter.GetDdaHeader(_fieldSeparator),
@@ -199,25 +172,26 @@ namespace pwiz.SkylineTestFunctional
 
             // Export Thermo unscheduled DDA list.
             const double nce = ThermoQExactiveIsolationListExporter.NARROW_NCE;
-            bool AsSmallMolecules = (SmallMoleculeTestMode != RefinementSettings.ConvertToSmallMoleculesMode.none);
+            var conversionDecorator = SmallMoleculeTestMode == RefinementSettings.ConvertToSmallMoleculesMode.none ?
+                string.Empty :
+                RefinementSettings.TestingConvertedFromProteomicPeptideNameDecorator;
             bool AsSmallMoleculeMasses = (SmallMoleculeTestMode == RefinementSettings.ConvertToSmallMoleculesMode.masses_only);
-            var peptideA = AsSmallMolecules
-                ? (AsSmallMoleculeMasses ? "Ion [1164.639040/1165.343970] (light)" : (AsSmallMoleculesNegative ? "LVNELTEFAK(-H2) (light)" : "LVNELTEFAK(+H2) (light)"))
-                : "LVNELTEFAK (light)";
-            var peptideB = AsSmallMolecules
-                ? (AsSmallMoleculeMasses ? "Ion [1333.651707/1334.400621] (light)" : (AsSmallMoleculesNegative ? "IKNLQSLDPSH(-H3) (light)" : "IKNLQSLDPSH(+H3) (light)"))
-                : "IKNLQS[+80.0]LDPSH (light)";
+            var peptideA = AsSmallMoleculeMasses ?
+                CustomMolecule.INVARIANT_NAME_DETAIL + " [1162.623390/1163.328090] (light)" :
+                conversionDecorator+"LVNELTEFAK (light)";
+            var peptideB = AsSmallMoleculeMasses ? 
+                CustomMolecule.INVARIANT_NAME_DETAIL + " [1330.628231/1331.376801] (light)" :
+                SmallMoleculeTestMode == RefinementSettings.ConvertToSmallMoleculesMode.none ?
+                conversionDecorator+"IKNLQS[+79.966331]LDPSH (light)" : 
+                conversionDecorator+"IKNLQS[+80.0]LDPSH (light)";
             var polarity = AsSmallMoleculesNegative ? "Negative" : "Positive";
-            var thermoQExactiveIsolationListExporter = new ThermoQExactiveIsolationListExporter(SkylineWindow.Document)
-            {
-                UseSlens = WithSLens
-            };
+            var thermoQExactiveIsolationListExporter = new ThermoQExactiveIsolationListExporter(SkylineWindow.Document);
             ExportIsolationList(
                 "ThermoUnscheduledDda.csv", 
                 ExportInstrumentType.THERMO_Q_EXACTIVE, FullScanAcquisitionMethod.None, ExportMethodType.Standard,
                 thermoQExactiveIsolationListExporter.GetHeader(_fieldSeparator),
-                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, string.Empty, string.Empty, nce, slensA, peptideA),
-                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, string.Empty, string.Empty, nce, slensB, peptideB));
+                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, string.Empty, string.Empty, nce, peptideA),
+                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, string.Empty, string.Empty, nce, peptideB));
 
             // Export Thermo scheduled DDA list.
             if (!AsSmallMoleculesNegative) // .skyd file chromatograms are not useful in this conversion due to mass shift
@@ -225,8 +199,8 @@ namespace pwiz.SkylineTestFunctional
                 "ThermoScheduledDda.csv", 
                 ExportInstrumentType.THERMO_Q_EXACTIVE, FullScanAcquisitionMethod.None, ExportMethodType.Scheduled,
                 thermoQExactiveIsolationListExporter.GetHeader(_fieldSeparator),
-                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, t46 - halfWin, t46 + halfWin, nce, slensA, peptideA),
-                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, t39 - halfWin, t39 + halfWin, nce, slensB, peptideB));
+                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, t46 - halfWin, t46 + halfWin, nce, peptideA),
+                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, t39 - halfWin, t39 + halfWin, nce, peptideB));
 
             // Export Agilent unscheduled Targeted list.
             ExportIsolationList(
@@ -250,8 +224,8 @@ namespace pwiz.SkylineTestFunctional
                 "ThermoUnscheduledTargeted.csv", 
                 ExportInstrumentType.THERMO_Q_EXACTIVE, FullScanAcquisitionMethod.Targeted, ExportMethodType.Standard,
                 thermoQExactiveIsolationListExporter.GetHeader(_fieldSeparator),
-                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, string.Empty, string.Empty, nce, slensA, peptideA),
-                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, string.Empty, string.Empty, nce, slensB, peptideB));
+                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, string.Empty, string.Empty, nce, peptideA),
+                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, string.Empty, string.Empty, nce, peptideB));
 
             // Export Thermo scheduled Targeted list.
             if (!AsSmallMoleculesNegative) // .skyd file chromatograms are not useful in this conversion due to mass shift
@@ -259,14 +233,11 @@ namespace pwiz.SkylineTestFunctional
                 "ThermoScheduledTargeted.csv", 
                 ExportInstrumentType.THERMO_Q_EXACTIVE, FullScanAcquisitionMethod.Targeted, ExportMethodType.Scheduled,
                 thermoQExactiveIsolationListExporter.GetHeader(_fieldSeparator),
-                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, t46 - halfWin, t46 + halfWin, nce, slensA, peptideA),
-                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, t39 - halfWin, t39 + halfWin, nce, slensB, peptideB));
+                FieldSeparate(mzFirst, string.Empty, string.Empty, Math.Abs(zFirst), polarity, t46 - halfWin, t46 + halfWin, nce, peptideA),
+                FieldSeparate(mzLast, string.Empty, string.Empty, Math.Abs(zLast), polarity, t39 - halfWin, t39 + halfWin, nce, peptideB));
 
             // Export Thermo Fusion unscheduled Targeted list.
-            var thermoFusionMassListExporter = new ThermoFusionMassListExporter(SkylineWindow.Document)
-            {
-                UseSlens = WithSLens
-            };
+            var thermoFusionMassListExporter = new ThermoFusionMassListExporter(SkylineWindow.Document);
             ExportIsolationList(
                 "FusionUnscheduledTargeted.csv",
                 ExportInstrumentType.THERMO_FUSION, FullScanAcquisitionMethod.Targeted, ExportMethodType.Standard,
@@ -280,8 +251,8 @@ namespace pwiz.SkylineTestFunctional
                 "FusionScheduledTargeted.csv",
                 ExportInstrumentType.THERMO_FUSION, FullScanAcquisitionMethod.Targeted, ExportMethodType.Scheduled,
                 thermoFusionMassListExporter.GetHeader(_fieldSeparator),
-                FieldSeparate(mzFirst, zFirst, t46 - halfWin, t46 + halfWin, nce, slensA),
-                FieldSeparate(mzLast, zLast, t39 - halfWin, t39 + halfWin, nce, slensB));
+                FieldSeparate(mzFirst, zFirst, t46 - halfWin, t46 + halfWin, nce),
+                FieldSeparate(mzLast, zLast, t39 - halfWin, t39 + halfWin, nce));
 
             string fragmentsFirst;
             if (!AsSmallMoleculesNegative)
@@ -400,14 +371,12 @@ namespace pwiz.SkylineTestFunctional
             {
                 exportMethodDlg.InstrumentType = instrumentType;
                 exportMethodDlg.MethodType = methodType;
-                exportMethodDlg.UseSlens = WithSLens;
                 exportMethodDlg.PolarityFilter = exportPolarityFilter;
                 Assert.IsFalse(exportMethodDlg.IsOptimizeTypeEnabled);
                 Assert.IsTrue(exportMethodDlg.IsTargetTypeEnabled);
                 Assert.IsFalse(exportMethodDlg.IsDwellTimeVisible);
                 Assert.IsFalse(exportMethodDlg.IsMaxTransitionsEnabled);
             });
-
             if (methodType == ExportMethodType.Standard)
             {
                 // Simply close the dialog.

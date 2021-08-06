@@ -29,10 +29,12 @@ using System.Collections.Specialized;
 using System.Linq;
 using System.IO;
 using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using NHibernate;
 using NHibernate.Linq;
 using Iesi.Collections.Generic;
+using NHibernate.Engine;
 using pwiz.Common.Collections;
 using Color = System.Drawing.Color;
 using XmlSerializer = System.Runtime.Serialization.NetDataContractSerializer;
@@ -113,9 +115,6 @@ namespace IDPicker.DataModel
         public static IDictionary<string, QonverterSettings> LoadQonverterSettings ()
         {
             IDictionary<string, QonverterSettings> qonverterSettingsByName = null;
-
-            //if (Properties.Settings.Default.LastUpdated < Properties.Settings.Default.DefaultLastUpdated)
-            //    Properties.Settings.Default.QonverterSettings = Properties.Settings.Default.DefaultQonverterSettings;
 
             try
             {
@@ -374,12 +373,12 @@ namespace IDPicker.DataModel
             return x.GetHashCode();
         }
 
-        public object NullSafeGet (IDataReader rs, string[] names, object owner)
+        public object NullSafeGet(DbDataReader rs, string[] names, ISessionImplementor session, object owner)
         {
             return Assemble(rs.GetValue(rs.GetOrdinal(names[0])), owner);
         }
 
-        public void NullSafeSet (IDbCommand cmd, object value, int index)
+        public void NullSafeSet(DbCommand cmd, object value, int index, ISessionImplementor session)
         {
             (cmd.Parameters[index] as IDataParameter).Value = Disassemble(value);
         }
@@ -444,6 +443,9 @@ namespace IDPicker.DataModel
                 throw new ArgumentException();
 
             var serializedList = cached as string;
+            if (!serializedList.Trim().Any())
+                return null;
+
             var formatter = new XmlSerializer();
             return formatter.Deserialize(new MemoryStream(Encoding.UTF8.GetBytes(serializedList)));
         }
@@ -479,12 +481,12 @@ namespace IDPicker.DataModel
             return x.GetHashCode();
         }
 
-        public object NullSafeGet (IDataReader rs, string[] names, object owner)
+        public object NullSafeGet(DbDataReader rs, string[] names, ISessionImplementor session, object owner)
         {
             return Assemble(rs.GetValue(rs.GetOrdinal(names[0])), owner);
         }
 
-        public void NullSafeSet (IDbCommand cmd, object value, int index)
+        public void NullSafeSet(DbCommand cmd, object value, int index, ISessionImplementor session)
         {
             (cmd.Parameters[index] as IDataParameter).Value = Disassemble(value);
         }
@@ -581,12 +583,12 @@ namespace IDPicker.DataModel
             return x.GetHashCode();
         }
 
-        public object NullSafeGet(IDataReader rs, string[] names, object owner)
+        public object NullSafeGet(DbDataReader rs, string[] names, ISessionImplementor session, object owner)
         {
             return Assemble(rs.GetValue(rs.GetOrdinal(names[0])), owner);
         }
 
-        public void NullSafeSet(IDbCommand cmd, object value, int index)
+        public void NullSafeSet(DbCommand cmd, object value, int index, ISessionImplementor session)
         {
             (cmd.Parameters[index] as IDataParameter).Value = Disassemble(value);
         }
@@ -675,12 +677,12 @@ namespace IDPicker.DataModel
             return x.GetHashCode();
         }
 
-        public object NullSafeGet(IDataReader rs, string[] names, object owner)
+        public object NullSafeGet(DbDataReader rs, string[] names, ISessionImplementor session, object owner)
         {
             return Assemble(rs.GetValue(rs.GetOrdinal(names[0])), owner);
         }
 
-        public void NullSafeSet(IDbCommand cmd, object value, int index)
+        public void NullSafeSet(DbCommand cmd, object value, int index, ISessionImplementor session)
         {
             (cmd.Parameters[index] as IDataParameter).Value = Disassemble(value);
         }

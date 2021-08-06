@@ -117,6 +117,9 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <metadata name="modeUIHandler.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+    <value>17, 17</value>
+  </metadata>
   <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="btnOk.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Right</value>
@@ -180,47 +183,8 @@
   <data name="&gt;&gt;btnCancel.ZOrder" xml:space="preserve">
     <value>7</value>
   </data>
-  <metadata name="colFile.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
-  <metadata name="Points.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
-  <metadata name="Slope.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
-  <metadata name="Intercept.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
-  <metadata name="R.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
-  <metadata name="Result.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
   <data name="dataGridView.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Left, Right</value>
-  </data>
-  <data name="dataGridView.Location" type="System.Drawing.Point, System.Drawing">
-    <value>5, 73</value>
-  </data>
-  <data name="dataGridView.Size" type="System.Drawing.Size, System.Drawing">
-    <value>481, 179</value>
-  </data>
-  <data name="dataGridView.TabIndex" type="System.Int32, mscorlib">
-    <value>3</value>
-  </data>
-  <data name="&gt;&gt;dataGridView.Name" xml:space="preserve">
-    <value>dataGridView</value>
-  </data>
-  <data name="&gt;&gt;dataGridView.Type" xml:space="preserve">
-    <value>System.Windows.Forms.DataGridView, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;dataGridView.Parent" xml:space="preserve">
-    <value>$this</value>
-  </data>
-  <data name="&gt;&gt;dataGridView.ZOrder" xml:space="preserve">
-    <value>0</value>
   </data>
   <metadata name="colFile.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
@@ -237,22 +201,13 @@
   <data name="Points.MinimumWidth" type="System.Int32, mscorlib">
     <value>32</value>
   </data>
-  <metadata name="Slope.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+  <metadata name="Equation.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
     <value>True</value>
   </metadata>
-  <data name="Slope.HeaderText" xml:space="preserve">
-    <value>勾配</value>
+  <data name="Equation.HeaderText" xml:space="preserve">
+    <value>式</value>
   </data>
-  <data name="Slope.MinimumWidth" type="System.Int32, mscorlib">
-    <value>38</value>
-  </data>
-  <metadata name="Intercept.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
-    <value>True</value>
-  </metadata>
-  <data name="Intercept.HeaderText" xml:space="preserve">
-    <value>切片</value>
-  </data>
-  <data name="Intercept.MinimumWidth" type="System.Int32, mscorlib">
+  <data name="Equation.MinimumWidth" type="System.Int32, mscorlib">
     <value>38</value>
   </data>
   <metadata name="R.UserAddedColumn" type="System.Boolean, mscorlib, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
@@ -272,6 +227,27 @@
   </data>
   <data name="Result.MinimumWidth" type="System.Int32, mscorlib">
     <value>50</value>
+  </data>
+  <data name="dataGridView.Location" type="System.Drawing.Point, System.Drawing">
+    <value>5, 73</value>
+  </data>
+  <data name="dataGridView.Size" type="System.Drawing.Size, System.Drawing">
+    <value>481, 106</value>
+  </data>
+  <data name="dataGridView.TabIndex" type="System.Int32, mscorlib">
+    <value>3</value>
+  </data>
+  <data name="&gt;&gt;dataGridView.Name" xml:space="preserve">
+    <value>dataGridView</value>
+  </data>
+  <data name="&gt;&gt;dataGridView.Type" xml:space="preserve">
+    <value>pwiz.Common.Controls.CommonDataGridView, pwiz.Common, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
+  </data>
+  <data name="&gt;&gt;dataGridView.Parent" xml:space="preserve">
+    <value>$this</value>
+  </data>
+  <data name="&gt;&gt;dataGridView.ZOrder" xml:space="preserve">
+    <value>0</value>
   </data>
   <data name="panelKeep.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Left, Right</value>
@@ -301,10 +277,10 @@
     <value>1</value>
   </data>
   <data name="panelKeep.Location" type="System.Drawing.Point, System.Drawing">
-    <value>5, 392</value>
+    <value>5, 306</value>
   </data>
   <data name="panelKeep.Size" type="System.Drawing.Size, System.Drawing">
-    <value>481, 134</value>
+    <value>481, 121</value>
   </data>
   <data name="panelKeep.TabIndex" type="System.Int32, mscorlib">
     <value>5</value>
@@ -359,7 +335,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>7, 32</value>
   </data>
   <data name="listKeep.Size" type="System.Drawing.Size, System.Drawing">
-    <value>437, 82</value>
+    <value>437, 69</value>
   </data>
   <data name="listKeep.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -494,10 +470,10 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>1</value>
   </data>
   <data name="panelOverwrite.Location" type="System.Drawing.Point, System.Drawing">
-    <value>5, 258</value>
+    <value>5, 185</value>
   </data>
   <data name="panelOverwrite.Size" type="System.Drawing.Size, System.Drawing">
-    <value>481, 134</value>
+    <value>481, 121</value>
   </data>
   <data name="panelOverwrite.TabIndex" type="System.Int32, mscorlib">
     <value>4</value>
@@ -552,7 +528,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>7, 32</value>
   </data>
   <data name="listOverwrite.Size" type="System.Drawing.Size, System.Drawing">
-    <value>437, 82</value>
+    <value>437, 69</value>
   </data>
   <data name="listOverwrite.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -645,10 +621,10 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>5</value>
   </data>
   <data name="panelExisting.Location" type="System.Drawing.Point, System.Drawing">
-    <value>5, 525</value>
+    <value>5, 427</value>
   </data>
   <data name="panelExisting.Size" type="System.Drawing.Size, System.Drawing">
-    <value>481, 224</value>
+    <value>481, 180</value>
   </data>
   <data name="panelExisting.TabIndex" type="System.Int32, mscorlib">
     <value>6</value>
@@ -675,7 +651,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>NoControl</value>
   </data>
   <data name="radioAverage.Location" type="System.Drawing.Point, System.Drawing">
-    <value>11, 200</value>
+    <value>11, 156</value>
   </data>
   <data name="radioAverage.Size" type="System.Drawing.Size, System.Drawing">
     <value>181, 17</value>
@@ -708,7 +684,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>NoControl</value>
   </data>
   <data name="radioReplace.Location" type="System.Drawing.Point, System.Drawing">
-    <value>11, 177</value>
+    <value>11, 133</value>
   </data>
   <data name="radioReplace.Size" type="System.Drawing.Size, System.Drawing">
     <value>137, 17</value>
@@ -741,7 +717,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>NoControl</value>
   </data>
   <data name="radioSkip.Location" type="System.Drawing.Point, System.Drawing">
-    <value>11, 153</value>
+    <value>11, 109</value>
   </data>
   <data name="radioSkip.Size" type="System.Drawing.Size, System.Drawing">
     <value>127, 17</value>
@@ -774,7 +750,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>NoControl</value>
   </data>
   <data name="labelChoice.Location" type="System.Drawing.Point, System.Drawing">
-    <value>8, 136</value>
+    <value>8, 92</value>
   </data>
   <data name="labelChoice.Size" type="System.Drawing.Size, System.Drawing">
     <value>258, 13</value>
@@ -813,7 +789,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>0</value>
   </data>
   <data name="labelExisting.Text" xml:space="preserve">
-    <value>{0}個のペプチドは、既にライブラリに値があります。</value>
+    <value>{0}個のペプチドについて、既にライブラリ内に値が存在します：</value>
   </data>
   <data name="&gt;&gt;labelExisting.Name" xml:space="preserve">
     <value>labelExisting</value>
@@ -834,7 +810,7 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>7, 19</value>
   </data>
   <data name="listExisting.Size" type="System.Drawing.Size, System.Drawing">
-    <value>437, 108</value>
+    <value>437, 56</value>
   </data>
   <data name="listExisting.TabIndex" type="System.Int32, mscorlib">
     <value>1</value>
@@ -858,13 +834,19 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
     <value>6, 13</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>584, 761</value>
+    <value>584, 613</value>
   </data>
   <data name="$this.StartPosition" type="System.Windows.Forms.FormStartPosition, System.Windows.Forms">
     <value>CenterParent</value>
   </data>
   <data name="$this.Text" xml:space="preserve">
     <value>iRTペプチドを追加</value>
+  </data>
+  <data name="&gt;&gt;modeUIHandler.Name" xml:space="preserve">
+    <value>modeUIHandler</value>
+  </data>
+  <data name="&gt;&gt;modeUIHandler.Type" xml:space="preserve">
+    <value>pwiz.Skyline.Util.Helpers+ModeUIExtender, Skyline, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
   </data>
   <data name="&gt;&gt;colFile.Name" xml:space="preserve">
     <value>colFile</value>
@@ -878,16 +860,10 @@ MS/MSスキャンから計算されたより新しいiRT値は無視されます
   <data name="&gt;&gt;Points.Type" xml:space="preserve">
     <value>System.Windows.Forms.DataGridViewTextBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
-  <data name="&gt;&gt;Slope.Name" xml:space="preserve">
-    <value>Slope</value>
+  <data name="&gt;&gt;Equation.Name" xml:space="preserve">
+    <value>Equation</value>
   </data>
-  <data name="&gt;&gt;Slope.Type" xml:space="preserve">
-    <value>System.Windows.Forms.DataGridViewTextBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
-  </data>
-  <data name="&gt;&gt;Intercept.Name" xml:space="preserve">
-    <value>Intercept</value>
-  </data>
-  <data name="&gt;&gt;Intercept.Type" xml:space="preserve">
+  <data name="&gt;&gt;Equation.Type" xml:space="preserve">
     <value>System.Windows.Forms.DataGridViewTextBoxColumn, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </data>
   <data name="&gt;&gt;R.Name" xml:space="preserve">

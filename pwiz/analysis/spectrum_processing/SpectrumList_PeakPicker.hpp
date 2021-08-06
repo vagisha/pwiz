@@ -45,15 +45,23 @@ class PWIZ_API_DECL SpectrumList_PeakPicker : public msdata::SpectrumListWrapper
                             bool preferVendorPeakPicking,
                             const util::IntegerSet& msLevelsToPeakPick);
 
+    /// returns true if the given file 
+    static bool supportsVendorPeakPicking(const std::string& rawpath);
 
     static bool accept(const msdata::SpectrumListPtr& inner);
 
     virtual msdata::SpectrumPtr spectrum(size_t index, msdata::DetailLevel detailLevel) const;
     virtual msdata::SpectrumPtr spectrum(size_t index, bool getBinaryData = false) const;
 
+    virtual bool benefitsFromWorkerThreads() const { return mode_ == 0 ? true : innerBenefitsFromWorkerThreads(); }
+
+    const util::IntegerSet& msLevels() const { return msLevelsToPeakPick_; }
+
     private:
     PeakDetectorPtr algorithm_;
     const util::IntegerSet msLevelsToPeakPick_;
+    std::string noVendorCentroidingWarningMessage_;
+    mutable msdata::DetailLevel minDetailLevel_;
     int mode_;
 };
 

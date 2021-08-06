@@ -22,8 +22,11 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using pwiz.Common.DataBinding.Clustering;
 using pwiz.Common.DataBinding.Internal;
+using pwiz.Common.DataBinding.Layout;
 using pwiz.Common.Properties;
+using pwiz.Common.SystemUtil;
 
 namespace pwiz.Common.DataBinding.Controls
 {
@@ -57,6 +60,7 @@ namespace pwiz.Common.DataBinding.Controls
                 if (BindingListSource != null)
                 {
                     BindingListSource.ListChanged -= BindingSourceOnListChanged;
+                    BindingListSource.AllRowsChanged -= BindingSourceOnListChanged;
                     BindingListSource.CurrentChanged -= BindingSourceOnCurrentChanged;
                 }
                 _bindingListSource = value;
@@ -64,6 +68,7 @@ namespace pwiz.Common.DataBinding.Controls
                 if (BindingListSource != null)
                 {
                     BindingListSource.ListChanged += BindingSourceOnListChanged;
+                    BindingListSource.AllRowsChanged += BindingSourceOnListChanged;
                     BindingListSource.CurrentChanged += BindingSourceOnCurrentChanged;
                 }
             }
@@ -76,7 +81,7 @@ namespace pwiz.Common.DataBinding.Controls
             get { return BindingListSource == null ? null : BindingListSource.ViewContext; } 
         }
 
-        [DefaultValue("Waiting for data...")]   // Not L10N
+        [DefaultValue(@"Waiting for data...")]
         public string WaitingMessage
         {
             get { return _waitingMsg; }
@@ -109,13 +114,14 @@ namespace pwiz.Common.DataBinding.Controls
         void BindingSourceOnCurrentChanged(object sender, EventArgs e)
         {
             navBarDeleteItem.Visible = navBarDeleteItem.Enabled = ViewContext.DeleteEnabled;
-            bindingNavigatorAddNewItem.Visible = BindingListSource.AllowNew;
         }
 
         void RefreshUi()
         {
             navBarButtonViews.Enabled = navBarButtonExport.Enabled = ViewContext != null && BindingListView != null && BindingListView.ViewInfo != null;
-            if (BindingListView != null)
+            navBarButtonActions.Visible = ViewContext != null && ViewContext.HasRowActions;
+            navBarButtonClusterGrid.Checked = BindingListSource?.ClusteringSpec != null;
+            if (BindingListSource != null && BindingListView != null)
             {
                 var queryResults = BindingListView.QueryResults;
                 tbxFind.Enabled = true;
@@ -123,7 +129,7 @@ namespace pwiz.Common.DataBinding.Controls
                 {
                     if (queryResults.SourceRows == null)
                     {
-                        lblFilterApplied.Text = string.Format("({0})", WaitingMessage); // Not L10N
+                        lblFilterApplied.Text = string.Format(@"({0})", WaitingMessage);
                         lblFilterApplied.Visible = true;
                     }
                     else
@@ -133,14 +139,24 @@ namespace pwiz.Common.DataBinding.Controls
                             lblFilterApplied.Text = Resources.NavBar_RefreshUi_Transforming_data___;
                             lblFilterApplied.Visible = true;
                         }
-                        else if (queryResults.ResultRows.Count != queryResults.PivotedRows.Count)
-                        {
-                            lblFilterApplied.Text = string.Format(Resources.NavBar_RefreshUi__Filtered_from__0__, queryResults.PivotedRows.Count);
-                            lblFilterApplied.Visible = true;
-                        }
                         else
                         {
-                            lblFilterApplied.Visible = false;
+                            bool filterApplied = false;
+                            if (queryResults.TransformResults.RowTransform is RowFilter)
+                            {
+                                int filteredCount = queryResults.TransformResults.PivotedRows.RowCount;
+                                int unfilteredCount = queryResults.TransformResults.Parent.PivotedRows.RowCount;
+                                if (filteredCount != unfilteredCount)
+                                {
+                                    lblFilterApplied.Text = string.Format(Resources.NavBar_RefreshUi__Filtered_from__0__, unfilteredCount);
+                                    lblFilterApplied.Visible = true;
+                                    filterApplied = true;
+                                }
+                            }
+                            if (!filterApplied)
+                            {
+                                lblFilterApplied.Visible = false;
+                            }
                         }
                     }
                 }
@@ -153,7 +169,7 @@ namespace pwiz.Common.DataBinding.Controls
             else
             {
                 tbxFind.Enabled = false;
-                lblFilterApplied.Text = string.Format("({0})", WaitingMessage); // Not L10N
+                lblFilterApplied.Text = string.Format(@"({0})", WaitingMessage);
                 lblFilterApplied.Visible = true;
             }
         }
@@ -217,7 +233,20 @@ namespace pwiz.Common.DataBinding.Controls
                 contextMenu.Items.Add(new ToolStripMenuItem(Resources.NavBar_NavBarButtonViewsOnDropDownOpening_Manage_Views___, null, OnManageViews));
             }
             navBarButtonViews.DropDown = contextMenu;
+        }
 
+        private ViewName GetViewName()
+        {
+            var viewInfo = BindingListView.ViewInfo;
+            if (viewInfo == null)
+            {
+                return default(ViewName);
+            }
+            if (viewInfo.ViewGroup == null)
+            {
+                return new ViewName(default(ViewGroupId), viewInfo.Name);
+            }
+            return viewInfo.ViewGroup.Id.ViewName(viewInfo.Name);
         }
 
         ToolStripItem NewChooseViewItem(ViewGroup viewGroup, ViewSpec viewSpec)
@@ -351,6 +380,295 @@ namespace pwiz.Common.DataBinding.Controls
         private void NavBarButtonCopyAllOnClick(object sender, EventArgs e)
         {
             ViewContext.CopyAll(this, BindingListSource);
+        }
+
+        private void btnGroupTotal_Click(object sender, EventArgs e)
+        {
+            ShowPivotDialog(false);
+        }
+
+        public void ShowPivotDialog(bool alwaysAddNewLevel)
+        {
+            if (null == BindingListSource)
+            {
+                return;
+            }
+            PivotEditor.ShowPivotEditor(FormUtil.FindTopLevelOwner(this), BindingListSource, alwaysAddNewLevel);
+        }
+
+        private void UpdateGroupTotalDropdown()
+        {
+            ViewLayoutList layouts;
+            TransformStack transformStack;
+            DataSchema dataSchema;
+            ViewName viewName = GetViewName();
+            if (ViewContext == null || BindingListSource == null)
+            {
+                layouts = ViewLayoutList.EMPTY;
+                transformStack = TransformStack.EMPTY;
+                dataSchema = null;
+            }
+            else
+            {
+                layouts = ViewContext.GetViewLayoutList(GetViewName());
+                transformStack = BindingListSource.BindingListView.TransformStack;
+                dataSchema = BindingListSource.ViewContext.DataSchema;
+            }
+            btnGroupTotal.DropDownItems.Clear();
+            if (!layouts.IsEmpty)
+            {
+                foreach (var layout in layouts.Layouts)
+                {
+                    btnGroupTotal.DropDownItems.Add(MakeLayoutMenuItem(layout));
+                }
+                btnGroupTotal.DropDownItems.Add(new ToolStripSeparator());
+            }
+            if (!transformStack.IsEmpty && dataSchema != null)
+            {
+                var transformsMenuItem = new ToolStripMenuItem(Resources.NavBar_UpdateGroupTotalDropdown_Transforms);
+                for (int i = 0; i <= transformStack.RowTransforms.Count; i++)
+                {
+                    var curTransform = transformStack.ChangeStackIndex(i);
+                    var curMenuItem = MakeTransformStackMenuItem(dataSchema, curTransform);
+                    if (i == transformStack.StackIndex)
+                    {
+                        curMenuItem.Checked = true;
+                    }
+                    transformsMenuItem.DropDownItems.Add(curMenuItem);
+                }
+                btnGroupTotal.DropDownItems.Add(transformsMenuItem);
+            }
+            btnGroupTotal.DropDownItems.Add(new ToolStripMenuItem(Resources.NavBar_UpdateGroupTotalDropdown_New_Pivot___, null, (sender, args) =>
+            {
+                ShowPivotDialog(true);
+            }));
+            if (transformStack.CurrentTransform is PivotSpec)
+            {
+                btnGroupTotal.DropDownItems.Add(new ToolStripMenuItem(Resources.NavBar_UpdateGroupTotalDropdown_Modify_Current_Pivot___, null, (sender, args) =>
+                {
+                    ShowPivotDialog(false);
+                }));
+            }
+            if (CanRememberView(viewName.GroupId))
+            {
+                btnGroupTotal.DropDownItems.Add(new ToolStripMenuItem(Resources.NavBar_UpdateGroupTotalDropdown_Remember_current_layout___, null, (sender, args) =>
+                {
+                    RememberCurrentLayout();
+                }));
+            }
+            if (layouts.Layouts.Any())
+            {
+                btnGroupTotal.DropDownItems.Add(
+                    new ToolStripMenuItem(Resources.NavBar_UpdateGroupTotalDropdown_Manage_layouts___, null, (sender, args) => ManageLayouts()));
+            }
+        }
+
+        private bool CanRememberView(ViewGroupId viewGroupId)
+        {
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+            return !Equals(viewGroupId, default(ViewGroupId)) && !Equals(viewGroupId, ViewGroup.BUILT_IN.Id);
+        }
+
+        public void RememberCurrentLayout()
+        {
+            if (ViewContext == null || BindingListSource == null)
+            {
+                return;
+            }
+            var viewSpec = BindingListSource.ViewSpec;
+            if (viewSpec == null)
+            {
+                return;
+            }
+            var viewName = GetViewName();
+            if (viewName.GroupId.Equals(ViewGroup.BUILT_IN.Id) || viewName.GroupId.Equals(default(ViewGroupId)))
+            {
+                return;
+            }
+            var viewLayouts = ViewContext.GetViewLayoutList(GetViewName());
+            using (var dlg = new NameLayoutForm(ViewContext,
+                new HashSet<string>(viewLayouts.Layouts.Select(layout => layout.Name))))
+            {
+                if (dlg.ShowDialog(FormUtil.FindTopLevelOwner(this)) == DialogResult.OK)
+                {
+                    var newLayout = new ViewLayout(dlg.LayoutName);
+                    newLayout = PopulateLayout(newLayout);
+                    var newLayouts = viewLayouts.Layouts.Where(layout => layout.Name != dlg.LayoutName).Concat(new[]
+                    {
+                        newLayout
+                    });
+                    viewLayouts = viewLayouts.ChangeLayouts(newLayouts);
+                    if (dlg.MakeDefault)
+                    {
+                        viewLayouts = viewLayouts.ChangeDefaultLayoutName(dlg.LayoutName);
+                    }
+                    ViewContext.SetViewLayoutList(viewName.GroupId, viewLayouts);
+                }
+            }
+        }
+
+        public void ManageLayouts()
+        {
+            if (ViewContext == null || BindingListSource == null)
+            {
+                return;
+            }
+            var viewName = GetViewName();
+            var viewLayouts = ViewContext.GetViewLayoutList(viewName);
+            using (var dlg = new ManageLayoutsForm())
+            {
+                dlg.ViewLayoutList = viewLayouts;
+                if (dlg.ShowDialog(FormUtil.FindTopLevelOwner(this)) == DialogResult.OK)
+                {
+                    ViewContext.SetViewLayoutList(viewName.GroupId, dlg.ViewLayoutList);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Fill in the ViewLayout with the current set of transformations, column widths, formats, etc.
+        /// </summary>
+        public ViewLayout PopulateLayout(ViewLayout newLayout)
+        {
+            var transformStack = BindingListView.TransformStack;
+            newLayout = newLayout.ChangeRowTransforms(
+                transformStack.RowTransforms.Skip(transformStack.StackIndex));
+            var columnIds = new HashSet<ColumnId>();
+            var columnFormats = new List<Tuple<ColumnId, ColumnFormat>>();
+            foreach (var pd in BindingListSource.ItemProperties)
+            {
+                var columnId = ColumnId.GetColumnId(pd);
+                if (columnId == null)
+                {
+                    continue;
+                }
+                if (!columnIds.Add(columnId))
+                {
+                    continue;
+                }
+                var columnFormat = BindingListSource.ColumnFormats.GetFormat(columnId);
+                if (columnFormat.IsEmpty)
+                {
+                    continue;
+                }
+                columnFormats.Add(Tuple.Create(columnId, columnFormat));
+            }
+            newLayout = newLayout.ChangeColumnFormats(columnFormats);
+            newLayout = newLayout.ChangeClusterSpec(BindingListSource.ClusteringSpec);
+            return newLayout;
+        }
+
+        private ToolStripMenuItem MakeLayoutMenuItem(ViewLayout viewLayout)
+        {
+            return new ToolStripMenuItem(viewLayout.Name, null, (sender, args) =>
+            {
+                BindingListSource.ApplyLayout(viewLayout);
+            });
+        }
+
+        private ToolStripMenuItem MakeTransformStackMenuItem(DataSchema dataSchema, TransformStack transformStack)
+        {
+            var toolStripMenuItem = new ToolStripMenuItem();
+            if (transformStack.CurrentTransform == null)
+            {
+                toolStripMenuItem.Text = Resources.NavBar_MakeTransformStackMenuItem_No_Transforms;
+            }
+            else
+            {
+                toolStripMenuItem.Text = transformStack.CurrentTransform.Summary;
+                toolStripMenuItem.ToolTipText = transformStack.CurrentTransform.GetDescription(dataSchema);
+                if (transformStack.CurrentTransform is PivotSpec)
+                {
+                    toolStripMenuItem.Image = Resources.Pivot;
+                }
+                else if (transformStack.CurrentTransform is RowFilter)
+                {
+                    toolStripMenuItem.Image = Resources.Filter;
+                }
+                toolStripMenuItem.ImageTransparentColor = Color.Magenta;
+            }
+            toolStripMenuItem.Click += (sender, args) =>
+            {
+                BindingListSource.BindingListView.TransformStack = transformStack;
+            };
+            return toolStripMenuItem;
+        }
+
+        private void btnGroupTotal_DropDownOpening(object sender, EventArgs e)
+        {
+            UpdateGroupTotalDropdown();
+        }
+
+        private void bindingNavigatorAddNewItem_Click(object sender, EventArgs e)
+        {
+            BindingListSource.AddNew();
+        }
+
+        private void navBarButtonActions_DropDownOpening(object sender, EventArgs e)
+        {
+            if (ViewContext != null)
+            {
+                ViewContext.RowActionsDropDownOpening(navBarButtonActions.DropDownItems);
+            }
+        }
+
+        public ToolStripDropDownButton ActionsButton
+        {
+            get { return navBarButtonActions; }
+        }
+        public ToolStripDropDownButton ReportsButton
+        {
+            get { return navBarButtonViews; }
+        }
+
+        private void navBarButtonCluster_ButtonClick(object sender, EventArgs e)
+        {
+            if (null != BindingListSource.ClusteringSpec && !BindingListSource.IsComplete &&
+                !(BindingListSource.ReportResults is ClusteredReportResults))
+            {
+                return;
+            }
+            BindingListSource.ViewContext.ToggleClustering(BindingListSource, BindingListSource.ClusteringSpec == null);
+        }
+
+        private void navBarButtonClusterGrid_Click(object sender, EventArgs e)
+        {
+            BindingListSource.ViewContext.ToggleClustering(BindingListSource, !navBarButtonClusterGrid.Checked);
+        }
+
+        public ToolStripSplitButton ClusterSplitButton
+        {
+            get { return navBarButtonCluster; }
+        }
+
+        private void navBarButtonCluster_DropDownOpening(object sender, EventArgs e)
+        {
+            // clusterRowsToolStripMenuItem.Checked = true == BindingListSource?.ClusteringSpec?.ClusterRows;
+            // clusterColumnsToolStripMenuItem.Checked = true == BindingListSource?.ClusteringSpec?.ClusterColumns;
+        }
+
+        private void advancedToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ShowClusteringEditor();
+        }
+
+        public void ShowClusteringEditor()
+        {
+            var reportResults = BindingListSource?.ReportResults;
+            var dataSchema = BindingListSource?.ViewInfo.DataSchema;
+            if (reportResults == null || dataSchema == null)
+            {
+                return;
+            }
+
+            using (var clusteringEditor = new ClusteringEditor())
+            {
+                clusteringEditor.SetData(dataSchema, reportResults, BindingListSource.ClusteringSpec);
+                if (clusteringEditor.ShowDialog(FormUtil.FindTopLevelOwner(this)) == DialogResult.OK)
+                {
+                    BindingListSource.ClusteringSpec = clusteringEditor.GetClusteringSpec();
+                }
+            }
         }
     }
 }

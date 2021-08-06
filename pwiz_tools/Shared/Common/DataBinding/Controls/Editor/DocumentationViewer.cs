@@ -18,14 +18,18 @@
  */
 using System;
 using System.Windows.Forms;
+using pwiz.Common.Controls;
 
 namespace pwiz.Common.DataBinding.Controls.Editor
 {
-    public partial class DocumentationViewer : Form
+    public partial class DocumentationViewer : CommonFormEx
     {
-        public DocumentationViewer()
+        public DocumentationViewer(bool showInTaskBar)
         {
             InitializeComponent();
+
+            // WINDOWS 10 UPDATE HACK: Because Windows 10 update version 1803 causes unparented non-ShowInTaskbar windows to leak GDI and User handles
+            ShowInTaskbar = showInTaskBar;
         }
 
         public String DocumentationHtml

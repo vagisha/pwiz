@@ -25,13 +25,14 @@ using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Attributes;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
+using pwiz.Skyline.Model.ElementLocators;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 
 namespace pwiz.Skyline.Model.Databinding.Entities
 {
     [AnnotationTarget(AnnotationDef.AnnotationTarget.replicate)]
-    public class Replicate : SkylineObject, ILinkValue, IComparable
+    public class Replicate : SkylineObject, ILinkValue, IComparable, IReplicateValue
     {
         private static readonly ChromatogramSet EMPTY_CHROMATOGRAM_SET = (ChromatogramSet) new ChromatogramSet(
             XmlNamedElement.NAME_INTERNAL, new MsDataFileUri[0]).ChangeName(string.Empty);
@@ -49,7 +50,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         public ChromatogramSet ChromatogramSet { get { return _chromatogramSet.Value; } }
         public void ChangeChromatogramSet(EditDescription editDescription, ChromatogramSet chromatogramSet)
         {
-            ModifyDocument(editDescription, document =>
+            ModifyDocument(editDescription.ChangeElementRef(GetElementRef()), document =>
                 {
                     var measuredResults = document.Settings.MeasuredResults;
                     var chromatograms = measuredResults.Chromatograms.ToArray();
@@ -76,7 +77,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 {
                     throw new ArgumentException(string.Format(Resources.Replicate_Name_There_is_already_a_replicate_named___0___, newName));
                 }
-                ChangeChromatogramSet(EditDescription.SetColumn("ReplicateName", newName), // Not L10N
+                ChangeChromatogramSet(EditColumnDescription(nameof(Name), newName),
                     (ChromatogramSet) ChromatogramSet.ChangeName(newName));
             }
         }
@@ -98,7 +99,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
 
         public override object GetAnnotation(AnnotationDef annotationDef)
         {
-            return ChromatogramSet.Annotations.GetAnnotation(annotationDef);
+            return DataSchema.AnnotationCalculator.GetAnnotation(annotationDef, this, ChromatogramSet.Annotations);
         }
 
         public override void SetAnnotation(AnnotationDef annotationDef, object value)
@@ -128,7 +129,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         }
 
         [Obsolete]
-        public string ReplicatePath { get { return "/"; } } // Not L10N
+        public string ReplicatePath { get { return @"/"; } }
 
         [HideWhen(AncestorOfType = typeof(ResultFile))]
         public IList<ResultFile> Files
@@ -141,6 +142,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         }
 
         [DataGridViewColumnType(typeof(SampleTypeDataGridViewColumn))]
+        [Importable(Formatter = typeof(SampleType.PropertyFormatter))]
         public SampleType SampleType
         {
             get
@@ -149,19 +151,76 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
             set
             {
-                ChangeChromatogramSet(EditDescription.SetColumn("SampleType", value), // Not L10N
+                ChangeChromatogramSet(EditColumnDescription(nameof(SampleType), value),
                     ChromatogramSet.ChangeSampleType(value));
             }
         }
 
+        [Importable]
         public double? AnalyteConcentration
         {
             get { return ChromatogramSet.AnalyteConcentration; }
             set
             {
-                ChangeChromatogramSet(EditDescription.SetColumn("AnalyteConcentration", value), // Not L10N
+                ChangeChromatogramSet(EditColumnDescription(nameof(AnalyteConcentration), value),
                     ChromatogramSet.ChangeAnalyteConcentration(value));
             }
         }
+
+        [Importable]
+        public double SampleDilutionFactor
+        {
+            get { return ChromatogramSet.SampleDilutionFactor; }
+            set { ChangeChromatogramSet(EditColumnDescription(nameof(SampleDilutionFactor), value),
+                ChromatogramSet.ChangeDilutionFactor(value));}
+        }
+
+        [Importable]
+        public string BatchName
+        {
+            get { return ChromatogramSet.BatchName; }
+            set
+            {
+                ChangeChromatogramSet(EditDescription.SetColumn(nameof(BatchName), value),
+                    ChromatogramSet.ChangeBatchName(value));
+            }
+        }
+
+        protected bool Equals(Replicate other)
+        {
+            return Equals(DataSchema, other.DataSchema) &&
+                ReplicateIndex == other.ReplicateIndex;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != GetType()) return false;
+            return Equals((Replicate) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return DataSchema.GetHashCode() * 397 ^ ReplicateIndex;
+        }
+
+        [InvariantDisplayName("ReplicateLocator")]
+        public string Locator { get { return GetLocator(); }}
+
+        public override ElementRef GetElementRef()
+        {
+            return ReplicateRef.PROTOTYPE.ChangeName(ChromatogramSet.Name);
+        }
+
+        Replicate IReplicateValue.GetReplicate()
+        {
+            return this;
+        }
+    }
+
+    public interface IReplicateValue
+    {
+        Replicate GetReplicate();
     }
 }

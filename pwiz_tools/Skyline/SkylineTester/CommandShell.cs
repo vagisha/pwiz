@@ -31,7 +31,8 @@ namespace SkylineTester
 {
     public class CommandShell : RichTextBox
     {
-        public static int MAX_PROCESS_SILENCE_MINUTES = 60; // If a process is silent longer than this, assume it's hung
+        public const int MAX_PROCESS_SILENCE_MINUTES = 60; // If a process is silent longer than this, assume it's hung
+        public const int MAX_PROCESS_OUTPUT_DELAY = 700; // milliseconds 
         private enum EXIT_TYPE {error_stop, error_restart, success};
         public string DefaultDirectory { get; set; }
         public Button StopButton { get; set; }
@@ -41,6 +42,7 @@ namespace SkylineTester
         public int RestartCount { get; set; }
         public int NextCommand { get; set; }
         public DateTime RunStartTime { get; set; }
+        public bool IsUnattended { get; set; }
         public readonly object LogLock = new object();
 
         /// <summary>Checks whether our child process is being debugged.</summary>
@@ -55,12 +57,17 @@ namespace SkylineTester
 
         private string _workingDirectory;
         private readonly List<string> _commands = new List<string>();
+        private readonly HashSet<string> _commandsWithRetry = new HashSet<string>();
         private Action<bool> _doneAction;
         private Action _restartAction;
         private readonly StringBuilder _logBuffer = new StringBuilder();
         private bool _logEmpty;
         private Process _process;
+        private bool _restartOnProcessFailure;
+        private string _processName;
+        private bool _processKilled;
         private Timer _outputTimer;
+        private DateTime _lastOutputTime;
 
         #region Add/run commands
 
@@ -73,6 +80,13 @@ namespace SkylineTester
         {
             _commands.Add(command.With(args));
             return _commands.Count - 1;
+        }
+
+        public int AddWithRetry(string command, params object[] args)
+        {
+            var result = Add(command, args);
+            _commandsWithRetry.Add(_commands[result]);
+            return result;
         }
 
         public void AddImmediate(string command, params object[] args)
@@ -190,14 +204,25 @@ namespace SkylineTester
                     var deleteDir = words[0].Trim('"');
                     if (Directory.Exists(deleteDir))
                     {
-                        using (var deleteWindow = new DeleteWindow(deleteDir))
+                        using (var deleteWindow = new DeleteWindow(deleteDir, IsUnattended))
                         {
-                            deleteWindow.ShowDialog();
+                            deleteWindow.ShowDialog(GetParentForm());
+                            if (deleteWindow.IsCancelled)
+                                break;
                         }
                         if (Directory.Exists(deleteDir))
                         {
-                            CommandsDone(EXIT_TYPE.error_stop);
-                            return;
+                            try
+                            {
+                                // One last try to either delete the directory or report an exception as to why this failed
+                                Directory.Delete(deleteDir, true);
+                            }
+                            catch (Exception e)
+                            {
+                                Log(Environment.NewLine + "!!!! COMMAND FAILED !!!! unable to remove folder " + deleteDir + " : " + e);
+                                CommandsDone(EXIT_TYPE.error_stop);
+                                return;
+                            }
                         }
                     }
                 }
@@ -205,6 +230,7 @@ namespace SkylineTester
                 // Run a command in a separate process.
                 else
                 {
+                    _restartOnProcessFailure = _commandsWithRetry.Contains(line);
                     try
                     {
                         StartProcess(
@@ -214,8 +240,11 @@ namespace SkylineTester
                     }
                     catch (Exception e)
                     {
-                        Log(Environment.NewLine + "!!!! COMMAND FAILED !!!! " + e);
-                        CommandsDone(EXIT_TYPE.error_stop);    // Quit if any command fails
+                        if (e is Win32Exception && e.Message.Contains("cannot find"))
+                            Log(Environment.NewLine + "!!!! COMMAND FAILED !!!! Command not found " + command);
+                        else
+                            Log(Environment.NewLine + "!!!! COMMAND FAILED !!!! " + e);
+                        CommandsDone(_restartOnProcessFailure ? EXIT_TYPE.error_restart : EXIT_TYPE.error_stop);    // Quit if any command fails
                     }
                     _workingDirectory = DefaultDirectory;
                     return;
@@ -223,6 +252,20 @@ namespace SkylineTester
             }
 
             CommandsDone(EXIT_TYPE.success);
+        }
+
+        private Form GetParentForm()
+        {
+            Control parent = this;
+            while (parent != null)
+            {
+                var parentForm = parent as Form;
+                if (parentForm != null)
+                    return parentForm;
+                parent = parent.Parent;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -244,6 +287,7 @@ namespace SkylineTester
                 }
                 else
                 {
+                    Log("# Restart count exceeded" + Environment.NewLine + Environment.NewLine);
                     exitType = EXIT_TYPE.error_stop;
                 }
             }
@@ -316,9 +360,10 @@ namespace SkylineTester
             _process.ErrorDataReceived += HandleOutput;
             _process.Exited += ProcessExit;
             _process.Start();
+            _processName = _process.ProcessName;
             _process.BeginOutputReadLine();
             _process.BeginErrorReadLine();
-            LastOutputTime = DateTime.Now;
+            ResetLastOutputTime();
         }
 
         public int ProcessId
@@ -326,14 +371,18 @@ namespace SkylineTester
             get { return _process != null ? _process.Id : 0; }
         }
 
-        private DateTime LastOutputTime { get; set; }
-
+        private void ResetLastOutputTime() { _lastOutputTime = DateTime.UtcNow; }   // Use UtcNow to avoid hiccups with tests running during DST changeover
+ 
+        private TimeSpan ElapsedTimeSinceLastOutput
+        {
+            get { return DateTime.UtcNow - _lastOutputTime; }  // Use UtcNow to avoid hiccups with tests running during DST changeover
+        }
         /// <summary>
         /// Handle a line of output/error data from the process.
         /// </summary>
         private void HandleOutput(object sender, DataReceivedEventArgs e)
         {
-            LastOutputTime = DateTime.Now;
+            ResetLastOutputTime();
             Log(e.Data);
         }
 
@@ -342,18 +391,25 @@ namespace SkylineTester
         /// </summary>
         public void Stop(bool preserveHungProcesses = false)
         {
+            if (IsWaiting)
+            {
+                IsWaiting = false;  // Stop waiting
+                return;
+            }
+
             try
             {
-                if (_process != null && !_process.HasExited)
+                if (IsRunning)
                 {
                     // If process has been quiet for a very long time, don't kill it, for forensic purposes
-                    if (preserveHungProcesses && (DateTime.Now - LastOutputTime).TotalMinutes > MAX_PROCESS_SILENCE_MINUTES)
+                    if (preserveHungProcesses && ElapsedTimeSinceLastOutput.TotalMinutes > MAX_PROCESS_SILENCE_MINUTES)
                     {
                         Log(string.Format("{0} has been silent for more than {1} minutes.  Leaving it running for forensic purposes.",
                            _process.Modules[0].FileName, MAX_PROCESS_SILENCE_MINUTES));
                     }
                     else
                     {
+                        _processKilled = true;
                         ProcessUtilities.KillProcessTree(_process);
                     }
                 }
@@ -363,6 +419,13 @@ namespace SkylineTester
             {
             }
         }
+
+        public bool IsRunning
+        {
+            get { return _process != null && !_process.HasExited; }
+        }
+
+        public bool IsWaiting { get; set; }
 
         public bool IsDebuggerAttached 
         {
@@ -386,8 +449,11 @@ namespace SkylineTester
             if (_process == null)
                 return;
 
-            var exitCode = _process.ExitCode;
+            var exitCode = _process.ExitCode; // That's all the info you can get from a process that has exited - no name etc
+            var processName = _process.ToString();
             _process = null;
+            bool processKilled = _processKilled;
+            _processKilled = false;
 
             if (exitCode == 0)
             {
@@ -395,7 +461,7 @@ namespace SkylineTester
                 // be logged, otherwise the output from the next process may be interleaved.
                 RunUI(() =>
                 {
-                    _exitTimer = new Timer {Interval = 700};
+                    _exitTimer = new Timer {Interval = MAX_PROCESS_OUTPUT_DELAY};
                     _exitTimer.Tick += (o, args) =>
                     {
                         _exitTimer.Stop();
@@ -408,7 +474,9 @@ namespace SkylineTester
             {
                 try
                 {
-                    RunUI(() => CommandsDone(EXIT_TYPE.error_stop));
+                    if (!processKilled)
+                        Log(Environment.NewLine + "# Process " + (_processName??string.Empty) + " had nonzero exit code " + exitCode + Environment.NewLine);
+                    RunUI(() => CommandsDone(_restartOnProcessFailure && !processKilled ? EXIT_TYPE.error_restart : EXIT_TYPE.error_stop));
                 }
 // ReSharper disable once EmptyGeneralCatchClause
                 catch (Exception)
@@ -640,30 +708,44 @@ namespace SkylineTester
         public void AddLines(string[] lines)
         {
             IgnorePaint++;
-            foreach (var line in lines)
+            var matchIndices = new int[lines.Length];
+            for (var i = 0; i < lines.Length; i++)
             {
-                ColorMatch match = null;
-                foreach (var colorMatch in _colorMatchList)
+                matchIndices[i] = -1;
+                for (var j = 0; j < _colorMatchList.Count; j++)
                 {
-                    if (line.StartsWith(colorMatch.LineStart))
+                    var colorMatch = _colorMatchList[j];
+                    if (lines[i].StartsWith(colorMatch.LineStart))
                     {
-                        match = colorMatch;
+                        matchIndices[i] = j;
                         break;
                     }
                 }
-
-                var addLine = line + Environment.NewLine;
-                RunUI(() =>
-                {
-                    AppendText(addLine);
-                    if (match != null)
-                    {
-                        Select(Text.Length - addLine.Length, addLine.Length);
-                        SelectionColor = match.LineColor;
-                        Select(Text.Length - 1, 0);
-                    }
-                });
             }
+
+            // Append and change color of all lines in the same RunUI.
+            // Also don't color lines individual lines, instead search for continuous
+            // sequences of lines of the same color
+            RunUI(() =>
+            {
+                for (var i = 0; i < lines.Length; )
+                {
+                    var prev = i;
+                    var addLines = new StringBuilder();
+                    var item = matchIndices[i];
+                    while (i < lines.Length && item == matchIndices[i])
+                        addLines.AppendLine(lines[i++]);
+                    var lineCount = i - prev;
+                    var addLine = addLines.ToString();
+                    AppendText(addLine);
+                    if (item < 0)
+                        continue;
+
+                    Select(Text.Length - addLine.Length + lineCount, addLine.Length);
+                    SelectionColor = _colorMatchList[item].LineColor;
+                    Select(Text.Length - 1, 0);
+                }
+            });
             IgnorePaint--;
         }
 

@@ -34,6 +34,11 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         [Browsable(false)]
         protected SkylineDocNode SkylineDocNode { get; private set; }
 
+        public SkylineDocNode GetSkylineDocNode()
+        {
+            return SkylineDocNode;
+        }
+
         public ResultFile GetResultFile()
         {
             return _resultFile;
@@ -52,8 +57,17 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             {
                 return;
             }
-            skylineWindow.SelectedPath = SkylineDocNode.IdentityPath;
+
+            if (!SkylineDocNode.IdentityPath.IsRoot)
+            {
+                skylineWindow.SelectedPath = SkylineDocNode.IdentityPath;
+            }
             skylineWindow.SelectedResultsIndex = GetResultFile().Replicate.ReplicateIndex;
+        }
+
+        public virtual bool IsEmpty()
+        {
+            return false;
         }
     }
 }

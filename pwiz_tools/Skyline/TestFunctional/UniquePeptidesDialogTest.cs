@@ -79,6 +79,9 @@ namespace pwiz.SkylineTestFunctional
         {
             OpenDocument(bogus ? "UniqueTestBogus.sky": "UniqueTest.sky");  // Contains every protein in the protDB file, bogus version has missing metadata in the protdb
 
+            // CONSIDER: Should WaitForDocumentLoaded() also ensure that the background proteome is loaded?
+            WaitForBackgroundProteomeLoaderCompleted();
+
             // Finish digesting and get protein metadata (should not require web access for these well formed fasta headers)
             WaitForConditionUI(() =>
             {
@@ -88,9 +91,14 @@ namespace pwiz.SkylineTestFunctional
             });
 
             // Add FASTA sequence that's not in the library
-            RunUI(() => SkylineWindow.Paste(bogus ? TEXT_FASTA_NONSENSE : TEXT_FASTA_SPROT));
-
+            using (new WaitDocumentChange())
+//            using (new ImportFastaDocChangeLogger()) // Log any document changes that are not due to Import Fasta
+            {
+                RunUI(() => SkylineWindow.Paste(bogus ? TEXT_FASTA_NONSENSE : TEXT_FASTA_SPROT));
+            }
+            WaitForProteinMetadataBackgroundLoaderCompletedUI();
         }
+
 
         private void scenario(int nodeNum, int expectedMatches, int expectedMoleculeFilteredCount, UniquePeptidesDlg.UniquenessType testType, bool bogus = false)
         {
@@ -139,7 +147,9 @@ namespace pwiz.SkylineTestFunctional
             }
             var doc = SkylineWindow.Document;
             OkDialog(uniquePeptidesDlg, uniquePeptidesDlg.OkDialog);
-            AssertEx.IsDocumentState(WaitForDocumentChange(doc), null, 25, INITIAL_MOLECULE_COUNT - expectedMoleculeFilteredCount, null, null);
+            if (expectedMoleculeFilteredCount > 0)
+                doc = WaitForDocumentChange(doc);
+            AssertEx.IsDocumentState(doc, null, 25, INITIAL_MOLECULE_COUNT - expectedMoleculeFilteredCount, null, null);
         }
 
         protected override void DoTest()

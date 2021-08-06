@@ -47,10 +47,13 @@ namespace pwiz.Skyline.Controls.Graphs
 
         public void Complete(int maxPeaks, int chromIndex)
         {
+            if (chromIndex < 0)
+                return;
+
             if (NodeGroups.Count <= maxPeaks)
                 return;
 
-            var statHeights = new Statistics(NodeGroups.Where(nodeGroup => nodeGroup.HasResults)
+            var statHeights = new Statistics(NodeGroups.Where(nodeGroup => nodeGroup.HasResults && chromIndex < nodeGroup.Results.Count)
                 .Select(nodeGroup => GetHeight(nodeGroup.Results[chromIndex])));
             if (statHeights.Length <= maxPeaks)
                 return;

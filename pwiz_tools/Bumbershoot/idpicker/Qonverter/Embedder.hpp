@@ -32,8 +32,8 @@
 #include <map>
 #include "pwiz/utility/misc/IterationListener.hpp"
 #include "pwiz/utility/chemistry/MZTolerance.hpp"
+#include "pwiz/utility/misc/Filesystem.hpp"
 #include <boost/date_time.hpp>
-#include <boost/filesystem/path.hpp>
 #include <boost/shared_ptr.hpp>
 #include <boost/enum.hpp>
 #include "sqlite3pp.h"
@@ -60,6 +60,8 @@ BOOST_ENUM(QuantitationMethod,
     (TMT2plex)
     (TMT6plex)
     (TMT10plex)
+    (TMT11plex)
+    (TMTpro16plex)
 );
 
 // allow enum values to be the LHS of an equality expression
@@ -76,23 +78,27 @@ using std::pair;
 using pwiz::chemistry::MZTolerance;
 namespace sqlite = sqlite3pp;
 
+static const int MAX_ITRAQ_REPORTER_IONS = 8;
+static const int MAX_TMT_REPORTER_IONS = 16;
 
 struct QuantitationConfiguration
 {
     QuantitationConfiguration(QuantitationMethod quantitationMethod = QuantitationMethod::None,
                               MZTolerance reporterIonMzTolerance = MZTolerance(0.015, MZTolerance::MZ),
-                              bool normalizeIntensities = true);
+                              bool normalizeIntensities = true,
+                              bool extractFromMS3 = true);
 
     QuantitationMethod quantitationMethod;
     MZTolerance reporterIonMzTolerance;
     bool normalizeIntensities;
+    bool extractFromMS3;
 
     operator std::string() const;
 };
 
 
 /// the default source extensions to search for, ordered by descending priority
-extern const string defaultSourceExtensionPriorityList;
+string defaultSourceExtensionPriorityList();
 
 /// search for source files of the idpDB using the given search path, using the default source extensions,
 /// and embed a MZ5 representation of the source's spectra in the MSDataBytes column of the idpDB
@@ -129,6 +135,9 @@ void embedIsobaricSampleMapping(const string& idpDbFilepath, const map<string, v
 
 /// retrieves the mapping of source group to sample names; the sample names are in ascending order of isobaric quantitation channel reporter ion mass
 map<string, vector<string> > getIsobaricSampleMapping(const string& idpDbFilepath);
+
+/// returns the number of channels for the given method
+int channelsByQuantitationMethod(QuantitationMethod quantitationMethod);
 
 /// checks whether the given idpDB has embedded gene metadata (although it may not necessarily be the most up-to-date)
 bool hasGeneMetadata(const string& idpDbFilepath);

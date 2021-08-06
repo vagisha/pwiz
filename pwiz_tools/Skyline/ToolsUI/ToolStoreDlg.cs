@@ -26,6 +26,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using Ionic.Zip;
+using JetBrains.Annotations;
 using Newtonsoft.Json;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
@@ -58,7 +59,7 @@ namespace pwiz.Skyline.ToolsUI
         private void PopulateToolList()
         {
             listBoxTools.DataSource = _tools;
-            listBoxTools.DisplayMember = "Name"; // Not L10N
+            listBoxTools.DisplayMember = @"Name";
         }
 
         private void listBoxTools_SelectedIndexChanged(object sender, EventArgs e)
@@ -135,7 +136,9 @@ namespace pwiz.Skyline.ToolsUI
 
             description = description.Trim();
             
-            if (description.StartsWith("\"") && description.EndsWith("\"")) // Not L10N
+            // ReSharper disable LocalizableElement
+            if (description.StartsWith("\"") && description.EndsWith("\""))
+            // ReSharper restore LocalizableElement
                 description = description.Substring(1, description.Length - 2);
 
             return description;
@@ -238,7 +241,7 @@ namespace pwiz.Skyline.ToolsUI
         }
 
         private IList<ToolStoreItem> ToolStoreItems { get; set; }
-        private static readonly string[] IMAGE_EXTENSIONS = {".jpg", ".png", ".bmp"};    // Not L10N
+        private static readonly string[] IMAGE_EXTENSIONS = {@".jpg", @".png", @".bmp"};
 
         public IList<ToolStoreItem> GetToolStoreItems()
         {
@@ -253,7 +256,7 @@ namespace pwiz.Skyline.ToolsUI
                 return tools;
             foreach (var toolDir in _toolDir.GetFiles())
             {                
-                if (toolDir == null || toolDir.DirectoryName == null)
+                if (toolDir == null || string.IsNullOrEmpty(toolDir.DirectoryName))
                     continue;
 
                 string fileName = Path.GetFileNameWithoutExtension(toolDir.Name);
@@ -354,12 +357,14 @@ namespace pwiz.Skyline.ToolsUI
 
     public class WebToolStoreClient : IToolStoreClient
     {
-        public static readonly Uri TOOL_STORE_URI = new Uri("https://skyline.gs.washington.edu"); // Not L10N
-        protected const string GET_TOOLS_URL = "/labkey/skyts/home/getToolsApi.view";  // Not L10N
-        protected const string DOWNLOAD_TOOL_URL = "/labkey/skyts/home/downloadTool.view";  // Not L10N
-        public const string TOOL_DETAILS_URL = "/labkey/skyts/home/details.view";  // Not L10N
+        public static readonly Uri TOOL_STORE_URI = new Uri(@"https://skyline.gs.washington.edu");
+        protected const string GET_TOOLS_URL = "/labkey/skyts/home/getToolsApi.view";
+        protected const string DOWNLOAD_TOOL_URL = "/labkey/skyts/home/downloadTool.view";
+        public const string TOOL_DETAILS_URL = "/labkey/skyts/home/details.view";
 
         protected Dictionary<String, Version> latestVersions_;
+
+        [UsedImplicitly(ImplicitUseTargetFlags.WithMembers)]
         protected struct ToolStoreVersion
         {
             public string Identifier;
@@ -377,12 +382,14 @@ namespace pwiz.Skyline.ToolsUI
             UriBuilder uri = new UriBuilder(TOOL_STORE_URI)
                 {
                     Path = DOWNLOAD_TOOL_URL,
-                    Query = "lsid=" + packageIdentifier // Not L10N
+                    Query = @"lsid=" + packageIdentifier
                 };
-            byte[] toolZip = webClient.DownloadData(uri.Uri.AbsoluteUri);  // Not L10N
-            string contentDisposition = webClient.ResponseHeaders.Get("Content-Disposition");   // Not L10N
+            byte[] toolZip = webClient.DownloadData(uri.Uri.AbsoluteUri);
+            string contentDisposition = webClient.ResponseHeaders.Get(@"Content-Disposition");
             // contentDisposition is filename="ToolBasename.zip"
-            Match match = Regex.Match(contentDisposition, "^filename=\"(.+)\"$", RegexOptions.IgnoreCase);  // Not L10N
+            // ReSharper disable LocalizableElement
+            Match match = Regex.Match(contentDisposition, "^filename=\"(.+)\"$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            // ReSharper restore LocalizableElement
             string downloadedFile = directory + match.Groups[1].Value;
             File.WriteAllBytes(downloadedFile, toolZip);
             return downloadedFile;
@@ -480,7 +487,9 @@ namespace pwiz.Skyline.ToolsUI
             Organization = organization;
             Provider = provider;
             Version = version;
-            Description = description != null ? description.Replace("\n", Environment.NewLine) : null;  // Not L10N
+            // ReSharper disable LocalizableElement
+            Description = description != null ? description.Replace("\n", Environment.NewLine) : null;
+            // ReSharper restore LocalizableElement
             Identifier = identifier;
             Languages = languages;
             ToolImage = ToolStoreUtil.DefaultImage;
@@ -497,9 +506,9 @@ namespace pwiz.Skyline.ToolsUI
             UriBuilder uri = new UriBuilder(WebToolStoreClient.TOOL_STORE_URI)
                 {
                     Path = WebToolStoreClient.TOOL_DETAILS_URL,
-                    Query = "name=" + Uri.EscapeDataString(name) // Not L10N
+                    Query = @"name=" + Uri.EscapeDataString(name)
                 };
-            FilePath = uri.Uri.AbsoluteUri; // Not L10N
+            FilePath = uri.Uri.AbsoluteUri;
         }
 
         protected void DownloadIconDone(object sender, DownloadDataCompletedEventArgs downloadDataCompletedEventArgs)
@@ -572,6 +581,11 @@ namespace pwiz.Skyline.ToolsUI
             return tool != null ? tool.PackageVersion : null;
         }
 
+        public static IEnumerable<ToolDescription> UpdatableTools(IList<ToolDescription> tools)
+        {
+            return tools.Where(description => !string.IsNullOrWhiteSpace(description.PackageVersion));
+        }
+
         /// <summary>
         /// Checks the web to see if there are updates available to any currently installed tools. If there are updates,
         /// sets the ToolDescription's UpdateAvailable bool to true.
@@ -580,12 +594,9 @@ namespace pwiz.Skyline.ToolsUI
         {
             try
             {
-                var client = CreateClient();
-                if (client == null)
-                    return;
-                foreach (ToolDescription toolDescription in tools.Where(description => !string.IsNullOrWhiteSpace(description.PackageVersion)))
+                foreach (var toolDescription in UpdatableTools(tools))
                 {
-                    toolDescription.UpdateAvailable = client.IsToolUpdateAvailable(toolDescription.PackageIdentifier,
+                    toolDescription.UpdateAvailable = ToolStoreClient.IsToolUpdateAvailable(toolDescription.PackageIdentifier,
                                                                                    new Version(toolDescription.PackageVersion));
                 }
             }

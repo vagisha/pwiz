@@ -22,7 +22,7 @@ namespace pwiz.Skyline.Model.Lib.BlibData
     public class DbLibInfo
     {
         public const int INITIAL_LIBRARY_REVISION = 1;
-        public const int SCHEMA_VERSION_CURRENT = 3; 
+        public const int SCHEMA_VERSION_CURRENT = 7; 
         public virtual string LibLSID { get; set; }
         public virtual string CreateTime { get; set; }
         public virtual int NumSpecs { get; set; }
@@ -37,6 +37,10 @@ namespace pwiz.Skyline.Model.Lib.BlibData
         /// Version 2 added the ion mobility columns to RetentionTimes 
         /// and, also for redundant libraries, to the RefSpectra table.
         /// Version 3 adds ion mobility high energy drift time offset
+        /// Version 4 adds collisional cross section, removes ion mobility type
+        /// Version 5 adds small molecule columns such as InChiKey etc
+        /// Version 6 adds Bruker TIMS ion mobility values
+        /// Version 7 adds peak annotations for small molecules
         /// </summary>
         public virtual int MinorVersion { get; set; }
     }

@@ -109,6 +109,8 @@ void MSDataFile::write(MSData^ msd, System::String^ filename, WriteConfig^ confi
 static void translateConfig(MSDataFile::WriteConfig^ config, b::MSDataFile::WriteConfig& config2)
 {
     config2.gzipped = config->gzipped;
+    config2.indexed = config->indexed;
+    config2.useWorkerThreads = config->useWorkerThreads;
     config2.binaryDataEncoderConfig.precision = (b::BinaryDataEncoder::Precision) config->precision;
     config2.binaryDataEncoderConfig.byteOrder = (b::BinaryDataEncoder::ByteOrder) config->byteOrder;
     config2.binaryDataEncoderConfig.compression = (b::BinaryDataEncoder::Compression) config->compression;
@@ -142,6 +144,8 @@ void MSDataFile::write(MSData^ msd,
         b::MSDataFile::write(msd->base(), ToStdString(filename), config2, ilr == nullptr ? 0 : &ilr->base());
     }
     CATCH_AND_FORWARD
+    GC::KeepAlive(ilr);
+    GC::KeepAlive(msd);
 }
 
 
@@ -171,6 +175,7 @@ void MSDataFile::write(System::String^ filename,
         b::MSDataFile::WriteConfig config2((b::MSDataFile::Format) config->format);
         translateConfig(config,config2);
         base().write(ToStdString(filename), config2, ilr == nullptr ? 0 : &ilr->base());
+        GC::KeepAlive(ilr);
     }
     CATCH_AND_FORWARD
 }
@@ -179,6 +184,7 @@ void MSDataFile::write(System::String^ filename,
 void MSDataFile::calculateSHA1Checksums(MSData^ msd)
 {
     try {b::calculateSHA1Checksums(msd->base());} CATCH_AND_FORWARD
+    GC::KeepAlive(msd);
 }
 
 

@@ -23,6 +23,7 @@
 #include "pwiz/data/msdata/SpectrumListWrapper.hpp"
 #include <boost/smart_ptr/scoped_ptr.hpp>
 #include "pwiz/utility/chemistry/MZTolerance.hpp"
+#include "boost/enum.hpp"
 
 namespace pwiz {
 namespace analysis {
@@ -40,14 +41,13 @@ namespace analysis {
         struct Params
         {
             /// Optimization methods available
-            enum class Optimization
-            {
-                NONE,
-                OVERLAP_ONLY
-            };
+            BOOST_ENUM(Optimization,
+                (NONE)
+                (OVERLAP_ONLY)
+            );
 
             /// Converts an optimization enum to a string
-            static const std::string& optimizationToString(Optimization opt);
+            static std::string optimizationToString(Optimization opt);
 
             /// Converts a string to an optimization enum (returns NONE enum if no enum matches the string)
             static Optimization stringToOptimization(const std::string& s);
@@ -60,8 +60,9 @@ namespace analysis {
                 applyWeighting(true),
                 regularizeSums(true),
                 variableFill(false),
-                optimization(Optimization::NONE)
-
+                interpolateRetentionTime(true),
+                optimization(Optimization::NONE),
+                minimumWindowSize(0.2)
             {}
 
             /// Error scalar for extracting MS/MS peaks.
@@ -80,7 +81,7 @@ namespace analysis {
             double nnlsEps;
             
             /// Weight the spectra nearby to the input spectrum more heavily in the solve
-            /// than the outer ones
+            /// than the outer ones. This is only applied if interpolateRetentionTime is false
             bool applyWeighting;
             
             /// After demux solve, scale the sum of the intensities contributed form each
@@ -90,8 +91,12 @@ namespace analysis {
             /// Set to true if fill times are allowed to vary for each scan window
             bool variableFill;
             
+            bool interpolateRetentionTime;
+
             /// Optimizations can be chosen when experimental design is known
             Optimization optimization;
+
+            double minimumWindowSize;
         };
 
         /// Generates an abstract SpectrumList_Demux decorator from inner SpectrumList

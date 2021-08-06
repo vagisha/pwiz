@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -21,11 +21,13 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using pwiz.Common.Collections;
 
 namespace pwiz.Common.DataBinding.RowSources
 {
+    [SuppressMessage("ReSharper", "UnusedType.Global")]
     public class PropertyChangedSupport : INotifyPropertyChanged
     {
         private readonly object _sender;
@@ -63,7 +65,7 @@ namespace pwiz.Common.DataBinding.RowSources
                 Debug.Assert(_eventHandlers != null);
                 if (!_eventHandlers.Add(eventHandler))
                 {
-                    throw new InvalidOperationException("Attempt to add same listener twice"); // Not L10N
+                    throw new InvalidOperationException(@"Attempt to add same listener twice");
                 }
             }
         }
@@ -79,7 +81,7 @@ namespace pwiz.Common.DataBinding.RowSources
                 }
                 if (!removed)
                 {
-                    throw new InvalidOperationException("Attempt to remove a listener which has not been added"); // Not L10N
+                    throw new InvalidOperationException(@"Attempt to remove a listener which has not been added");
                 }
                 AfterListenerRemoved();
             }

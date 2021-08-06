@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -37,12 +37,12 @@ namespace pwiz.Skyline.Model.DocSettings
     /// the single <see cref="Name"/> property in both cases should
     /// be read-only to preserve immutability of derrived types.
     /// </summary>
-    public abstract class XmlNamedElement : Immutable, IKeyContainer<string>, IXmlSerializable
+    public abstract class XmlNamedElement : Immutable, IKeyContainer<string>, IXmlSerializable, IAuditLogObject
     {
         /// <summary>
         /// A dummy name for instances which will only be used internally
         /// </summary>
-        public const string NAME_INTERNAL = "__internal__"; // Not L10N
+        public const string NAME_INTERNAL = "__internal__";
 
         /// <summary>
         /// Parameterless constructor for serialization use only.
@@ -69,6 +69,9 @@ namespace pwiz.Skyline.Model.DocSettings
         {
             return Name;
         }
+
+        public virtual string AuditLogText { get { return Name; } }
+        public virtual bool IsName { get { return true; } }
 
         #region Property change methods
 
@@ -160,7 +163,7 @@ namespace pwiz.Skyline.Model.DocSettings
         #endregion
     }
 
-    public abstract class XmlNamedIdElement : XmlNamedElement
+    public abstract class XmlNamedIdElement : XmlNamedElement, IIdentiyContainer
     {
         protected XmlNamedIdElement(Identity id, string name) : base(name)
         {
@@ -180,6 +183,10 @@ namespace pwiz.Skyline.Model.DocSettings
     {
         public bool Equals(TElem n1, TElem n2)
         {
+            if (ReferenceEquals(null, n1) || ReferenceEquals(null, n2))
+            {
+                return ReferenceEquals(null, n1) && ReferenceEquals(null, n2);
+            }
             return Equals(n1.Name, n2.Name);
         }
 

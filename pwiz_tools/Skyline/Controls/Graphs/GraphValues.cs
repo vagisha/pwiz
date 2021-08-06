@@ -20,7 +20,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using ZedGraph;
 using pwiz.Skyline.Model.DocSettings;
@@ -93,6 +92,8 @@ namespace pwiz.Skyline.Controls.Graphs
             public PointPair MakeBarValue(double xValue, IEnumerable<double> values)
             {
                 var statValues = new Statistics(values);
+                if (statValues.Length == 0)
+                    return MeanErrorBarItem.MakePointPair(xValue, PointPairBase.Missing, PointPairBase.Missing);
                 if (Cv)
                 {
                     var cv = statValues.StdDev()/statValues.Mean();
@@ -120,62 +121,6 @@ namespace pwiz.Skyline.Controls.Graphs
         }
 
         /// <summary>
-        /// Ways of combining replicates together on a graph into a single point.
-        /// Replicates may be combined based on the value of an annotation on the replicate.
-        /// </summary>
-        public class ReplicateGroupOp
-        {
-            private ReplicateGroupOp(AnnotationDef groupByAnnotationDef, AggregateOp aggregateOp)
-            {
-                GroupByAnnotation = groupByAnnotationDef;
-                AggregateOp = aggregateOp;
-            }
-
-            public AnnotationDef GroupByAnnotation { get; private set; }
-            public AggregateOp AggregateOp { get; private set; }
-            [Localizable(true)]
-            public string ReplicateAxisTitle
-            {
-                get
-                {
-                    return GroupByAnnotation == null ? Resources.ReplicateGroupOp_ReplicateAxisTitle : GroupByAnnotation.Name;   
-                }
-            }
-
-            /// <summary>
-            /// Returns the ReplicateGroupOp based on the current value of Settings.Default.GroupByReplicateAnnotation,
-            /// and the current Settings.Default.ShowPeptideCV.  Note that if the ReplicateGroupOp is not grouping on
-            /// an annotation, the AggregateOp will always be set to MEAN.
-            /// </summary>
-            public static ReplicateGroupOp FromCurrentSettings(SrmSettings settings)
-            {
-                return FromCurrentSettings(settings, AggregateOp.FromCurrentSettings());
-            }
-
-            /// <summary>
-            /// Returns the ReplicateGroupOp based on the current value of Settings.Default.GroupByReplicateAnnotation,
-            /// and the specified AggregateOp.  Note that if the ReplicateGroupOp is not grouping on an annotation,
-            /// the AggregateOp will be override with the value MEAN.
-            /// </summary>
-            public static ReplicateGroupOp FromCurrentSettings(SrmSettings settings, AggregateOp aggregateOp)
-            {
-                AnnotationDef groupByAnnotationDef = null;
-                string annotationName = Settings.Default.GroupByReplicateAnnotation;
-                if (null != annotationName)
-                {
-                    groupByAnnotationDef =
-                        settings.DataSettings.AnnotationDefs.FirstOrDefault(
-                            annotationDef => annotationName == annotationDef.Name);
-                }
-                if (null == groupByAnnotationDef)
-                {
-                    aggregateOp = AggregateOp.MEAN;
-                }
-                return new ReplicateGroupOp(groupByAnnotationDef, aggregateOp);
-            }
-        }
-
-        /// <summary>
         /// A scaling of a retention time
         /// </summary>
         public interface IRetentionTimeTransformOp
@@ -194,7 +139,7 @@ namespace pwiz.Skyline.Controls.Graphs
             /// If successful, then this method returns true, and the regressionFunction is set 
             /// appropriately.
             /// </summary>
-            bool TryGetRegressionFunction(ChromFileInfoId chromFileInfoId, out IRegressionFunction regressionFunction);
+            bool TryGetRegressionFunction(ChromFileInfoId chromFileInfoId, out RegressionLine regressionFunction);
         }
 
         public class RegressionUnconversion : IRetentionTimeTransformOp
@@ -215,7 +160,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 return string.Format(Resources.RegressionUnconversion_CalculatorScoreValueFormat, calculatorName, ToLocalizedString(rtPeptideValue));
             }
 
-            public bool TryGetRegressionFunction(ChromFileInfoId chromFileInfoId, out IRegressionFunction regressionFunction)
+            public bool TryGetRegressionFunction(ChromFileInfoId chromFileInfoId, out RegressionLine regressionFunction)
             {
                 regressionFunction = _retentionTimeRegression.GetUnconversion(chromFileInfoId);
                 return regressionFunction != null;
@@ -276,7 +221,7 @@ namespace pwiz.Skyline.Controls.Graphs
             public ChromatogramSet ChromatogramSet { get; private set; }
             public ChromFileInfo ChromFileInfo { get; private set; }
             public FileRetentionTimeAlignments FileRetentionTimeAlignments { get; private set; }
-            public bool TryGetRegressionFunction(ChromFileInfoId chromFileInfoId, out IRegressionFunction regressionFunction)
+            public bool TryGetRegressionFunction(ChromFileInfoId chromFileInfoId, out RegressionLine regressionFunction)
             {
                 if (ReferenceEquals(chromFileInfoId, ChromFileInfo.Id))
                 {

@@ -19,16 +19,21 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.EditUI
 {
-    public partial class RefineListDlg : FormEx
+    public partial class RefineListDlg : ModeUIInvariantFormEx,  // This dialog is inherently proteomic, never wants the "peptide"->"molecule" translation
+                  IAuditLogModifier<RefineListDlg.RefineListSettings>
     {
         private readonly SrmDocument _document;
 
@@ -39,7 +44,7 @@ namespace pwiz.Skyline.EditUI
             _document = document;
         }
 
-        public RefinementSettings.PeptideCharge[] AcceptedPeptides { get; private set; }
+        public LibraryKey[] AcceptedPeptides { get; private set; }
 
         public bool RemoveEmptyProteins
         {
@@ -59,12 +64,56 @@ namespace pwiz.Skyline.EditUI
             set { textPeptides.Text = value; }
         }
 
+        public class RefineListSettings : AuditLogOperationSettings<RefineListSettings>, IAuditLogComparable
+        {
+            public RefineListSettings(string[] acceptedPeptides, bool matchModified, bool removeEmptyProteins, string peptidesText)
+            {
+                AcceptedPeptides = acceptedPeptides;
+                MatchModified = matchModified;
+                RemoveEmptyProteins = removeEmptyProteins;
+                PeptidesText = peptidesText;
+            }
+
+            protected override AuditLogEntry CreateEntry(SrmDocumentPair docPair)
+            {
+                var entry = AuditLogEntry.CreateCountChangeEntry(MessageType.accepted_peptide,
+                        MessageType.accept_peptides, docPair.NewDocumentType, AcceptedPeptides)
+                    .ChangeAllInfo(new DetailLogMessage[0]);
+
+                // TODO: if this happens more often, consider adding something like "reverse merge"
+                entry = entry.Merge(base.CreateEntry(docPair));
+                return entry.ChangeExtraInfo(entry.ExtraInfo + Environment.NewLine + Environment.NewLine + PeptidesText);
+            }
+
+            [Track]
+            public string[] AcceptedPeptides { get; private set; }
+            [Track]
+            public bool MatchModified { get; private set; }
+            [Track]
+            public bool RemoveEmptyProteins { get; private set; }
+            public string PeptidesText { get; private set; }
+
+            public object GetDefaultObject(ObjectInfo<object> info)
+            {
+                return new RefineListSettings(new string[0], false, false, null);
+            }
+        }
+
+        public RefineListSettings FormSettings
+        {
+            get
+            {
+                return new RefineListSettings(AcceptedPeptides.Select(key => key.Target.AuditLogText).ToArray(),
+                    MatchModified, RemoveEmptyProteins, PeptidesText);
+            }
+        }
+
         public void OkDialog()
         {
             var reader = new StringReader(PeptidesText);
             var invalidLines = new List<string>();
             var notFoundLines = new List<string>();
-            var acceptedPeptides = new List<RefinementSettings.PeptideCharge>();
+            var acceptedPeptides = new List<LibraryKey>();
             var peptideSequences = GetPeptideSequences();
 
             string line;
@@ -73,23 +122,22 @@ namespace pwiz.Skyline.EditUI
                 line = line.Trim();
                 if (string.IsNullOrEmpty(line))
                     continue;
-                int? charge = null;
-                int chargeIndex = line.IndexOf('+');
-                if (chargeIndex != -1)
-                {
-                    charge = Transition.GetChargeFromIndicator(line,
-                        TransitionGroup.MIN_PRECURSOR_CHARGE, TransitionGroup.MAX_PRECURSOR_CHARGE);
-                    if (charge.HasValue)
-                        line = line.Substring(0, line.Length - Transition.GetChargeIndicator(charge.Value).Length);
-                }
-                if (!FastaSequence.IsExSequence(line))
-                {
-                    invalidLines.Add(line);
-                    continue;
-                }
+                int foundAt;
+                var charge = Transition.GetChargeFromIndicator(line,
+                    TransitionGroup.MIN_PRECURSOR_CHARGE, TransitionGroup.MAX_PRECURSOR_CHARGE, out foundAt);
+                if (!charge.IsEmpty)
+                    line = line.Substring(0, foundAt);
+                Target target;
                 try
                 {
+                    // CONSIDER(bspratt) small molecule equivalent?
+                    if (!FastaSequence.IsExSequence(line))
+                    {
+                        invalidLines.Add(line);
+                        continue;
+                    }
                     line = SequenceMassCalc.NormalizeModifiedSequence(line);
+                    target = new Target(line); 
                 }
                 catch (Exception)
                 {
@@ -97,10 +145,10 @@ namespace pwiz.Skyline.EditUI
                     continue;
                 }
 
-                if (!peptideSequences.Contains(line))
+                if (!peptideSequences.ContainsKey(target))
                     notFoundLines.Add(line);
                 else
-                    acceptedPeptides.Add(new RefinementSettings.PeptideCharge(line, charge));
+                    acceptedPeptides.Add(new LibKey(target, charge).LibraryKey); 
             }
 
             if (invalidLines.Count > 0)
@@ -147,14 +195,9 @@ namespace pwiz.Skyline.EditUI
             OkDialog();
         }
 
-        private HashSet<string> GetPeptideSequences()
+        private TargetMap<PeptideDocNode> GetPeptideSequences()
         {
-            var peptideSequences = new HashSet<string>();
-            foreach (var nodePep in _document.Peptides)
-            {
-                peptideSequences.Add(MatchModified ? nodePep.ModifiedSequence : nodePep.Peptide.Sequence);
-            }
-            return peptideSequences;
+            return new TargetMap<PeptideDocNode>(_document.Peptides.Select(pep=>new KeyValuePair<Target, PeptideDocNode>(MatchModified ? pep.ModifiedTarget : pep.Target, pep)));
         }
 
         private void textPeptides_Enter(object sender, EventArgs e)

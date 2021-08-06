@@ -20,6 +20,7 @@
 //
 
 #include "Compare.h"
+#include "pwiz/utility/misc/Filesystem.hpp"
 #include "pwiz/utility/misc/unit.hpp"
 #include <stdlib.h>
 
@@ -50,10 +51,9 @@ int test (const vector<string>& args)
          << ", to observed, " << observedName << endl;
 
     // get the text from any lines that should not be compared
-    vector<string> skipLines;
     CompareDetails compareDetails;
     if( args.size() > 3 )
-        getSkipLines(tokens[2].c_str(), skipLines, compareDetails);
+        getSkipLines(tokens[2].c_str(), compareDetails);
 
     ifstream expectedFile(expectedName.c_str());
     if( !expectedFile.good() )
@@ -64,17 +64,19 @@ int test (const vector<string>& args)
         throw runtime_error("Could not open file of observed results, '" + observedName + "'");
 
     int lineNum = 1;
-    vector<string>::iterator skipLinesIter = skipLines.begin();
-    vector<string>::iterator lastLine = skipLines.end();
+    vector<string>::iterator skipLinesIter = compareDetails.skipLines_.begin();
+    vector<string>::iterator lastLine = compareDetails.skipLines_.end();
     string expected;
     string observed;
     getline(expectedFile, expected);
+    expected = trim(expected);
 
     while( !expectedFile.eof() )
     {
         if( observedFile.eof() )
             throw runtime_error("The expected file has more lines than observed (" + lexical_cast<string>(lineNum) + ")");
         getline(observedFile, observed);
+        observed = trim(observed);
 
         // should we compare this line or skip it?
         if( skipLinesIter < lastLine 
@@ -82,6 +84,7 @@ int test (const vector<string>& args)
         {
             lineNum++;
             getline(expectedFile, expected);
+            expected = trim(expected);
             skipLinesIter++;
             continue;
         }
@@ -96,11 +99,12 @@ int test (const vector<string>& args)
         lineNum++;
 
         getline(expectedFile, expected);
+        expected = trim(expected);
     }
 
     // check the observed file for extra lines
     getline(observedFile, observed);
-    if( !observedFile.eof() )
+    if (!observedFile.eof())
         throw runtime_error("The observed file has more lines than the expected (" + lexical_cast<string>(lineNum) + ")");
 
     cerr << "All " << lineNum << " lines match" << endl;
@@ -110,25 +114,34 @@ int test (const vector<string>& args)
 
 
 int main(int argc, char* argv[])
-{  
-    TEST_PROLOG(argc, argv)
-    if (teamcityTestDecoration)
-        testArgs.erase(find(testArgs.begin(), testArgs.end(), "--teamcity-test-decoration"));
+{
+    bnw::args utf8ArgWrapper(argc, argv); // modifies argv in-place with UTF-8 version on Windows
+    pwiz::util::enable_utf8_path_operations();
 
     try
     {
-        test(testArgs);
+        return test(vector<string>(argv, argv + argc));
     }
     catch (exception& e)
     {
-        TEST_FAILED(e.what())
+        cerr << e.what() << endl;
+        return 1;
+    }
+    catch (const char* msg)
+    {
+        cerr << msg << endl;
+        return 1;
+    }
+    catch (string msg)
+    {
+        cerr << msg << endl;
+        return 1;
     }
     catch (...)
     {
-        TEST_FAILED("Caught unknown exception.")
+        cerr << "Caught unknown exception." << endl;
+        return 1;
     }
-
-    TEST_EPILOG
 }
 
 

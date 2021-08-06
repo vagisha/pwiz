@@ -54,9 +54,9 @@ namespace pwiz.Skyline
             set { Settings.Default.UpdateCheckAtStartup = value; }
         }
 
-        private Control _parentWindow;
+        private readonly Control _parentWindow;
         private readonly bool _startup;
-        private readonly AutoResetEvent _endUpdateEvent;
+        private AutoResetEvent _endUpdateEvent;
         private UpdateCheckDetails _updateInfo;
         private UpdateCompletedDetails _completeArgs;
 
@@ -79,7 +79,6 @@ namespace pwiz.Skyline
         {
             _parentWindow = parentWindow;
             _startup = startup;
-            _endUpdateEvent = new AutoResetEvent(false);
         }
 
         private Control ParentWindow
@@ -115,7 +114,7 @@ namespace pwiz.Skyline
             if (exTrust != null)
             {
                 if (ShowUpgradeForm(AppDeployment.GetVersionFromUpdateLocation(), false, true))
-                    AppDeployment.OpenInstallLink();
+                    AppDeployment.OpenInstallLink(ParentWindow);
                 return;
             }
             var ex = e.Result as Exception;
@@ -141,12 +140,33 @@ namespace pwiz.Skyline
                     ProgressValue = 0
                 })
                 {
-                    longWaitUpdate.PerformWork(ParentWindow, 500, broker =>
+                    AutoResetEvent endUpdateEvent = null;
+                    try
                     {
-                        BeginUpdate(broker);
-                        _endUpdateEvent.WaitOne();
-                        broker.ProgressValue = 100;
-                    });
+                        lock (this)
+                        {
+                            Assume.IsNull(_endUpdateEvent);
+                            _endUpdateEvent = endUpdateEvent = new AutoResetEvent(false);
+                        }
+
+                        longWaitUpdate.PerformWork(ParentWindow, 500, broker =>
+                        {
+                            BeginUpdate(broker);
+                            endUpdateEvent.WaitOne();
+                            broker.ProgressValue = 100;
+                        });
+                    }
+                    finally
+                    {
+                        lock (this)
+                        {
+                            if (endUpdateEvent != null)
+                            {
+                                _endUpdateEvent = null;
+                            }
+                        }
+                        endUpdateEvent?.Dispose();
+                    }
                 }
                 if (_completeArgs == null || _completeArgs.Cancelled)
                     return;
@@ -156,7 +176,7 @@ namespace pwiz.Skyline
                     MessageDlg.ShowWithException(ParentWindow,
                         Resources.UpgradeManager_updateCheck_Complete_Failed_attempting_to_upgrade_, _completeArgs.Error);
                     if (ShowUpgradeForm(null, false, true))
-                        AppDeployment.OpenInstallLink();
+                        AppDeployment.OpenInstallLink(ParentWindow);
                     return;
                 }
 
@@ -189,7 +209,7 @@ namespace pwiz.Skyline
                 {
                     try
                     {
-                        return dlgUpgrade.ShowDialog() == DialogResult.OK;
+                        return dlgUpgrade.ShowDialog(ParentWindow) == DialogResult.OK;
                     }
                     catch (Exception)
                     {
@@ -202,7 +222,7 @@ namespace pwiz.Skyline
         private static string GetVersionDiff(Version versionCurrent, Version versionAvailable)
         {
             if (versionCurrent.Major != versionAvailable.Major || versionCurrent.Minor != versionAvailable.Minor)
-                return string.Format("{0}.{1}", versionAvailable.Major, versionAvailable.Minor); // Not L10N
+                return string.Format(@"{0}.{1}", versionAvailable.Major, versionAvailable.Minor);
             return versionAvailable.ToString();
         }
 
@@ -228,7 +248,10 @@ namespace pwiz.Skyline
         private void update_Complete(UpdateCompletedDetails e)
         {
             _completeArgs = e;
-            _endUpdateEvent.Set();
+            lock (this)
+            {
+                _endUpdateEvent?.Set();
+            }
         }
 
         public interface IDeployment
@@ -242,7 +265,7 @@ namespace pwiz.Skyline
             void Restart();
 
             Version GetVersionFromUpdateLocation();
-            void OpenInstallLink();
+            void OpenInstallLink(Control parentWindow);
         }
 
         public sealed class UpdateCheckDetails
@@ -352,7 +375,8 @@ namespace pwiz.Skyline
                 {
                     var webClient = new WebClient();
                     string applicationPage = webClient.DownloadString(_applicationDeployment.UpdateLocation);
-                    Match match = Regex.Match(applicationPage, "<assemblyIdentity .*version=\"([^\"]*)\"");  // Not L10N
+                    // ReSharper disable once LocalizableElement
+                    Match match = Regex.Match(applicationPage, "<assemblyIdentity .*version=\"([^\"]*)\"");
                     if (match.Success)
                         return new Version(match.Groups[1].Value);
                 }
@@ -363,14 +387,14 @@ namespace pwiz.Skyline
                 return null;
             }
 
-            public void OpenInstallLink()
+            public void OpenInstallLink(Control parentWindow)
             {
                 bool is64 = Environment.Is64BitOperatingSystem;
                 string shorNameInstall = Install.Type == Install.InstallType.release
-                    ? (is64 ? "skyline64" : "skyline32") // Not L10N
-                    : (is64 ? "skyline-daily64" : "skyline-daily32"); // Not L10N
+                    ? (is64 ? @"skyline64" : @"skyline32")
+                    : (is64 ? @"skyline-daily64" : @"skyline-daily32"); // Keep -daily
 
-                WebHelpers.OpenSkylineShortLink(null, shorNameInstall);
+                WebHelpers.OpenSkylineShortLink(parentWindow, shorNameInstall);
             }
         }
     }

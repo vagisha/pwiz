@@ -6,10 +6,11 @@ using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.SettingsUI
 {
-    public partial class AddModificationsDlg : Form
+    public partial class AddModificationsDlg : FormEx
     {
         private enum ModType { structural, heavy }
 
@@ -24,8 +25,8 @@ namespace pwiz.Skyline.SettingsUI
             public override string ToString()
             {
                 var aa = Mod.AAs != null ? Mod.AAs.FirstOrDefault() : '\0';
-                var mass = Math.Round(AbstractModificationMatcher.GetDefaultModMass(aa, Mod), 1);
-                var definition = string.Format("{0}[{1}]", Mod.AAs, mass); // Not L10N
+                var mass = Math.Round(AbstractModificationMatcher.GetDefaultModMass(aa, Mod), MassModification.MAX_PRECISION_TO_MATCH);
+                var definition = string.Format(@"{0}[{1}]", Mod.AAs, mass);
                 return string.Format(Resources.AbstractModificationMatcherFoundMatches__0__equals__1__, Mod.Name, definition);
             }
         }
@@ -229,11 +230,6 @@ namespace pwiz.Skyline.SettingsUI
         {
             SelectAll(true);
             OkDialog();
-        }
-
-        public void CancelDialog()
-        {
-            DialogResult = DialogResult.Cancel;
         }
     }
 }

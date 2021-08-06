@@ -19,14 +19,14 @@
 
 using System.Linq;
 using System.Windows.Forms;
+using pwiz.Common.Collections;
 using pwiz.Common.Controls;
+using pwiz.Skyline.Model;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Controls.Graphs
 {
-    public enum GraphTypeMassError { peptide, replicate, histogram, histogram2D }
-
     public enum PointsTypeMassError { targets, targets_1FDR, decoys }
 
     public enum TransitionMassError { all, best }
@@ -37,9 +37,9 @@ namespace pwiz.Skyline.Controls.Graphs
    
     public class MassErrorGraphController : GraphSummary.IControllerSplit
     {
-        public static GraphTypeMassError GraphType
+        public static GraphTypeSummary GraphType
         {
-            get { return Helpers.ParseEnum(Settings.Default.MassErrorGraphType, GraphTypeMassError.replicate); }
+            get { return Helpers.ParseEnum(Settings.Default.MassErrorGraphType, GraphTypeSummary.invalid); }
             set { Settings.Default.MassErrorGraphType = value.ToString(); }
         }
 
@@ -69,7 +69,18 @@ namespace pwiz.Skyline.Controls.Graphs
 
         public GraphSummary GraphSummary { get; set; }
 
+        UniqueList<GraphTypeSummary> GraphSummary.IController.GraphTypes
+        {
+            get { return Settings.Default.MassErrorGraphTypes; }
+            set { Settings.Default.MassErrorGraphTypes = value; }
+        }
+
         public IFormView FormView { get { return new GraphSummary.AreaGraphView(); } }
+
+        public void OnDocumentChanged(SrmDocument oldDocument, SrmDocument newDocument)
+        {
+            
+        }
 
         public void OnActiveLibraryChanged()
         {
@@ -84,7 +95,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 GraphSummary.UpdateUI();
         }
 
-        public void OnRatioIndexChanged()
+        public void OnNormalizeOptionChanged()
         {
             if (GraphSummary.GraphPanes.OfType<MassErrorReplicateGraphPane>().Any() /* || !Settings.Default.AreaAverageReplicates */)
                 GraphSummary.UpdateUI();
@@ -93,21 +104,17 @@ namespace pwiz.Skyline.Controls.Graphs
 
         public void OnUpdateGraph()
         {
-            switch (GraphType)
+            switch (GraphSummary.Type)
             {
-                case GraphTypeMassError.replicate:
-                    if (!(GraphSummary.GraphPanes.FirstOrDefault() is MassErrorReplicateGraphPane))
-                        GraphSummary.GraphPanes = new[] { new MassErrorReplicateGraphPane(GraphSummary, PaneKey.DEFAULT) };
+                case GraphTypeSummary.replicate:
+                case GraphTypeSummary.peptide:
+                    GraphSummary.DoUpdateGraph(this, GraphSummary.Type);
                     break;
-                case GraphTypeMassError.peptide:
-                    if (!(GraphSummary.GraphPanes.FirstOrDefault() is MassErrorPeptideGraphPane))
-                        GraphSummary.GraphPanes = new[] { new MassErrorPeptideGraphPane(GraphSummary, PaneKey.DEFAULT) };
-                    break;
-                case GraphTypeMassError.histogram:
+                case GraphTypeSummary.histogram:
                     if (!(GraphSummary.GraphPanes.FirstOrDefault() is MassErrorHistogramGraphPane))
                         GraphSummary.GraphPanes = new[] { new MassErrorHistogramGraphPane(GraphSummary) };
                     break;
-                case GraphTypeMassError.histogram2D:
+                case GraphTypeSummary.histogram2d:
                     if (!(GraphSummary.GraphPanes.FirstOrDefault() is MassErrorHistogram2DGraphPane))
                         GraphSummary.GraphPanes = new[] { new MassErrorHistogram2DGraphPane(GraphSummary) };
                     break;
@@ -138,23 +145,23 @@ namespace pwiz.Skyline.Controls.Graphs
         {
             switch (e.KeyCode)
             {
-                case Keys.F7:
+                case Keys.F6:
                     if (!e.Alt && !(e.Shift && e.Control))
                     {
-                        if (e.Control)
-                            Settings.Default.MassErrorGraphType = GraphTypeSummary.peptide.ToString();
-                        else
-                            Settings.Default.MassErrorGraphType = GraphTypeSummary.replicate.ToString();
-                        GraphSummary.UpdateUI();
+                        var type = e.Control ? GraphTypeSummary.peptide : GraphTypeSummary.replicate;
+                        Settings.Default.MassErrorGraphTypes.Insert(0, type);
+
+                        Program.MainWindow.ShowGraphMassError(true, type);
+                        return true;
                     }
                     break;
             }
             return false;
         }
 
-        public bool IsRunToRun()
+        public string Text
         {
-            return false;
+            get { return Resources.SkylineWindow_CreateGraphMassError_Mass_Errors; }
         }
     }
 }

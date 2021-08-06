@@ -19,9 +19,10 @@
 // limitations under the License.
 //
 
+#include "pwiz/utility/misc/Std.hpp"
+#include "pwiz/utility/misc/Filesystem.hpp"
 #include "BuildParser.h"
-#include <boost/algorithm/string.hpp>
-#include <iostream>
+#include "SpecData.h"
 
 namespace BiblioSpec {
 
@@ -34,12 +35,14 @@ BuildParser::BuildParser(BlibBuilder& maker,
   lookUpBy_(SCAN_NUM_ID)
 {
     // initialize amino acid masses
-    fill(aaMasses_, aaMasses_ + sizeof(aaMasses_)/sizeof(double), 0);
+    std::fill(aaMasses_, aaMasses_ + sizeof(aaMasses_)/sizeof(double), 0);
     AminoAcidMasses::initializeMass(aaMasses_, 1);
 
     // parse full file name to get path and fileroot
     filepath_ = getPath(fullFilename_);
     fileroot_ = getFileRoot(fullFilename_);
+
+    preferEmbeddedSpectra_ = maker.preferEmbeddedSpectra().get_value_or(true);
 
     this->parentProgress_ = parentProgress_;
     this->readAddProgress_ = NULL;
@@ -48,13 +51,15 @@ BuildParser::BuildParser(BlibBuilder& maker,
     this->curPSM_ = NULL;
     this->specReader_ = new PwizReader();
 
-    sqlite3_prepare(maker.getDb(),
-      "INSERT INTO RefSpectra(peptideSeq, precursorMZ, precursorCharge, "
-      "peptideModSeq, prevAA, nextAA, copies, numPeaks, driftTimeMsec, collisionalCrossSectionSqA, "
-      "driftTimeHighEnergyOffsetMsec, retentionTime, fileID, specIDinFile, "
-      "score, scoreType) "
-      "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ",
-      -1, &insertSpectrumStmt_, NULL);
+    string stmt = "INSERT INTO RefSpectra(peptideSeq, precursorMZ, precursorCharge, "
+        "peptideModSeq, prevAA, nextAA, copies, numPeaks, ionMobility, collisionalCrossSectionSqA, "
+        "ionMobilityHighEnergyOffset, ionMobilityType, retentionTime, startTime, endTime, totalIonCurrent, fileID, "
+        "specIDinFile, score, scoreType" + 
+        SmallMolMetadata::sql_col_names_csv() + 
+        ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ";
+    sqlite3_prepare(maker.getDb(), stmt.c_str(),
+     -1, &insertSpectrumStmt_, NULL);
+
 }
 
 BuildParser::~BuildParser() {
@@ -95,14 +100,32 @@ void BuildParser::setSpecFileName(
             if( i >= 0 ) {
                 path += directories.at(i);
             }
+            if (path.empty())
+                path = ".";
+            for (const auto& dir : bfs::directory_iterator(path)) {
+                bfs::path dirPath = dir.path();
+                string trialName = dirPath.filename().string();
+                for (const string& ext : extensions) {
+                    // case insensitive filename comparison (i.e. so POSIX systems can match to basename.MGF or BaseName.mgf)
+                    if (!bal::iequals(fileroot + ext, trialName))
+                        continue;
 
-            for(int i=0; i<(int)extensions.size(); i++) {
-                string trialName = path + fileroot + extensions.at(i);
-                ifstream file(trialName.c_str());
-                if(file.good()) {
-                    curSpecFileName_ = trialName;
-                    break;
+                    if (bfs::is_directory(dirPath)) {
+                        curSpecFileName_ = dirPath.string();
+                        break;
+                    }
+
+                    ifstream file(dirPath.string().c_str());
+                    if (file.good()) {
+                        curSpecFileName_ = dirPath.string();
+                        break;
+                    }
+                    else
+                        Verbosity::comment(V_DETAIL, "cannot open spectrum file %s", dirPath.string().c_str());
                 }
+
+                if (!curSpecFileName_.empty())
+                    break;
 
             }// next extension
 
@@ -130,6 +153,7 @@ void BuildParser::setSpecFileName(
         throw BlibException(true, extString.c_str());
     }// else we found a file and set the name
 
+    Verbosity::comment(V_DETAIL, "spectrum filename set to %s", curSpecFileName_.c_str());
 }
 
 /**
@@ -147,8 +171,8 @@ void BuildParser::setSpecFileName
     if( checkFile ){
         ifstream file(specfile.c_str());
         if(!file.good()) {
-            throw BlibException(true, "Could not open spectrum file '%s'.", 
-                                specfile.c_str());
+            throw BlibException(true, "Could not open spectrum file '%s' for search results file '%s'.", 
+                                specfile.c_str(), fullFilename_.c_str());
         }
     }
     curSpecFileName_ = specfile;
@@ -160,39 +184,58 @@ void BuildParser::setSpecFileName
  * directories.
  */
 string BuildParser::fileNotFoundMessage(
-     std::string specfileroot,///< basename of file
-     const vector<std::string>& extensions, ///< extensions searched
-     const vector<std::string>& directories ///< directories searched
-                                        )
+    std::string specfileroot,///< basename of file
+    const vector<std::string>& extensions, ///< extensions searched
+    const vector<std::string>& directories) ///< directories searched
 {
-    string extString;
+    return filesNotFoundMessage(vector<std::string>(1, specfileroot), extensions, directories);
+}
 
-    if( extensions.size() == 1 ) {
-        extString = extensions.at(0);
-    } else if( extensions.size() > 1 ){
-        extString = "[";
-        for(int i=0; i<(int)extensions.size(); i++) {
-            extString += extensions.at(i);
-            extString += "|";
-        }
-        extString.replace(extString.length()-1 , 1, "]");
-    }
+/**
+ * \brief Generate a string indicating that no file with the given
+ * base names and any of the extensions could be found in any of the
+ * directories.
+ */
+string BuildParser::filesNotFoundMessage(
+     const vector<std::string>& specfileroots,///< basename of files
+     const vector<std::string>& extensions, ///< extensions searched
+     const vector<std::string>& directories) ///< directories searched
+{
+    if (extensions.empty())
+        throw BlibException(false, "empty extensions list for filesNotFoundMessage");
 
-    string messageString = "Could not find spectrum file ";
-    messageString += specfileroot + extString + " in " + filepath_;
-    if( filepath_.empty() ) {
-        messageString += "current directory";
-    }
+    string extString = extensions.at(0);
+    for (const auto& ext : extensions)
+        extString += ", " + ext;
 
-    messageString += ", ";
+    string filesPlural = "file";
+    string namesPlural = "name";
+    if (specfileroots.size() > 1)
+        filesPlural += "s", namesPlural += "s";
 
-    for(unsigned int i=0; i < directories.size(); i++) {
-        messageString += directories.at(i);
-        messageString += ",";
-    }
-    messageString.replace(messageString.length()-1, 1, ".");
+    string messageString = "While searching for spectrum " + filesPlural + " for the search results file '" + fullFilename_ +
+                           "', could not find matches for the following base" + namesPlural +
+                           " with any of the supported file extensions (" + extString + "):";
+    for (const auto& specfileroot : specfileroots)
+        messageString += "\n" + specfileroot;
+
+    bfs::path deepestPath = filepath_.empty() ? bfs::current_path() : bfs::path(filepath_);
+    messageString += "\n\nIn any of the following directories:\n" + bfs::canonical(deepestPath).make_preferred().string();
+    set<string> parentPaths;
+    for (const auto& dir : directories)
+        parentPaths.insert(bfs::canonical(deepestPath / dir).make_preferred().string());
+    for (const auto& dir : boost::make_iterator_range(parentPaths.rbegin(), parentPaths.rend()))
+        messageString += "\n" + dir;
 
     return messageString;
+}
+
+/**
+* \brief Sets whether to prefer getting peaks from embedded sources (Mascot DAT, MaxQuant msms.txt, etc.) or external files (mzML, RAW, etc.)
+*/
+void BuildParser::setPreferEmbeddedSpectra(bool preferEmbeddedSpectra)
+{
+    preferEmbeddedSpectra_ = preferEmbeddedSpectra;
 }
 
 /**
@@ -233,9 +276,9 @@ sqlite3_int64 BuildParser::insertSpectrumFilename(string& filename,
     }
 
     // get the file ID to save with each spectrum
-    sqlite3_int64 fileId = blibMaker_.addFile(fullPath, blibMaker_.getCutoffScore());
+    sqlite3_int64 fileId = blibMaker_.addFile(fullPath, blibMaker_.getCutoffScore(), fullFilename_);
 
-    const int MAX_SPECTRUM_FILES = 500;
+    const int MAX_SPECTRUM_FILES = 2000;
     int curFile = blibMaker_.getCurFile();
     map<int, int>::iterator inputLookup = inputToSpec_.find(curFile);
     if (inputLookup == inputToSpec_.end())
@@ -250,6 +293,29 @@ sqlite3_int64 BuildParser::insertSpectrumFilename(string& filename,
     Verbosity::debug("Input file %d has had %d spectrum source files inserted", curFile, inputLookup->second);
 
     return fileId;
+}
+
+sqlite3_int64 BuildParser::insertProtein(const Protein* protein) {
+    // first see if the protein already exists
+    string statement = "SELECT id FROM Proteins WHERE accession = '" +
+        SqliteRoutine::ESCAPE_APOSTROPHES(protein->accession) + "'";
+
+    char** result;
+    int iRow, iCol;
+    int returnCode = sqlite3_get_table(blibMaker_.getDb(), statement.c_str(), &result, &iRow, &iCol, 0);
+    blibMaker_.check_rc(returnCode, statement.c_str());
+    if (iRow > 0) { // protein already exists
+        sqlite3_int64 proteinId = atol(result[1]);
+        sqlite3_free_table(result);
+        return proteinId;
+    }
+    sqlite3_free_table(result);
+
+    string sql_statement = "INSERT INTO Proteins (accession) VALUES('" +
+        SqliteRoutine::ESCAPE_APOSTROPHES(protein->accession) + "')";
+
+    blibMaker_.sql_stmt(sql_statement.c_str());
+    return sqlite3_last_insert_rowid(blibMaker_.getDb());
 }
 
 /**
@@ -282,9 +348,16 @@ void BuildParser::buildTables(PSM_SCORE_TYPE scoreType, string specFilename, boo
     // filter psms by sequence
     filterBySequence(blibMaker_.getTargetSequences(), blibMaker_.getTargetSequencesModified());
 
+    bool hasMatches = psms_.size() > 0;
+    if (!hasMatches)
+        Verbosity::status("No matches left after filtering for target sequences in %s.", curSpecFileName_.c_str());
+
     // prune out any duplicates from the list of psms
     if (!blibMaker_.keepAmbiguous()) {
         removeDuplicates();
+        hasMatches = psms_.size() > 0;
+        if (!hasMatches)
+            Verbosity::status("No matches left after removing ambiguous spectra in %s.", curSpecFileName_.c_str());
     }
 
     // for reading spectrum file
@@ -311,7 +384,10 @@ void BuildParser::buildTables(PSM_SCORE_TYPE scoreType, string specFilename, boo
         fileId = insertSpectrumFilename(specFilename, true); // insert as is
     }
 
+    BiblioSpec::Verbosity::debug("BuildParser lookup method is %s", specIdTypeToString(lookUpBy_));
+
     // for each psm
+    map<const Protein*, sqlite3_int64> proteinIds;
     for(unsigned int i=0; i<psms_.size(); i++) {
         PSM* psm = psms_.at(i);
         SpecData curSpectrum;
@@ -326,11 +402,15 @@ void BuildParser::buildTables(PSM_SCORE_TYPE scoreType, string specFilename, boo
             continue;
         }
 
+        curSpectrum.totalIonCurrent = 0;
+        for (int j = 0; j < curSpectrum.numPeaks; ++j)
+            curSpectrum.totalIonCurrent += curSpectrum.intensities[j];
+
         Verbosity::comment(V_DETAIL, "Adding spectrum %d (%s), charge %d.", 
                            psm->specKey, psm->specName.c_str(), psm->charge);
 
         try{
-            insertSpectrum(psm, curSpectrum, fileId, scoreType);
+            insertSpectrum(psm, curSpectrum, fileId, scoreType, proteinIds);
 
             if (showSpecProgress) {
                 specProgress_->increment();
@@ -373,56 +453,65 @@ void BuildParser::buildTables(PSM_SCORE_TYPE scoreType, string specFilename, boo
  * library.
  */
 void BuildParser::insertSpectrum(PSM* psm, 
-                                 SpecData& curSpectrum, 
+                                 const SpecData& curSpectrum, 
                                  sqlite3_int64 fileId,
-                                 PSM_SCORE_TYPE scoreType){
+                                 PSM_SCORE_TYPE scoreType,
+                                 map<const Protein*, sqlite3_int64>& proteins) {
     char sql_statement_buf[LARGE_BUFFER_SIZE];
 
     // get the spec id in the spec file
     string specIdStr = psm->idAsString();
 
     // check if charge state exists
-    if (psm->charge < 1)
-    {
+    if (psm->charge < 1) {
         // try to calculate charge
         Verbosity::debug("Attempting to calculate charge state for spectrum %s (%s)",
                          specIdStr.c_str(), psm->modifiedSeq.c_str());
         double pepMass = calculatePeptideMass(psm);
         int calcCharge = calculateCharge(pepMass, curSpectrum.mz);
-        if (calcCharge > 0)
-        {
+        if (calcCharge > 0) {
             psm->charge = calcCharge;
-        }
-        else
-        {
+        } else {
             Verbosity::warn("Could not calculate charge state for spectrum %s (%s, "
                             "mass %f and precursor m/z %f)",
                             specIdStr.c_str(), psm->modifiedSeq.c_str(), pepMass, curSpectrum.mz);
         }
     }
-    
-    // construct insert statement for RefSpectra
-    // "INSERT INTO RefSpectra(peptideSeq, precursorMZ, precursorCharge, "
-    // "peptideModSeq, prevAA, nextAA, copies, numPeaks, driftTimeMsec, collisionalCrossSectionSqA, "
-    // "driftTimeHighEnergyOffsetMsec, retentionTime, fileID, specIDinFile, "
-    // "score, scoreType) "
-    // "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    sqlite3_bind_text(insertSpectrumStmt_, 1, psm->unmodSeq.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_double(insertSpectrumStmt_, 2, curSpectrum.mz);
-    sqlite3_bind_int(insertSpectrumStmt_, 3, psm->charge);
-    sqlite3_bind_text(insertSpectrumStmt_, 4, psm->modifiedSeq.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_text(insertSpectrumStmt_, 5, "-", -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(insertSpectrumStmt_, 6, "-", -1, SQLITE_TRANSIENT);
-    sqlite3_bind_int(insertSpectrumStmt_, 7, 1);
-    sqlite3_bind_int(insertSpectrumStmt_, 8, curSpectrum.numPeaks);
-    sqlite3_bind_double(insertSpectrumStmt_, 9, curSpectrum.driftTime);
-    sqlite3_bind_double(insertSpectrumStmt_, 10, curSpectrum.ccs);
-    sqlite3_bind_double(insertSpectrumStmt_, 11, curSpectrum.getDriftTimeHighEnergyOffsetMsec());
-    sqlite3_bind_double(insertSpectrumStmt_, 12, curSpectrum.retentionTime);
-    sqlite3_bind_int(insertSpectrumStmt_, 13, fileId);
-    sqlite3_bind_text(insertSpectrumStmt_, 14, specIdStr.c_str(), -1, SQLITE_STATIC);
-    sqlite3_bind_double(insertSpectrumStmt_, 15, psm->score);
-    sqlite3_bind_int(insertSpectrumStmt_, 16, scoreType);
+
+    // this order must agree with insertSpectrumStmt_ as set in the ctor
+    int field = 1;
+    sqlite3_bind_text(insertSpectrumStmt_, field++, psm->unmodSeq.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_double(insertSpectrumStmt_, field++, curSpectrum.mz);
+    sqlite3_bind_int(insertSpectrumStmt_, field++, psm->charge);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, psm->modifiedSeq.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, "-", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, "-", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(insertSpectrumStmt_, field++, 1);
+    sqlite3_bind_int(insertSpectrumStmt_, field++, curSpectrum.numPeaks);
+    sqlite3_bind_double(insertSpectrumStmt_, field++, (psm->ionMobilityType == IONMOBILITY_NONE ? curSpectrum.ionMobility : psm->ionMobility));
+    sqlite3_bind_double(insertSpectrumStmt_, field++, curSpectrum.ccs);
+    sqlite3_bind_double(insertSpectrumStmt_, field++, curSpectrum.getIonMobilityHighEnergyOffset());
+    sqlite3_bind_int(insertSpectrumStmt_, field++, (int) (psm->ionMobilityType == IONMOBILITY_NONE ? curSpectrum.ionMobilityType : psm->ionMobilityType));
+    sqlite3_bind_double(insertSpectrumStmt_, field++, curSpectrum.retentionTime);
+    if (curSpectrum.startTime != 0 && curSpectrum.endTime != 0) {
+        sqlite3_bind_double(insertSpectrumStmt_, field++, curSpectrum.startTime);
+        sqlite3_bind_double(insertSpectrumStmt_, field++, curSpectrum.endTime);
+    } else {
+        sqlite3_bind_null(insertSpectrumStmt_, field++);
+        sqlite3_bind_null(insertSpectrumStmt_, field++);
+    }
+    sqlite3_bind_double(insertSpectrumStmt_, field++, curSpectrum.totalIonCurrent);
+    sqlite3_bind_int(insertSpectrumStmt_, field++, fileId);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, specIdStr.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_double(insertSpectrumStmt_, field++, psm->score);
+    sqlite3_bind_int(insertSpectrumStmt_, field++, scoreType);
+    // Small molecule: moleculeName VARCHAR(128), chemicalFormula VARCHAR(128), precursorAdduct VARCHAR(128), inchiKey VARCHAR(128), otherKeys VARCHAR(128)
+    sqlite3_bind_text(insertSpectrumStmt_, field++, psm->smallMolMetadata.moleculeName.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, psm->smallMolMetadata.chemicalFormula.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, psm->smallMolMetadata.precursorAdduct.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, psm->smallMolMetadata.inchiKey.c_str(), -1, SQLITE_STATIC);
+    sqlite3_bind_text(insertSpectrumStmt_, field++, psm->smallMolMetadata.otherKeys.c_str(), -1, SQLITE_STATIC);
+
     
     // submit
     sqlite3_step(insertSpectrumStmt_);
@@ -454,8 +543,17 @@ void BuildParser::insertSpectrum(PSM* psm,
         
     }// next mod
 
+    // insert protein info
+    for (set<const Protein*>::const_iterator i = psm->proteins.begin(); i != psm->proteins.end(); i++) {
+        map<const Protein*, sqlite3_int64>::const_iterator j = proteins.find(*i);
+        sqlite3_int64 proteinId = (j == proteins.end()) ? insertProtein(*i) : j->second;
+        sprintf(sql_statement_buf,
+                "INSERT INTO RefSpectraProteins (RefSpectraId, ProteinId) VALUES (%d, %lld)",
+                libSpecId, proteinId);
+        blibMaker_.sql_stmt(sql_statement_buf);
+        sql_statement_buf[0] = '\0';
+    }
 }
-
 
 bool seqsILEquivalent(string seq1, string seq2)
 {
@@ -477,14 +575,14 @@ void BuildParser::verifySequences()
     {
         PSM* psm = *iter;
         // make sure sequence is all uppercase
-        psm->unmodSeq = boost::to_upper_copy(psm->unmodSeq);
+        boost::to_upper(psm->unmodSeq);
         // create the modified sequence, if we don't have it already
         if( psm->modifiedSeq.empty() ){
             sortPsmMods(psm);
-            psm->modifiedSeq = BlibBuilder::generateModifiedSeq(psm->unmodSeq.c_str(),
+            psm->modifiedSeq = blibMaker_.generateModifiedSeq(psm->unmodSeq.c_str(),
                                                                 psm->mods);
         } else {
-            psm->modifiedSeq = boost::to_upper_copy(psm->modifiedSeq);
+            boost::to_upper(psm->modifiedSeq);
         }
     }
 }
@@ -510,11 +608,17 @@ void BuildParser::filterBySequence(const set<string>* targetSequences,
         //     OR
         //   targetSequencesModified is not null and it contains the modified sequence
         if ((targetSequences != NULL &&
-             targetSequences->find(psms_[i]->unmodSeq) != targetSequences->end()) ||
-            (targetSequencesModified != NULL &&
-             targetSequencesModified->find(psms_[i]->modifiedSeq) != targetSequencesModified->end()))
+             targetSequences->find(psms_[i]->unmodSeq) != targetSequences->end()))
         {
             continue;
+        } 
+        if (targetSequencesModified != NULL) 
+        {
+            string normalizedSequence = BlibBuilder::getLowPrecisionModSeq(psms_[i]->unmodSeq.c_str(), psms_[i]->mods);
+            if (targetSequencesModified->find(normalizedSequence) != targetSequencesModified->end()) 
+            {
+                continue;
+            }
         }
         delete psms_[i];
         psms_.erase(psms_.begin() + i);
@@ -667,11 +771,11 @@ double BuildParser::getScoreThreshold(BUILD_INPUT fileType) {
     return blibMaker_.getScoreThreshold(fileType);
 }
 
-string BuildParser::getFileName() {
+const string& BuildParser::getFileName() {
     return fullFilename_;
 }
 
-string BuildParser::getSpecFileName() {
+const string& BuildParser::getSpecFileName() {
     return curSpecFileName_;
 }
 
@@ -825,6 +929,8 @@ string BuildParser::getFilenameFromID(const string& idStr){
             // if the file attribute is quoted, end at tht next quote
             if (idStr[start] == '"'){
                 end = idStr.find_first_of('"', ++start);
+            } else if (idStr[start] == '~'){
+                end = idStr.find_first_of('~', ++start);
             } else {
                 // otherwise, end at the next comma
                 end = idStr.find_first_of(',', start);

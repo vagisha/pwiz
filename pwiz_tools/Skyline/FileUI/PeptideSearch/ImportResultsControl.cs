@@ -46,8 +46,15 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             DoAutoRetry = Settings.Default.ImportResultsDoAutoRetry;
         }
 
+        public ImportResultsSettings ImportSettings
+        {
+            get { return new ImportResultsSettings(ExcludeSpectrumSourceFiles, this); }
+        }
         public event EventHandler<ResultsFilesEventArgs> ResultsFilesChanged;
         private Form WizardForm { get { return FormEx.GetParentForm(this); } }
+
+        public string Prefix { get; set; }
+        public string Suffix { get; set; }
 
         public int SimultaneousFiles
         {
@@ -61,11 +68,11 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             set { cbAutoRetry.Checked = value; }
         }
 
-        public static List<ImportPeptideSearch.FoundResultsFile> EnsureUniqueNames(List<ImportPeptideSearch.FoundResultsFile> files)
+        public static List<ImportPeptideSearch.FoundResultsFile> EnsureUniqueNames(IList<ImportPeptideSearch.FoundResultsFile> files)
         {
             var result = new List<ImportPeptideSearch.FoundResultsFile>();
             // Enforce uniqueness in names (might be constructed from list of files a.raw, a.mzML)
-            var names = ImportResultsDlg.EnsureUniqueNames(files.Select(f => f.Name).ToList());
+            var names = Helpers.EnsureUniqueNames(files.Select(f => f.Name).ToList());
             for (var i = 0; i < files.Count; i++)
             {
                 result.Add(new ImportPeptideSearch.FoundResultsFile(names[i], files[i].Path));
@@ -73,7 +80,7 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             return result;
         }
 
-        public List<ImportPeptideSearch.FoundResultsFile> FoundResultsFiles
+        public IList<ImportPeptideSearch.FoundResultsFile> FoundResultsFiles
         {
             get { return ImportPeptideSearch.GetFoundResultsFiles(ExcludeSpectrumSourceFiles).ToList(); }
             set
@@ -109,7 +116,7 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
         private void browseToResultsFileButton_Click(object sender, EventArgs e)
         {
             MsDataFileUri[] dataSources;
-            using (var dlg = new OpenDataSourceDialog(Settings.Default.ChorusAccountList)
+            using (var dlg = new OpenDataSourceDialog(Settings.Default.RemoteAccountList)
             {
                 Text = Resources.ImportResultsControl_browseToResultsFileButton_Click_Import_Peptide_Search,
                 InitialDirectory = new MsDataFilePath(DocumentDirectory)
@@ -209,9 +216,7 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             var fileNames = resultsFiles.Where(f => !string.IsNullOrEmpty(f)).ToArray();
             string dirInputRoot = PathEx.GetCommonRoot(fileNames);
             resultsFilesList.Items.Clear();
-            foreach (string fileSuffix in fileNames.Select(fileName => fileName.StartsWith(dirInputRoot)
-                ? fileName.Substring(dirInputRoot.Length)
-                : fileName))
+            foreach (string fileSuffix in fileNames.Select(fileName => PathEx.RemovePrefix(fileName, dirInputRoot)))
             {
                 resultsFilesList.Items.Add(fileSuffix);
             }

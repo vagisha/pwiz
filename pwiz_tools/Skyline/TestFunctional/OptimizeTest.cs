@@ -48,18 +48,37 @@ namespace pwiz.SkylineTestFunctional
     [TestClass]
     public class OptimizeTest : AbstractFunctionalTestEx
     {
+        private bool AsSmallMolecules;
+
         [TestMethod]
         public void TestOptimization()
         {
+            AsSmallMolecules = false;
+            TestFilesZip = @"TestFunctional\OptimizeTest.zip";
+            RunFunctionalTest();
+        }
+
+        [TestMethod]
+        public void TestOptimizationAsSmallMolecules ()
+        {
+            AsSmallMolecules = true;
             TestFilesZip = @"TestFunctional\OptimizeTest.zip";
             RunFunctionalTest();
         }
 
         protected override void DoTest()
         {
+            if (AsSmallMolecules && !RunSmallMoleculeTestVersions)
+            {
+                Console.Write(MSG_SKIPPING_SMALLMOLECULE_TEST_VERSION);
+                return;
+            }
+
             CEOptimizationTest();
             OptLibNeutralLossTest();
+
             CovOptimizationTest();
+            Assert.IsFalse(IsCovRecordMode);    // Make sure no commits with this set to true
         }
 
         /// <summary>
@@ -69,8 +88,6 @@ namespace pwiz.SkylineTestFunctional
         /// </summary>
         private void CEOptimizationTest()
         {
-            TestSmallMolecules = false; // No collision energy optimization for small molecules yet
-
             // Remove all results files with the wrong extension for the current locale
             foreach (var fileName in Directory.GetFiles(TestFilesDir.FullPath, "*_REP*.*", SearchOption.AllDirectories))
             {
@@ -81,6 +98,10 @@ namespace pwiz.SkylineTestFunctional
             // Open the .sky file
             string documentPath = TestFilesDir.GetTestPath("CE_Vantage_15mTorr_scheduled_mini.sky");
             RunUI(() => SkylineWindow.OpenFile(documentPath));
+            if (AsSmallMolecules)
+            {
+                ConvertDocumentToSmallMolecules();
+            }
 
             string filePath = TestFilesDir.GetTestPath("OptimizeCE.csv");
             ExportCEOptimizingTransitionList(filePath);
@@ -133,21 +154,22 @@ namespace pwiz.SkylineTestFunctional
             var editOptLibLoadExisting = ShowDialog<EditOptimizationLibraryDlg>(transitionSettingsUIOpt.AddToOptimizationLibraryList);
             // Load from existing file
             const string existingLibName = "Test load existing library";
+            var duplicatesOptdb = AsSmallMolecules ? "DuplicatesSmallMol.optdb" : "Duplicates.optdb";
             RunUI(() =>
             {
-                editOptLibLoadExisting.OpenDatabase(TestFilesDir.GetTestPath("Duplicates.optdb"));
+                editOptLibLoadExisting.OpenDatabase(TestFilesDir.GetTestPath(duplicatesOptdb));
                 editOptLibLoadExisting.LibName = existingLibName;
             });
             OkDialog(editOptLibLoadExisting, editOptLibLoadExisting.OkDialog);
             // Add new optimization library
             var editOptLib = ShowDialog<EditOptimizationLibraryDlg>(transitionSettingsUIOpt.AddToOptimizationLibraryList);
 
-            string optLibPath = TestFilesDir.GetTestPath("Optimized.optdb");
+            string optLibPath = TestFilesDir.GetTestPath(AsSmallMolecules ? "OptimizedSmallMol.optdb" : "Optimized.optdb");
             string pasteText = TextUtil.LineSeparate(
                 GetPasteLine("TPEVDDEALEK", 2, "y9", 1, 122.50606),
                 GetPasteLine("DGGIDPLVR", 2, "y6", 1, 116.33671),
                 GetPasteLine("AAA", 5, "y1", 2, 5.0),
-                GetPasteLine("AAB", 5, "y2", 2, 5.0));
+                GetPasteLine("AAC", 5, "y2", 2, 5.0));
 
             RunUI(() =>
             {
@@ -160,7 +182,7 @@ namespace pwiz.SkylineTestFunctional
 
             // Add duplicates and skip existing
             // "AAA, +5", "y1++", "5.0"
-            // "AAB, +5", "y2++", "10.0"
+            // "AAC, +5", "y2++", "10.0"
             var addOptDbDlgSkip = ShowDialog<AddOptimizationLibraryDlg>(editOptLib.AddOptimizationDatabase);
             RunUI(() =>
             {
@@ -172,33 +194,34 @@ namespace pwiz.SkylineTestFunctional
             Assert.AreEqual(1, addOptDlgAskSkip.ExistingOptimizationsCount);
             RunUI(() => addOptDlgAskSkip.Action = AddOptimizationsAction.skip);
             OkDialog(addOptDlgAskSkip, addOptDlgAskSkip.OkDialog);
-            Assert.AreEqual(5.0, editOptLib.GetCEOptimization("AAB", 5, "y2", 2).Value);
+            var target_AAC = GetTarget("AAC");
+            Assert.AreEqual(5.0, editOptLib.GetCEOptimization(target_AAC, GetAdduct(5), "y2", GetAdduct(2)).Value);
             // Add duplicates and average existing
             var addOptDbDlgAvg = ShowDialog<AddOptimizationLibraryDlg>(editOptLib.AddOptimizationDatabase);
             RunUI(() =>
             {
                 addOptDbDlgAvg.Source = OptimizationLibrarySource.file;
-                addOptDbDlgAvg.FilePath = TestFilesDir.GetTestPath("Duplicates.optdb");
+                addOptDbDlgAvg.FilePath = TestFilesDir.GetTestPath(duplicatesOptdb);
             });
             var addOptDlgAskAvg = ShowDialog<AddOptimizationsDlg>(addOptDbDlgAvg.OkDialog);
             Assert.AreEqual(0, addOptDlgAskAvg.OptimizationsCount);
             Assert.AreEqual(1, addOptDlgAskAvg.ExistingOptimizationsCount);
             RunUI(() => addOptDlgAskAvg.Action = AddOptimizationsAction.average);
             OkDialog(addOptDlgAskAvg, addOptDlgAskAvg.OkDialog);
-             Assert.AreEqual(7.5, editOptLib.GetCEOptimization("AAB", 5, "y2", 2).Value);
+            Assert.AreEqual(7.5, editOptLib.GetCEOptimization(target_AAC, GetAdduct(5), "y2", GetAdduct(2)).Value);
             // Add duplicates and replace existing
             var addOptDbDlgReplace = ShowDialog<AddOptimizationLibraryDlg>(editOptLib.AddOptimizationDatabase);
             RunUI(() =>
             {
                 addOptDbDlgReplace.Source = OptimizationLibrarySource.file;
-                addOptDbDlgReplace.FilePath = TestFilesDir.GetTestPath("Duplicates.optdb");
+                addOptDbDlgReplace.FilePath = TestFilesDir.GetTestPath(duplicatesOptdb);
             });
             var addOptDlgAskReplace = ShowDialog<AddOptimizationsDlg>(addOptDbDlgReplace.OkDialog);
             Assert.AreEqual(0, addOptDlgAskReplace.OptimizationsCount);
             Assert.AreEqual(1, addOptDlgAskReplace.ExistingOptimizationsCount);
             RunUI(() => addOptDlgAskReplace.Action = AddOptimizationsAction.replace);
             OkDialog(addOptDlgAskReplace, addOptDlgAskReplace.OkDialog);
-            Assert.AreEqual(10.0, editOptLib.GetCEOptimization("AAB", 5, "y2", 2).Value);
+            Assert.AreEqual(10.0, editOptLib.GetCEOptimization(target_AAC, GetAdduct(5), "y2", GetAdduct(2)).Value);
 
             // Try to add unconvertible old format optimization library
             var addOptDbUnconvertible = ShowDialog<AddOptimizationLibraryDlg>(editOptLib.AddOptimizationDatabase);
@@ -221,8 +244,8 @@ namespace pwiz.SkylineTestFunctional
                 addOptDbConvertible.FilePath = TestFilesDir.GetTestPath("OldConvertible.optdb");
             });
             var addOptDlgAskConverted = ShowDialog<AddOptimizationsDlg>(addOptDbConvertible.OkDialog);
-            Assert.AreEqual(109, addOptDlgAskConverted.OptimizationsCount);
-            Assert.AreEqual(2, addOptDlgAskConverted.ExistingOptimizationsCount);
+            Assert.AreEqual(AsSmallMolecules ? 111 : 109, addOptDlgAskConverted.OptimizationsCount);
+            Assert.AreEqual(AsSmallMolecules ? 0 : 2, addOptDlgAskConverted.ExistingOptimizationsCount);
             RunUI(addOptDlgAskConverted.CancelDialog);
 
             // Done editing optimization library
@@ -268,8 +291,11 @@ namespace pwiz.SkylineTestFunctional
             const LabelAtoms labelAtoms = LabelAtoms.C13 | LabelAtoms.N15;
             const string heavyK = "Heavy K";
             const string heavyR = "Heavy R";
-            Settings.Default.HeavyModList.Add(new StaticMod(heavyK, "K", ModTerminus.C, null, labelAtoms, null, null));
-            Settings.Default.HeavyModList.Add(new StaticMod(heavyR, "R", ModTerminus.C, null, labelAtoms, null, null));
+            RunUI(() =>
+            {
+                Settings.Default.HeavyModList.Add(new StaticMod(heavyK, "K", ModTerminus.C, null, labelAtoms, null, null));
+                Settings.Default.HeavyModList.Add(new StaticMod(heavyR, "R", ModTerminus.C, null, labelAtoms, null, null));
+            });
 
             docCurrent = SkylineWindow.Document;
 
@@ -282,9 +308,7 @@ namespace pwiz.SkylineTestFunctional
             OkDialog(peptideSettingsUI1, peptideSettingsUI1.OkDialog);
 
             // First make sure the first settings change occurs
-            WaitForDocumentChange(docCurrent);
-            // Wait until everything is loaded
-            WaitForCondition(300*1000, () => SkylineWindow.Document.Settings.MeasuredResults.IsLoaded);
+            WaitForDocumentChangeLoaded(docCurrent, 300*1000);
 
             RunUI(() => SkylineWindow.SaveDocument());
 
@@ -301,14 +325,12 @@ namespace pwiz.SkylineTestFunctional
                         {
                             Assert.IsFalse(chromInfoList.IsEmpty,
                                 string.Format("Peptide {0}{1}, fragment {2}{3} missing results",
-                                    nodeTran.Transition.Group.Peptide.Sequence,
-                                    Transition.GetChargeIndicator(nodeGroup.TransitionGroup.PrecursorCharge),
+                                    nodeTran.Transition.Group.Peptide.Target,
+                                    nodeGroup.TransitionGroup.PrecursorAdduct,
                                     nodeTran.Transition.FragmentIonName,
-                                    Transition.GetChargeIndicator(nodeTran.Transition.Charge)));
+                                    Transition.GetChargeIndicator(nodeTran.Transition.Adduct)));
                             Assert.AreEqual(11, chromInfoList.Count);
                         }
-                        else
-                            Assert.IsTrue(chromInfoList.IsEmpty);
                     }
                 }
             }
@@ -372,8 +394,7 @@ namespace pwiz.SkylineTestFunctional
             string reoptimizePath = TestFilesDir.GetTestPath("ReoptimizeCE.csv");
             ExportCETransitionList(reoptimizePath, normalPath);
 
-            RunUI(() => SkylineWindow.ShowGraphPeakArea(true));
-            RunUI(() => SkylineWindow.ShowGraphRetentionTime(true));
+            RunUI(SkylineWindow.ShowPeakAreaReplicateComparison);
             RunUI(SkylineWindow.ShowRTReplicateGraph);
 
             VerifyGraphs();
@@ -385,6 +406,9 @@ namespace pwiz.SkylineTestFunctional
 
         private void OptLibNeutralLossTest()
         {
+            if (AsSmallMolecules)
+                return; // Not a concern for small mol docs
+
             // Open the .sky file
             string documentPath = TestFilesDir.GetTestPath("test_opt_nl.sky");
             RunUI(() => SkylineWindow.OpenFile(documentPath));
@@ -414,21 +438,34 @@ namespace pwiz.SkylineTestFunctional
             ExportCETransitionList(optLibExportPath, null);
         }
 
+        /// <summary>
+        /// Change to true to write covdata\*.csv test files
+        /// </summary>
+        private bool IsCovRecordMode { get { return false; } }
+
         private void CovOptimizationTest()
         {
-            TestSmallMolecules = false; // No CoV optimization for small molecules yet
-
             // Open the .sky file
             string documentPath = TestFilesDir.GetTestPath(@"covdata\cov_optimization_part.sky");
             string wiffFile = TestFilesDir.GetTestPath(@"covdata\wiff\041115 BG_sky Test Round 1.wiff");
             RunUI(() => SkylineWindow.OpenFile(documentPath));
+            if (AsSmallMolecules)
+            {
+                ConvertDocumentToSmallMolecules();
+            }
 
-            string outTransitionsRough = TestFilesDir.GetTestPath(@"covdata\cov_rough.csv");
-            string outTransitionsMedium = TestFilesDir.GetTestPath(@"covdata\cov_medium.csv");
-            string outTransitionsFine = TestFilesDir.GetTestPath(@"covdata\cov_fine.csv");
-            string outTransitionsFinal = TestFilesDir.GetTestPath(@"covdata\cov_final.csv");
-            string outTransitionsFinalWithOptLib = TestFilesDir.GetTestPath(@"covdata\cov_final2.csv");
-            string outTransitionsFinalWithOptLib2 = TestFilesDir.GetTestPath(@"covdata\cov_final3.csv");
+            string expectedTransitionsRough = TestFilesDir.GetTestPath(@"covdata\cov_rough_expected.csv");
+            string outTransitionsRough = IsCovRecordMode && !AsSmallMolecules ? expectedTransitionsRough : TestFilesDir.GetTestPath(@"covdata\cov_rough.csv");
+            string expectedTransitionsMedium = TestFilesDir.GetTestPath(@"covdata\cov_medium_expected.csv");
+            string outTransitionsMedium = IsCovRecordMode && !AsSmallMolecules ? expectedTransitionsMedium : TestFilesDir.GetTestPath(@"covdata\cov_medium.csv");
+            string expectedTransitionsFine = TestFilesDir.GetTestPath(@"covdata\cov_fine_expected.csv");
+            string outTransitionsFine = IsCovRecordMode && !AsSmallMolecules ? expectedTransitionsFine : TestFilesDir.GetTestPath(@"covdata\cov_fine.csv");
+            string expectedTransitionsFinal = TestFilesDir.GetTestPath(@"covdata\cov_final_expected.csv");
+            string outTransitionsFinal = IsCovRecordMode && !AsSmallMolecules ? expectedTransitionsFinal : TestFilesDir.GetTestPath(@"covdata\cov_final.csv");
+            string expectedTransitionsFinalWithOptLib = TestFilesDir.GetTestPath(@"covdata\cov_final_expected2.csv");
+            string outTransitionsFinalWithOptLib = IsCovRecordMode && !AsSmallMolecules ? expectedTransitionsFinalWithOptLib : TestFilesDir.GetTestPath(@"covdata\cov_final2.csv");
+            string expectedTransitionsFinalWithOptLib2 = TestFilesDir.GetTestPath(@"covdata\cov_final_expected3.csv");
+            string outTransitionsFinalWithOptLib2 = IsCovRecordMode && !AsSmallMolecules ? expectedTransitionsFinalWithOptLib2 : TestFilesDir.GetTestPath(@"covdata\cov_final3.csv");
 
             var doc = SkylineWindow.Document;
 
@@ -436,7 +473,7 @@ namespace pwiz.SkylineTestFunctional
             var prediction = doc.Settings.TransitionSettings.Prediction;
             var cov = prediction.CompensationVoltage;
             Assert.AreEqual(OptimizedMethodType.Precursor, prediction.OptimizedMethodType);
-            Assert.AreEqual("ABI", cov.Name);
+            Assert.AreEqual("ABI", cov.Name);   // Old name
             Assert.AreEqual(6, cov.MinCov);
             Assert.AreEqual(30, cov.MaxCov);
             Assert.AreEqual(3, cov.StepCountRough);
@@ -444,8 +481,13 @@ namespace pwiz.SkylineTestFunctional
             Assert.AreEqual(3, cov.StepCountFine);
 
             var transitionSettings = ShowDialog<TransitionSettingsUI>(SkylineWindow.ShowTransitionSettingsUI);
+            RunUI(() =>
+            {
+                transitionSettings.RegressionCEName = "SCIEX";
+                transitionSettings.RegressionDPName = "SCIEX";
+            });
             var covList = ShowDialog<EditListDlg<SettingsListBase<CompensationVoltageParameters>, CompensationVoltageParameters>>(transitionSettings.EditCoVList);
-            RunUI(() => covList.SelectItem("ABI"));
+            RunUI(() => covList.SelectItem("SCIEX"));
             var covSettings = ShowDialog<EditCoVDlg>(covList.EditItem);
             double? originalMin = null, originalMax = null;
             int? originalStepsRough = null, originalStepsMedium = null, originalStepsFine = null;
@@ -458,12 +500,6 @@ namespace pwiz.SkylineTestFunctional
                 originalStepsFine = covSettings.StepsFine;
             });
             Assert.IsTrue(originalMin < originalMax);
-            SetCoVParameters(covSettings, -1, originalMax, originalStepsRough, originalStepsMedium, originalStepsFine);
-            var errorMin = ShowDialog<MessageDlg>(covSettings.OkDialog);
-            OkDialog(errorMin, errorMin.OkDialog);
-            SetCoVParameters(covSettings, originalMin, -1, originalStepsRough, originalStepsMedium, originalStepsFine);
-            var errorMax = ShowDialog<MessageDlg>(covSettings.OkDialog);
-            OkDialog(errorMax, errorMax.OkDialog);
             SetCoVParameters(covSettings, originalMax, originalMin, originalStepsRough, originalStepsMedium, originalStepsFine);
             var errorMinMax = ShowDialog<MessageDlg>(covSettings.OkDialog);
             Assert.AreEqual(Resources.EditCoVDlg_btnOk_Click_Maximum_compensation_voltage_cannot_be_less_than_minimum_compensation_volatage_, errorMinMax.Message);
@@ -508,7 +544,7 @@ namespace pwiz.SkylineTestFunctional
                 dlgExportRoughTune.OptimizeType = ExportOptimize.COV_ROUGH;
                 dlgExportRoughTune.OkDialog(outTransitionsRough);
             });
-            AssertEx.FileEquals(outTransitionsRough, TestFilesDir.GetTestPath(@"covdata\cov_rough_expected.csv"));
+            CompareFiles(outTransitionsRough, expectedTransitionsRough);
 
             // Add a transition for which there are no results
             RunUI(() =>
@@ -520,7 +556,7 @@ namespace pwiz.SkylineTestFunctional
             RunUI(() =>
             {
                 pickList1.ToggleFind();
-                pickList1.SearchString = "y4 ++";
+                pickList1.SearchString = AsSmallMolecules ? "[M+2]" : "y4 ++";
                 pickList1.SetItemChecked(0, true);
             });
             RunUI(pickList1.OnOk);
@@ -582,7 +618,7 @@ namespace pwiz.SkylineTestFunctional
                 dlgExportMediumTune.OptimizeType = ExportOptimize.COV_MEDIUM;
                 dlgExportMediumTune.OkDialog(outTransitionsMedium);
             });
-            AssertEx.FileEquals(outTransitionsMedium, TestFilesDir.GetTestPath(@"covdata\cov_medium_expected.csv"));
+            CompareFiles(outTransitionsMedium, expectedTransitionsMedium);
 
             // Import medium tune
             var importResultsDlgMedium = ShowDialog<ImportResultsDlg>(SkylineWindow.ImportResults);
@@ -612,7 +648,7 @@ namespace pwiz.SkylineTestFunctional
                 dlgExportFineTune.OptimizeType = ExportOptimize.COV_FINE;
                 dlgExportFineTune.OkDialog(outTransitionsFine);
             });
-            AssertEx.FileEquals(outTransitionsFine, TestFilesDir.GetTestPath(@"covdata\cov_fine_expected.csv"));
+            CompareFiles(outTransitionsFine, expectedTransitionsFine);
 
             // Import fine tune
             var importResultsDlgFine = ShowDialog<ImportResultsDlg>(SkylineWindow.ImportResults);
@@ -636,7 +672,7 @@ namespace pwiz.SkylineTestFunctional
             RunUI(() =>
             {
                 pickList2.ToggleFind();
-                pickList2.SearchString = "y4 ++";
+                pickList2.SearchString = AsSmallMolecules ? "[M+2]" : "y4 ++";
                 pickList2.SetItemChecked(0, false);
             });
             RunUI(pickList2.OnOk);
@@ -648,7 +684,7 @@ namespace pwiz.SkylineTestFunctional
                 dlgExportFinal.OptimizeType = ExportOptimize.NONE;
                 dlgExportFinal.OkDialog(outTransitionsFinal);
             });
-            AssertEx.FileEquals(outTransitionsFinal, TestFilesDir.GetTestPath(@"covdata\cov_final_expected.csv"));
+            CompareFiles(outTransitionsFinal, expectedTransitionsFinal);
 
             // Add new optimization library
             var dlgTransitionSettings = ShowDialog<TransitionSettingsUI>(SkylineWindow.ShowTransitionSettingsUI);
@@ -680,11 +716,11 @@ namespace pwiz.SkylineTestFunctional
             {
                 var libOptimizations = dlgEditOptLib.LibraryOptimizations;
                 Assert.AreEqual(5, libOptimizations.Count);
-                Assert.IsTrue(libOptimizations.Contains(new DbOptimization(OptimizationType.compensation_voltage_fine, "FNDDFSR", 2, null, 0, 17.00)));
-                Assert.IsTrue(libOptimizations.Contains(new DbOptimization(OptimizationType.compensation_voltage_fine, "GDFQFNISR", 2, null, 0, 12.75)));
-                Assert.IsTrue(libOptimizations.Contains(new DbOptimization(OptimizationType.compensation_voltage_fine, "IDPNAWVER", 2, null, 0, 12.50)));
-                Assert.IsTrue(libOptimizations.Contains(new DbOptimization(OptimizationType.compensation_voltage_fine, "TDRPSQQLR", 2, null, 0, 14.00)));
-                Assert.IsTrue(libOptimizations.Contains(new DbOptimization(OptimizationType.compensation_voltage_fine, "DVSLLHKPTTQISDFHVATR", 4, null, 0, 18.25)));
+                Assert.IsTrue(libOptimizations.Contains(GetDbOptimization(OptimizationType.compensation_voltage_fine, "FNDDFSR", GetAdduct(2), 17.00)));
+                Assert.IsTrue(libOptimizations.Contains(GetDbOptimization(OptimizationType.compensation_voltage_fine, "GDFQFNISR", GetAdduct(2), 12.75)));
+                Assert.IsTrue(libOptimizations.Contains(GetDbOptimization(OptimizationType.compensation_voltage_fine, "IDPNAWVER", GetAdduct(2), 12.50)));
+                Assert.IsTrue(libOptimizations.Contains(GetDbOptimization(OptimizationType.compensation_voltage_fine, "TDRPSQQLR", GetAdduct(2), 14.00)));
+                Assert.IsTrue(libOptimizations.Contains(GetDbOptimization(OptimizationType.compensation_voltage_fine, "DVSLLHKPTTQISDFHVATR", GetAdduct(4), 18.25)));
                 dlgEditOptLib.SetOptimizations(new DbOptimization[0]);
                 Assert.AreEqual(0, libOptimizations.Count);
                 SetClipboardText(pasteText);
@@ -707,11 +743,10 @@ namespace pwiz.SkylineTestFunctional
                 dlgExportFinal2.OptimizeType = ExportOptimize.NONE;                
             });
             OkDialog(dlgExportFinal2, () => dlgExportFinal2.OkDialog(outTransitionsFinalWithOptLib));
-            AssertEx.FileEquals(outTransitionsFinalWithOptLib, TestFilesDir.GetTestPath(@"covdata\cov_final_expected2.csv"));
+            CompareFiles(outTransitionsFinalWithOptLib, expectedTransitionsFinalWithOptLib);
 
             // Remove all results and export again, relying on the values in the library (3 values will be missing)
             RunUI(() => SkylineWindow.ModifyDocument("Remove results", document => document.ChangeMeasuredResults(null)));
-            var covdataCovFinalExpected3Csv = @"covdata\cov_final_expected3.csv";
 
             for (var loop = 2; loop-- > 0;)
             {
@@ -721,18 +756,17 @@ namespace pwiz.SkylineTestFunctional
                 var errorDlgMissingFineCovs = ShowDialog<MultiButtonMsgDlg>(() => dlgExportFinal3.OkDialog(lib2));
                 RunUI(() => Assert.IsTrue(errorDlgMissingFineCovs.Message.Contains(Resources.ExportMethodDlg_OkDialog_You_are_missing_fine_tune_optimized_compensation_voltages_for_the_following_)));
                 OkDialog(errorDlgMissingFineCovs, errorDlgMissingFineCovs.BtnYesClick);
-                AssertEx.FileEquals(outTransitionsFinalWithOptLib2, TestFilesDir.GetTestPath(covdataCovFinalExpected3Csv));
+                CompareFiles(outTransitionsFinalWithOptLib2, expectedTransitionsFinalWithOptLib2);
 
                 RunUI(() => SkylineWindow.SaveDocument());
 
                 // Try exporting with an explicitly set compensation voltage value and declustering potential
-                ConvertDocumentToSmallMolecules();
                 var documentGrid = ShowDialog<DocumentGridForm>(() => SkylineWindow.ShowDocumentGrid(true));
                 EnableDocumentGridColumns(documentGrid, Resources.SkylineViewContext_GetTransitionListReportSpec_Mixed_Transition_List, 5,
                     new[]
-                    { 
-                        "Proteins!*.Peptides!*.Precursors!*.ExplicitCompensationVoltage", 
-                        "Proteins!*.Peptides!*.Precursors!*.ExplicitDeclusteringPotential", 
+                    {
+                        "Proteins!*.Peptides!*.Precursors!*.ExplicitCompensationVoltage",
+                        "Proteins!*.Peptides!*.Precursors!*.Transitions!*.ExplicitDeclusteringPotential", 
                     });
                 const double explicitCV = 13.45;
                 const double explicitDP = 14.32;
@@ -741,39 +775,103 @@ namespace pwiz.SkylineTestFunctional
                 WaitForCondition(() => (SkylineWindow.Document.MoleculeTransitionGroups.Any() &&
                                         SkylineWindow.Document.MoleculeTransitionGroups.First()
                                             .ExplicitValues.CompensationVoltage.Equals(explicitCV)));
-                var colDP = FindDocumentGridColumn(documentGrid, "Precursor.ExplicitDeclusteringPotential");
+                var colDP = FindDocumentGridColumn(documentGrid, "ExplicitDeclusteringPotential");
                 RunUI(() => documentGrid.DataGridView.Rows[0].Cells[colDP.Index].Value = explicitDP);
-                WaitForCondition(() => (SkylineWindow.Document.MoleculeTransitionGroups.Any() &&
-                                        SkylineWindow.Document.MoleculeTransitionGroups.First()
+                WaitForCondition(() => (SkylineWindow.Document.MoleculeTransitions.Any() &&
+                                        SkylineWindow.Document.MoleculeTransitions.First()
                                             .ExplicitValues.DeclusteringPotential.Equals(explicitDP)));
                 RunUI(() => documentGrid.Close());
-                outTransitionsFinalWithOptLib2 = outTransitionsFinalWithOptLib2.Replace(".", "_sm.");
-                covdataCovFinalExpected3Csv = covdataCovFinalExpected3Csv.Replace(".", "_sm.");
+                outTransitionsFinalWithOptLib2 = outTransitionsFinalWithOptLib2.Replace(".csv", "_explicit.csv");
+                expectedTransitionsFinalWithOptLib2 = expectedTransitionsFinalWithOptLib2.Replace(".csv", "_explicit.csv");
             }
         }
 
-        private static string GetPasteLine(string seq, int charge, string product, int productCharge, double ce)
+        private DbOptimization GetDbOptimization(OptimizationType type, string sequence, Adduct adduct, double optValue)
         {
+            var target = GetTarget(sequence);
+
+            return new DbOptimization(type, target, adduct, null, Adduct.EMPTY, optValue);
+        }
+
+        private void CompareFiles(string fileActual, string fileExpected)
+        {
+            if (!AsSmallMolecules)
+            {
+                AssertEx.FileEquals(fileExpected, fileActual);
+                return;
+            }
+
+            var textExpected = File.ReadAllText(fileExpected);
+            var textActual = File.ReadAllText(fileActual);
+            if (!textExpected.Contains(RefinementSettings.TestingConvertedFromProteomicPeptideNameDecorator))
+            {
+                textExpected = textExpected.Replace("peptides1.", "peptides1." + RefinementSettings.TestingConvertedFromProteomicPeptideNameDecorator).
+                    Replace("+2", "[M+2H]").
+                    Replace("+4", "[M+4H]").
+                    Replace("y4.", "y4[M+].").
+                    Replace("y5.", "y5[M+].").
+                    Replace("y6.", "y6[M+].").
+                    Replace("y7.", "y7[M+].").
+                    Replace("y8.", "y8[M+].");
+            }
+
+            AssertEx.NoDiff(textExpected, textActual);
+        }
+
+        private Adduct GetAdduct(int charge)
+        {
+            return AsSmallMolecules
+                ? Adduct.NonProteomicProtonatedFromCharge(charge)
+                : Adduct.FromChargeProtonated(charge);
+        }
+
+        private string GetChargeIndicator(int charge)
+        {
+            var adduct = GetAdduct(charge);
+            return AsSmallMolecules  
+                ? adduct.ToString(CultureInfo.InvariantCulture)
+                : Transition.GetChargeIndicator(adduct);
+        }
+
+        private Target GetTarget(string seq)
+        {
+            if (AsSmallMolecules)
+            {
+                var masscalc = new SequenceMassCalc(MassType.Monoisotopic);
+                var moleculeFormula = masscalc.GetMolecularFormula(seq);
+                var customMolecule = new CustomMolecule(moleculeFormula, 
+                    RefinementSettings.TestingConvertedFromProteomicPeptideNameDecorator + seq.Replace(@"[", @"(").Replace(@"]", @")"));
+                return new Target(customMolecule);
+            }
+            return new Target(seq);
+        }
+
+        private string GetPasteLine(string seq, int charge, string product, int productCharge, double ce)
+        {
+            if (AsSmallMolecules)
+                seq = GetTarget(seq).DisplayName;
             var fields = new[]
             {
-                string.Format(CultureInfo.CurrentCulture, "{0}{1}", seq, Transition.GetChargeIndicator(charge)),
-                string.Format(CultureInfo.CurrentCulture, "{0}{1}", product, Transition.GetChargeIndicator(productCharge)),
+                string.Format(CultureInfo.CurrentCulture, "{0}{1}", seq, GetChargeIndicator(charge)),
+                string.Format(CultureInfo.CurrentCulture, "{0}{1}", product, GetChargeIndicator(productCharge)),
                 ce.ToString(CultureInfo.CurrentCulture)
             };
             return fields.ToDsvLine(TextUtil.SEPARATOR_TSV);
         }
 
-        private static string GetPasteLine(string seq, int charge, double cov)
+        private string GetPasteLine(string seq, int charge, double cov)
         {
+            if (AsSmallMolecules)
+                seq = GetTarget(seq).ToSerializableString();
             var fields = new[]
             {
-                string.Format(CultureInfo.CurrentCulture, "{0}{1}", seq, Transition.GetChargeIndicator(charge)),
+                string.Format(CultureInfo.CurrentCulture, "{0}{1}", seq, GetChargeIndicator(charge)),
                 cov.ToString(CultureInfo.CurrentCulture)
             };
             return fields.ToDsvLine(TextUtil.SEPARATOR_TSV);
         }
 
-        private static void VerifyGraphs()
+        private void VerifyGraphs()
         {
             RunUI(SkylineWindow.ShowAllTransitions);
             WaitForGraphs();
@@ -810,7 +908,7 @@ namespace pwiz.SkylineTestFunctional
         private const int COL_PREC_MZ = 0;
         private const int COL_PROD_MZ = 1;
         private const int COL_CE = 2;
-        private static void ExportCEOptimizingTransitionList(string filePath)
+        private void ExportCEOptimizingTransitionList(string filePath)
         {
             FileEx.SafeDelete(filePath);
 
@@ -831,7 +929,7 @@ namespace pwiz.SkylineTestFunctional
             VerifyCEOptimizingTransitionList(filePath, SkylineWindow.Document);            
         }
 
-        private static void VerifyCEOptimizingTransitionList(string filePath, SrmDocument document)
+        private void VerifyCEOptimizingTransitionList(string filePath, SrmDocument document)
         {
             var regressionCE = document.Settings.TransitionSettings.Prediction.CollisionEnergy;
             double stepSize = regressionCE.StepSize;
@@ -839,7 +937,7 @@ namespace pwiz.SkylineTestFunctional
             stepCount = stepCount*2 + 1;
 
             string[] lines = File.ReadAllLines(filePath);
-            Assert.AreEqual(document.PeptideTransitionCount * stepCount + (Settings.Default.TestSmallMolecules ? 2 : 0), lines.Length);
+            Assert.AreEqual(document.MoleculeTransitionCount * stepCount, lines.Length);
 
             int stepsSeen = 0;
             double lastPrecursorMz = 0;
@@ -946,9 +1044,9 @@ namespace pwiz.SkylineTestFunctional
                                 // If there is an optimized value, CE should be equal to it
                                 DbOptimization optimization =
                                     optLib.GetOptimization(OptimizationType.collision_energy,
-                                        document.Settings.GetSourceTextId(nodePep), nodeGroup.TransitionGroup.PrecursorCharge,
-                                        //nodeGroup.TransitionGroup.Peptide.Sequence, nodeGroup.TransitionGroup.PrecursorCharge,
-                                        nodeTran.FragmentIonName, nodeTran.Transition.Charge);
+                                        document.Settings.GetSourceTarget(nodePep), nodeGroup.TransitionGroup.PrecursorAdduct,
+                                        //nodeGroup.TransitionGroup.Peptide.Sequence, nodeGroup.TransitionGroup.PrecursorAdduct,
+                                        nodeTran.FragmentIonName, nodeTran.Transition.Adduct);
                                 if (optimization != null)
                                     Assert.AreEqual(optimization.Value, tranCE, 0.05);
                             }

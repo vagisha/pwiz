@@ -33,6 +33,7 @@ using System.Xml;
 using pwiz.Common.SystemUtil;
 using pwiz.ProteomeDatabase.API;
 using pwiz.ProteomeDatabase.DataModel;
+using pwiz.ProteomeDatabase.Properties;
 
 namespace pwiz.ProteomeDatabase.Fasta
 {
@@ -168,7 +169,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                 {UNIPROTKB_TAG, 1}
             };
             const int ENTREZ_BATCHSIZE = 100; // they'd like 500, but it's really boggy at that size
-            const int UNIPROTKB_BATCHSIZE = 400;  // Enforcing sequence length uniqueness helps efficiency, we can make this pretty large
+            const int UNIPROTKB_BATCHSIZE = 200;  // Enforcing sequence length uniqueness helps efficiency, we can make this pretty large (was 400 before Sept 2019, but now they just close connection instead of issuing URL_TOO_LONG so start smaller)
             _maxBatchSize = new Dictionary<char, int>
             {
                 {GENINFO_TAG, ENTREZ_BATCHSIZE},
@@ -225,9 +226,11 @@ namespace pwiz.ProteomeDatabase.Fasta
         public IEnumerable<DbProtein> Import(TextReader reader)
         {
             string line;
+            int lineNumber = 0;
             while ((line = reader.ReadLine()) != null)
             {
-                if (line.StartsWith(">")) // Not L10N
+                lineNumber++;
+                if (line.StartsWith(@">"))
                 {
                     DbProtein protein = EndProtein();
                     if (protein != null)
@@ -243,7 +246,9 @@ namespace pwiz.ProteomeDatabase.Fasta
                 }
                 else
                 {
-                    _curSequence.Append(ParseSequenceLine(line));
+                    string sequenceLine = ParseSequenceLine(line);
+                    ValidateProteinSequence(sequenceLine, lineNumber);
+                    _curSequence.Append(sequenceLine);
                 }
             }
             DbProtein lastProtein = EndProtein();
@@ -296,9 +301,9 @@ namespace pwiz.ProteomeDatabase.Fasta
             if (proteinMetadata.Name == null)
                 return null;
             // watch for inputs like name="Library Peptides" which clearly isn't an actual protein name
-            if (proteinMetadata.Name.Contains(" ")) // Not L10N 
+            if (proteinMetadata.Name.Contains(@" "))
                 return null;
-            return ParseProteinMetaData(proteinMetadata.Name + " " + proteinMetadata.Description); // Not L10N
+            return ParseProteinMetaData(proteinMetadata.Name + @" " + proteinMetadata.Description);
         }
 
         /// <summary>
@@ -343,7 +348,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                         {
                             var type = split[0].Trim();
                             var val = split[1].Trim();
-                            if (val.Contains("${")) // failed match // Not L10N
+                            if (val.Contains(@"${")) // failed match
                             {
                                 val = String.Empty;
                             }
@@ -352,31 +357,33 @@ namespace pwiz.ProteomeDatabase.Fasta
                                 dbColumnsFound++; // valid entry
                                 switch (type)
                                 {
-                                    case "name": // Not L10N
+                                    case @"name":
                                         headerResult.Name = val;
                                         break;
-                                    case "description": // Not L10N
+                                    case @"description":
                                         headerResult.Description = val;
                                         break;
-                                    case "accession": // Not L10N
+                                    case @"accession":
                                         headerResult.Accession = val;
                                         break;
-                                    case "preferredname": // Not L10N
+                                    case @"preferredname":
                                         headerResult.PreferredName = val;
                                         break;
-                                    case "gene": // Not L10N
+                                    case @"gene":
                                         headerResult.Gene = val;
                                         break;
-                                    case "species": // Not L10N
+                                    case @"species":
                                         headerResult.Species = val;
                                         break;
-                                    case "searchterm": // Not L10N
+                                    case @"searchterm":
                                         dbColumnsFound--; // not actually a db column
                                         searchterm = val;
                                         break;
                                     default:
                                         throw new ArgumentOutOfRangeException(
-                                            String.Format("Unknown Fasta RegEx output formatter type \'{0}\'",    // Not L10N
+                                            // ReSharper disable LocalizableElement
+                                            String.Format("Unknown Fasta RegEx output formatter type \'{0}\'",
+                                            // ReSharper restore LocalizableElement
                                                 regexOutputs[n]));
                                 }
 
@@ -385,8 +392,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                         else
                         {
                             throw new ArgumentOutOfRangeException(
-                                String.Format("Fasta RegEx failure in \'{0}\'",  // Not L10N
-                                    line.Substring(start)));
+                                $@"Fasta RegEx failure in '{line}'");
                         }
                     }
                     if (headerResult.GetProteinMetadata().HasMissingMetadata())
@@ -396,7 +402,9 @@ namespace pwiz.ProteomeDatabase.Fasta
                             // shave off any alternatives (might look like "IPI:IPI00197700.1|SWISS-PROT:P04638|ENSEMBL:ENSRNOP00000004662|REFSEQ:NP_037244")
                             searchterm = searchterm.Split('|')[0];
                             // a reasonable accession value will have at least one digit in it, and won't have things like tabs and parens and braces that confuse web services
-                            if ("0123456789".Any(searchterm.Contains) && !" \t()[]".Any(searchterm.Contains))  // Not L10N
+                            // ReSharper disable LocalizableElement
+                            if ("0123456789".Any(searchterm.Contains) && !" \t()[]".Any(searchterm.Contains))
+                            // ReSharper restore LocalizableElement
                                 headerResult.SetWebSearchTerm(new WebSearchTerm(searchterm[0], searchterm.Substring(1))); // we'll need to hit the webservices to get this missing info
                         }
                     }
@@ -414,8 +422,10 @@ namespace pwiz.ProteomeDatabase.Fasta
 
         private String ParseSequenceLine(String line)
         {
-            line = line.Replace(" ", "").Trim(); // Not L10N
-            if (line.EndsWith("*")) // Not L10N
+            // ReSharper disable LocalizableElement
+            line = line.Replace(" ", "").Trim();
+            // ReSharper restore LocalizableElement
+            if (line.EndsWith(@"*"))
             {
                 line = line.Substring(0, line.Length - 1);
             }
@@ -424,20 +434,20 @@ namespace pwiz.ProteomeDatabase.Fasta
 
         private readonly string[] _standardTypes = // these all have at least type|accession, will try them in Entrez
         {
-            "dbj", //  DDBJ  dbj|accession|locus // Not L10N 
-            "emb", //  EMBL  emb|accession|locus // Not L10N
-            "gb", //  GenBank  gb|accession|locus // Not L10N
-            "gpp", //  genome pipeline 3  gpp|accession|name // Not L10N
-            "nat", //  named annotation track 3  nat|accession|name // Not L10N
-            "pir", //  PIR  pir|accession|name // Not L10N
-            "prf", //  PRF  prf|accession|name // Not L10N
-            "ref", //  RefSeq  ref|accession|name // Not L10N
-            "tpd", //  third-party DDBJ  tpd|accession|name // Not L10N
-            "tpe", //  third-party EMBL  tpe|accession|name // Not L10N
-            "tpg", //  third-party GenBank  tpg|accession|name // Not L10N
-            "bbm", //  GenInfo backbone moltype	bbm|integer	// Not L10N
-            "bbs", //  GenInfo backbone seqid	bbs|integer	// Not L10N
-            "gim", //  GenInfo import ID	gim|integer	// Not L10N
+            @"dbj", //  DDBJ  dbj|accession|locus
+            @"emb", //  EMBL  emb|accession|locus
+            @"gb", //  GenBank  gb|accession|locus
+            @"gpp", //  genome pipeline 3  gpp|accession|name
+            @"nat", //  named annotation track 3  nat|accession|name
+            @"pir", //  PIR  pir|accession|name
+            @"prf", //  PRF  prf|accession|name
+            @"ref", //  RefSeq  ref|accession|name
+            @"tpd", //  third-party DDBJ  tpd|accession|name
+            @"tpe", //  third-party EMBL  tpe|accession|name
+            @"tpg", //  third-party GenBank  tpg|accession|name
+            @"bbm", //  GenInfo backbone moltype	bbm|integer
+            @"bbs", //  GenInfo backbone seqid	bbs|integer
+            @"gim", //  GenInfo import ID	gim|integer
         };
 
         // basic Regex.Replace expression for returning the info we want - some regexes may want to augment
@@ -447,13 +457,14 @@ namespace pwiz.ProteomeDatabase.Fasta
         public const char GENINFO_TAG = 'G'; // search on entrez, but seperate out GI number searches
         public const char ENTREZ_TAG = 'E';
         public const char UNIPROTKB_TAG = 'U';
+        public const string UNIPROTKB_PREFIX_SGD = "SGD_S"; // formerly "SGD:S", but Uniprot search behavior has changed
         public const char SEARCHDONE_TAG = 'X'; // to note searches which have been completed
 
-        private const string STANDARD_REGEX_OUTPUT_FORMAT = "name:${name}\ndescription:${description}\naccession:${accession}\npreferredname:${preferredname}\ngene:${gene}\nspecies:${species}\nsearchterm:"; // Not L10N
+        private const string STANDARD_REGEX_OUTPUT_FORMAT = "name:${name}\ndescription:${description}\naccession:${accession}\npreferredname:${preferredname}\ngene:${gene}\nspecies:${species}\nsearchterm:";
 
 
-        private const string MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN = // match common uniprot OS and GN format
-            @"(?<description>((.*?(((\sOS=(?<species>(.*?)))?)((\sGN=(?<gene>(.*?)))?)($|(\s\w\w\=)+).*)))|.*)"; // Not L10N
+        private const string MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN = // match common uniprot OS=species (and maybe OX=speciesID) and GN=gene format
+            @"(?<description>((.*?(((\sOS=(?<species>(.*?)))?)((\sOX=(?<speciesID>(.*?)))?)((\sGN=(?<gene>(.*?)))?)($|(\s\w\w\=)+).*)))|.*)";
 
         /// <summary>
         /// class for regex matching in FASTA header lines - contains a comment, a regex, and an output format to be used with Regex replace
@@ -480,6 +491,13 @@ namespace pwiz.ProteomeDatabase.Fasta
         /// </summary>
         public class WebSearchProvider 
         {
+            /// <summary>
+            /// Test overrides should return false to avoid slowing down the tests
+            /// </summary>
+            public virtual bool IsPolite
+            {
+                get { return true; }
+            }
 
             public virtual XmlTextReader GetXmlTextReader(string url)
             {
@@ -490,7 +508,7 @@ namespace pwiz.ProteomeDatabase.Fasta
             {
                 HttpWebRequest httpRequest = (HttpWebRequest) WebRequest.Create(url);
                 httpRequest.Timeout = timeout;
-                httpRequest.UserAgent = "Skyline"; // Not L10N
+                httpRequest.UserAgent = @"Skyline";
                 MemoryStream stream = new MemoryStream();
                 using (HttpWebResponse webResponse = (HttpWebResponse)httpRequest.GetResponse())
                 {
@@ -525,8 +543,10 @@ namespace pwiz.ProteomeDatabase.Fasta
             {
                 // Yes, that's Brian's email address there - entrez wants a point of contact with the developer of the tool hitting their service
                 return ConstructURL(searches,
-                "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id={0}&tool=%22skyline%22&email=%22bspratt@proteinms.net%22&retmode=xml" + (summary ? "&rettype=docsum" : string.Empty), // Not L10N
-                 ","); // Not L10N
+                // ReSharper disable LocalizableElement
+                "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=protein&id={0}&tool=%22skyline%22&email=%22bspratt@proteinms.net%22&retmode=xml" + (summary ? "&rettype=docsum" : string.Empty),
+                // ReSharper restore LocalizableElement
+                 @",");
             }
 
             public virtual List<string> ListSearchTerms(IEnumerable<ProteinSearchInfo>  proteins)
@@ -537,8 +557,8 @@ namespace pwiz.ProteomeDatabase.Fasta
             public virtual string ConstructUniprotURL(IEnumerable<string> searches)
             {
                return ConstructURL(searches, 
-                   "http://www.uniprot.org/uniprot/?query=({0})&format=tab&columns=id,genes,organism,length,entry name,protein names,reviewed",  // Not L10N
-                   "+OR+"); // Not L10N
+                   @"https://www.uniprot.org/uniprot/?query=({0})&format=tab&columns=id,genes,organism,length,entry name,protein names,reviewed",
+                   @"+OR+");
             }
 
             private static string ConstructURL(IEnumerable<string> searchesIn, string format, string separator)
@@ -572,6 +592,11 @@ namespace pwiz.ProteomeDatabase.Fasta
         /// </summary>
         public class FakeWebSearchProvider : WebSearchProvider
         {
+            public override bool IsPolite
+            {
+                get { return false; }
+            }
+
             public override int GetTimeoutMsec(int searchTermCount)
             {
                 return 10 * (10 + (searchTermCount / 5));
@@ -608,39 +633,39 @@ namespace pwiz.ProteomeDatabase.Fasta
             return new[]
             {
 
-                new FastaRegExSearchtermPair(@"matches the 'dbtype|accession|preferredname description' format for swissprot and trembl", // Not L10N
-                    @"^((?<name>((?<dbtype>sp|tr" + // Not L10N
-                    @")\|(?<accession>[^\s\|]*)(\|(?<preferredname>[^\s]+)?)))"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+"?)", // Not L10N
-                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + "${accession}"), // will attempt to lookup on Uniprot // Not L10N
+                new FastaRegExSearchtermPair(@"matches the 'dbtype|accession|preferredname description' format for swissprot and trembl",
+                    @"^((?<name>((?<dbtype>sp|tr" +
+                    @")\|(?<accession>[^\s\|]*)(\|(?<preferredname>[^\s]+)?)))"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+@"?)",
+                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + @"${accession}"), // will attempt to lookup on Uniprot
 
-                new FastaRegExSearchtermPair(@"matches the 'gi|number|preferredname description' format", // Not L10N
-                    @"^((?<name>((?<dbtype>gi"+ // Not L10N
-                    @")\|(?<ginumber>[^\s\|]*)(\|(?<preferredname>[^\s]+)?)))"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+"?)", // Not L10N
-                    STANDARD_REGEX_OUTPUT_FORMAT + GENINFO_TAG + "${ginumber}"), // will attempt to lookup on Entrez, but seperate from non-GI searches // Not L10N
+                new FastaRegExSearchtermPair(@"matches the 'gi|number|preferredname description' format",
+                    @"^((?<name>((?<dbtype>gi"+
+                    @")\|(?<ginumber>[^\s\|]*)(\|(?<preferredname>[^\s]+)?)))"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+@"?)",
+                    STANDARD_REGEX_OUTPUT_FORMAT + GENINFO_TAG + @"${ginumber}"), // will attempt to lookup on Entrez, but seperate from non-GI searches
 
-                new FastaRegExSearchtermPair(@"matches the 'dbtype|idnumber|preferredname description' format", // Not L10N
-                    @"^((?<name>((?<dbtype>" + String.Join("|", _standardTypes) + // Not L10N
-                    @")\|(?<idnumber>[^\s\|]*)(\|(?<preferredname>[^\s]+)?)))"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+"?)", // Not L10N
-                    STANDARD_REGEX_OUTPUT_FORMAT + ENTREZ_TAG + "${idnumber}"), // will attempt to lookup on Entrez // Not L10N
-
-                new FastaRegExSearchtermPair(
-                    @"matches UniRefnnn_ form '>UniqueIdentifier ClusterName n=Members Tax=Taxon RepID=RepresentativeMember' like '>UniRef100_A5DI11 Elongation factor 2 n=1 Tax=Pichia guilliermondii RepID=EF2_PICGU'", // Not L10N
-                    @"^(?<name>(((((?<typecode>UniRef)[0-9]+_(?<accession>((?<strippedAccession>[^\.\s]+)[^\s]*)))))[\s]*))\s(?<description>(?<preferredname>(.*([^=]\s)+))((.*(\sTax=(?<species>.*)?\sRepID=.*))))", // Not L10N
-                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + "${strippedAccession}"), // will attempt to lookup on Uniprot // Not L10N
+                new FastaRegExSearchtermPair(@"matches the 'dbtype|idnumber|preferredname description' format",
+                    @"^((?<name>((?<dbtype>" + String.Join(@"|", _standardTypes) +
+                    @")\|(?<idnumber>[^\s\|]*)(\|(?<preferredname>[^\s]+)?)))"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+@"?)",
+                    STANDARD_REGEX_OUTPUT_FORMAT + ENTREZ_TAG + @"${idnumber}"), // will attempt to lookup on Entrez
 
                 new FastaRegExSearchtermPair(
-                    @"matches form '>AARS.IPI00027442 IPI:IPI00027442.4|SWISS-PROT:P49588|ENSEMBL:ENSP00000261772|REFSEQ:NP_001596|H-INV:HIT000035254|VEGA:OTTHUMP00000080084 Tax_Id=9606 Gene_Symbol=AARS Alanyl-tRNA synthetase, cytoplasmic'", // Not L10N
-                    @"^(?<name>([^\s]*(?<ipi>(IPI0[0-9]+))[^\s]*))\s(?<description>.*)", // Not L10N
-                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + "${ipi}"), // will attempt to lookup on Uniprot after passing through our translation layer // Not L10N
+                    @"matches UniRefnnn_ form '>UniqueIdentifier ClusterName n=Members Tax=Taxon RepID=RepresentativeMember' like '>UniRef100_A5DI11 Elongation factor 2 n=1 Tax=Pichia guilliermondii RepID=EF2_PICGU'",
+                    @"^(?<name>(((((?<typecode>UniRef)[0-9]+_(?<accession>((?<strippedAccession>[^\.\s]+)[^\s]*)))))[\s]*))\s(?<description>(?<preferredname>(.*([^=]\s)+))((.*(\sTax=(?<species>.*)?\sRepID=.*))))",
+                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + @"${strippedAccession}"), // will attempt to lookup on Uniprot
 
                 new FastaRegExSearchtermPair(
-                    @"Pick out 'SGDID:S000028729' (or SGD:S...)) from >YAL019W-A YAL019W-A SGDID:S000028729, Chr I from 114250-114819, Genome Release 64-2-1, Dubious ORF, 'Dubious open reading frame; unlikely to encode a functional protein, based on available experimental and comparative sequence data; partially overlaps ORF ATS1/YAL020C'", // Not L10N
-                    @"^(?<name>[^\s]+)(?<description>(.*?((SGD\:S|SGDID\:S)(?<sgd>([0-9]+))[^\s]*)).*)", // Not L10N
-                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + "SGD:S${sgd}"), // will attempt to lookup on Uniprot // Not L10N
+                    @"matches form '>AARS.IPI00027442 IPI:IPI00027442.4|SWISS-PROT:P49588|ENSEMBL:ENSP00000261772|REFSEQ:NP_001596|H-INV:HIT000035254|VEGA:OTTHUMP00000080084 Tax_Id=9606 Gene_Symbol=AARS Alanyl-tRNA synthetase, cytoplasmic'",
+                    @"^(?<name>([^\s]*(?<ipi>(IPI0[0-9]+))[^\s]*))\s(?<description>.*)",
+                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + @"${ipi}"), // will attempt to lookup on Uniprot after passing through our translation layer
 
-                new FastaRegExSearchtermPair(@" and a fallback for everything else, like  '>name description'", // Not L10N
-                    @"^(?<name>[^\s]+)"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+"?",  // Not L10N
-                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + "${name}") // will attempt to lookup on Uniprot // Not L10N
+                new FastaRegExSearchtermPair(
+                    @"Pick out 'SGDID:S000028729' (or SGD:S...)) from >YAL019W-A YAL019W-A SGDID:S000028729, Chr I from 114250-114819, Genome Release 64-2-1, Dubious ORF, 'Dubious open reading frame; unlikely to encode a functional protein, based on available experimental and comparative sequence data; partially overlaps ORF ATS1/YAL020C'",
+                    @"^(?<name>[^\s]+)(?<description>(.*?((SGD\:S|SGDID\:S)(?<sgd>([0-9]+))[^\s]*)).*)",
+                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + UNIPROTKB_PREFIX_SGD + @"${sgd}"), // will attempt to lookup on Uniprot
+
+                new FastaRegExSearchtermPair(@" and a fallback for everything else, like  '>name description'",
+                    @"^(?<name>[^\s]+)"+MATCH_DESCRIPTION_WITH_OPTIONAL_OS_AND_GN+@"?",
+                    STANDARD_REGEX_OUTPUT_FORMAT + UNIPROTKB_TAG + @"${name}") // will attempt to lookup on Uniprot
 
             };
         }
@@ -685,7 +710,7 @@ namespace pwiz.ProteomeDatabase.Fasta
             {
                 // translate from IPI to Uniprot if needed
                 var search = prot.GetProteinMetadata().GetPendingSearchTerm().ToUpperInvariant();
-                if (search.StartsWith("IPI")) // Not L10N
+                if (search.StartsWith(@"IPI"))
                 {
                     if (_ipiMapper == null)
                         _ipiMapper = new IpiToUniprotMap();
@@ -711,14 +736,19 @@ namespace pwiz.ProteomeDatabase.Fasta
                     // Some uniprot records just don't have gene info - have we already parsed all there is to know from description?
                     else if (prot.GetProteinMetadata().HasMissingMetadata())
                     {
-                        var test = prot.GetProteinMetadata().ChangeGene("test"); // Not L10N
+                        var test = prot.GetProteinMetadata().ChangeGene(@"test");
                         if (!test.HasMissingMetadata()) // We got everything except gene info
                         {
                             // Check to see if this is a standard uniprot formatted header, if so assume that GN was ommitted on purpose
-                            if (prot.GetProteinMetadata().Description.Contains(string.Format(" OS={0} ", (prot.GetProteinMetadata().Species)))) // Not L10N
+                            if (prot.GetProteinMetadata().Description.Contains(string.Format(@" OS={0} ", (prot.GetProteinMetadata().Species))))
                                 prot.SetWebSearchCompleted(); // There's not going to be any gene info
                         }
                     }
+                }
+
+                if (prot.SeqLength == 0)
+                {
+                    prot.SetWebSearchCompleted(); // Searching is too ambiguous without a sequence length, so we'd have to go one by one: don't attempt it
                 }
 
                 if (prot.GetProteinMetadata().NeedsSearch())
@@ -782,7 +812,8 @@ namespace pwiz.ProteomeDatabase.Fasta
                     }
 
                     // Be a good citizen - no more than three hits per second for Entrez
-                    var snoozeMs = politenessIntervalMsec - politeStopwatch.ElapsedMilliseconds;
+                    var snoozeMs = _webSearchProvider.IsPolite ?
+                        politenessIntervalMsec - politeStopwatch.ElapsedMilliseconds : 0;
                     if (snoozeMs > 0)
                         Thread.Sleep((int)snoozeMs);
                     politeStopwatch.Restart();
@@ -912,9 +943,9 @@ namespace pwiz.ProteomeDatabase.Fasta
             return result;
         }
 
-        public const string KNOWNGOOD_GENINFO_SEARCH_TARGET = "15834432"; // Not L10N
-        public const string KNOWNGOOD_ENTREZ_SEARCH_TARGET = "XP_915497"; // Not L10N
-        public const string KNOWNGOOD_UNIPROT_SEARCH_TARGET = "Q08641"; // Not L10N
+        public const string KNOWNGOOD_GENINFO_SEARCH_TARGET = "15834432";
+        public const string KNOWNGOOD_ENTREZ_SEARCH_TARGET = "XP_915497";
+        public const string KNOWNGOOD_UNIPROT_SEARCH_TARGET = "Q08641";
         public const int KNOWNGOOD_UNIPROT_SEARCH_TARGET_SEQLEN = 628;
         public const int MAX_CONSECUTIVE_PROTEIN_METATDATA_LOOKUP_FAILURES = 20; // If we fail on several in a row, assume all are doomed to fail.
         public const int URL_TOO_LONG = -2;
@@ -957,7 +988,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                         // first try to get enough summary information to redo this seach in uniprot
 
                         // throw in something we know will hit (Note: it's important that this particular value appear in the unit tests, so we can mimic web response)
-                        string knowngood = (searchType == GENINFO_TAG) ? KNOWNGOOD_GENINFO_SEARCH_TARGET : KNOWNGOOD_ENTREZ_SEARCH_TARGET; //  Not L10N
+                        string knowngood = (searchType == GENINFO_TAG) ? KNOWNGOOD_GENINFO_SEARCH_TARGET : KNOWNGOOD_ENTREZ_SEARCH_TARGET; 
                         bool addedKnowngood = false;
                         if (!searchterms.Any(searchterm => SimilarSearchTerms(searchterm,knowngood)))
                         {
@@ -1024,32 +1055,32 @@ namespace pwiz.ProteomeDatabase.Fasta
                                 {
                                     case XmlNodeType.Element: // The node is an element.
                                         elementName = xmlTextReader.Name;
-                                        attrName = xmlTextReader.GetAttribute("Name"); // Not L10N
+                                        attrName = xmlTextReader.GetAttribute(@"Name");
                                         break;
                                     case XmlNodeType.Text: // text for current element
-                                        if ("Id" == elementName) // this will be the input GI number, or GI equivalent of input // Not L10N
+                                        if (@"Id" == elementName) // this will be the input GI number, or GI equivalent of input
                                         {
                                             id = NullForEmpty(xmlTextReader.Value);
                                         }
-                                        else if ("ERROR" == elementName) // Not L10N
+                                        else if (@"ERROR" == elementName)
                                         {
                                             // we made connection, but some trouble on their end
                                             throw new WebException(xmlTextReader.Value);
                                         }
-                                        else if ("Item" == elementName) // Not L10N
+                                        else if (@"Item" == elementName)
                                         {
                                             var value = NullForEmpty(xmlTextReader.Value);
                                             if (value != null)
                                             {
                                                 switch (attrName)
                                                 {
-                                                    case "ReplacedBy": // Not L10N
+                                                    case @"ReplacedBy":
                                                         replacedBy = value; // a better read on name
                                                         break;
-                                                    case "Caption": // Not L10N
+                                                    case @"Caption":
                                                         caption = value; // a better read on name
                                                         break;
-                                                    case "Length": // Not L10N
+                                                    case @"Length":
                                                         length = value; // Useful for disambiguation
                                                         break;
                                                 }
@@ -1057,7 +1088,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                                         }
                                         break;
                                     case XmlNodeType.EndElement:
-                                        if ("DocSum" == xmlTextReader.Name) // Not L10N
+                                        if (@"DocSum" == xmlTextReader.Name)
                                         {
                                             if (dummy)
                                             {
@@ -1134,34 +1165,34 @@ namespace pwiz.ProteomeDatabase.Fasta
                                             elementName = xmlTextReader.Name;
                                             break;
                                         case XmlNodeType.Text: // text for current element
-                                            if ("GBSeq_organism" == elementName) // Not L10N
+                                            if (@"GBSeq_organism" == elementName)
                                             {
                                                 response.Species = NullForEmpty(xmlTextReader.Value);
                                             }
-                                            else if ("GBSeq_locus" == elementName) // Not L10N
+                                            else if (@"GBSeq_locus" == elementName)
                                             {
                                                 response.PreferredName = NullForEmpty(xmlTextReader.Value);
                                                     // a better read on name
                                             }
-                                            else if ("GBSeq_primary-accession" == elementName) // Not L10N
+                                            else if (@"GBSeq_primary-accession" == elementName)
                                             {
                                                 response.Accession = NullForEmpty(xmlTextReader.Value);
                                             }
-                                            else if ("GBSeq_definition" == elementName) // Not L10N
+                                            else if (@"GBSeq_definition" == elementName)
                                             {
                                                 if (String.IsNullOrEmpty(response.Description))
                                                     response.Description = NullForEmpty(xmlTextReader.Value);
                                             }
-                                            else if ("GBQualifier_name" == elementName) // Not L10N
+                                            else if (@"GBQualifier_name" == elementName)
                                             {
                                                 latestGbQualifierName = NullForEmpty(xmlTextReader.Value);
                                             }
-                                            else if (("GBQualifier_value" == elementName) && // Not L10N
-                                                        ("gene" == latestGbQualifierName)) // Not L10N
+                                            else if ((@"GBQualifier_value" == elementName) &&
+                                                        (@"gene" == latestGbQualifierName))
                                             {
                                                 response.Gene = NullForEmpty(xmlTextReader.Value);
                                             }
-                                            else if ("GBSeqid" == elementName) // Not L10N
+                                            else if (@"GBSeqid" == elementName)
                                             {
                                                 // alternate name  
                                                 // use this as a way to associate this result with a search -
@@ -1171,7 +1202,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                                                 response.Protein.Names.Add(new DbProteinName(null,
                                                     new ProteinMetadata(NullForEmpty(xmlTextReader.Value), null)));
                                             }
-                                            else if ("GBSeq_length" == elementName) // Not L10N
+                                            else if (@"GBSeq_length" == elementName)
                                             {
                                                 int length;
                                                 if (!int.TryParse(xmlTextReader.Value, out length))
@@ -1180,7 +1211,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                                             }
                                             break;
                                         case XmlNodeType.EndElement:
-                                            if ("GBSeq" == xmlTextReader.Name) // Not L10N
+                                            if (@"GBSeq" == xmlTextReader.Name)
                                             {
                                                 if (dummy)
                                                 {
@@ -1212,21 +1243,21 @@ namespace pwiz.ProteomeDatabase.Fasta
                                     if (!reader.EndOfStream)
                                     {
                                         var header = reader.ReadLine(); // eat the header
-                                        string[] fieldNames = header.Split('\t'); // Not L10N
+                                        string[] fieldNames = header.Split('\t');
                                         // Normally comes in as Entry\tEntry name\tStatus\tProtein names\tGene names\tOrganism\tLength, but could be any order
-                                        int colAccession = Array.IndexOf(fieldNames, "Entry");  // Not L10N
-                                        int colPreferredName = Array.IndexOf(fieldNames, "Entry name");  // Not L10N
-                                        int colDescription = Array.IndexOf(fieldNames, "Protein names");  // Not L10N
-                                        int colGene = Array.IndexOf(fieldNames, "Gene names"); // Not L10N
-                                        int colSpecies = Array.IndexOf(fieldNames, "Organism"); // Not L10N
-                                        int colLength = Array.IndexOf(fieldNames, "Length"); // Not L10N
-                                        int colStatus = Array.IndexOf(fieldNames, "Status"); // Not L10N
+                                        int colAccession = Array.IndexOf(fieldNames, @"Entry");
+                                        int colPreferredName = Array.IndexOf(fieldNames, @"Entry name");
+                                        int colDescription = Array.IndexOf(fieldNames, @"Protein names");
+                                        int colGene = Array.IndexOf(fieldNames, @"Gene names");
+                                        int colSpecies = Array.IndexOf(fieldNames, @"Organism");
+                                        int colLength = Array.IndexOf(fieldNames, @"Length");
+                                        int colStatus = Array.IndexOf(fieldNames, @"Status");
                                         while (!reader.EndOfStream)
                                         {
                                             var line = reader.ReadLine();
                                             if (line != null)
                                             {
-                                                string[] fields = line.Split('\t'); // Not L10N
+                                                string[] fields = line.Split('\t');
                                                 int length = 0;
                                                 if (colLength >= 0)
                                                     int.TryParse(fields[colLength], out length);
@@ -1271,6 +1302,10 @@ namespace pwiz.ProteomeDatabase.Fasta
                                 return URL_TOO_LONG; // Probably asked for too many at once, caller will go into batch reduction mode
                         }
                     }
+                    else if (ex.Status == WebExceptionStatus.ConnectionClosed && searchType == UNIPROTKB_TAG) // Uniprot just drops the connection on too-large searches as of Sept 2019
+                    {
+                        return URL_TOO_LONG; // Probably asked for too many at once, caller will go into batch reduction mode
+                    }
                     caught = true;
                 }
                 catch
@@ -1287,9 +1322,9 @@ namespace pwiz.ProteomeDatabase.Fasta
 
                 if (responses.Count>0)
                 {
-                    const string STATUS_REVIEWED = "reviewed"; // Uniprot reviewed status  // Not L10N
+                    const string STATUS_REVIEWED = "reviewed"; // Uniprot reviewed status
                     // now see if responses are ambiguous or not
-                    if (proteins.Count() == 1)
+                    if (proteins.Count == 1)
                     {
                         // Any responses must belong to this protein - or this isn't a protein at all (user named it "peptide6" for example).
                         // Can get multiple results for single uniprot code, but we'll ignore those
@@ -1373,7 +1408,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                     else if ((searchType == ENTREZ_TAG) || (searchType == GENINFO_TAG))
                     {
                         // multiple proteins, but responses come in reliable order
-                        if (proteins.Count() == responses.Count())
+                        if (proteins.Count == responses.Count)
                         {
                             int n = 0;
                             foreach (var response in responses)
@@ -1440,30 +1475,30 @@ namespace pwiz.ProteomeDatabase.Fasta
                                     (from r in responses where (r.SeqLength == seqLength) select r).ToArray() :
                                     (from r in responses where (r.SeqLength == seqLength && Equals(r.ReviewStatus, STATUS_REVIEWED)) select r).ToArray();
 
-                                var results = (uniqueProteinLength && likelyResponses.Count()==1) ?
+                                var results = (uniqueProteinLength && likelyResponses.Length == 1) ?
                                     likelyResponses : // Unambiguous - single response that matches this length, and this protein is the only one with this length
                                     (from r in likelyResponses where (p.GetProteinMetadata().WebSearchInfo.MatchesPendingSearchTerm(r.Accession)) select r).ToArray();
-                                if (results.Count() != 1)
+                                if (results.Length != 1)
                                 {
                                     // See if the search term is found in exactly one result's description field
                                     var resultsDescription = (from r in likelyResponses
                                                               where ((!String.IsNullOrEmpty(r.Description) && r.Description.ToUpperInvariant().
                                                               Split(' ').Contains(p.GetProteinMetadata().GetPendingSearchTerm().ToUpperInvariant())))
                                         select r).ToArray();
-                                    if (resultsDescription.Count() == 1)
+                                    if (resultsDescription.Length == 1)
                                         results = resultsDescription;
                                 }
-                                if (results.Count() != 1)
+                                if (results.Length != 1)
                                 {
                                     // See if the search term is found in exactly one result's gene names field
                                     var resultsGene = (from r in likelyResponses
                                                        where ((!String.IsNullOrEmpty(r.Gene) && r.Gene.ToUpperInvariant().
                                                        Split(' ').Contains(p.GetProteinMetadata().GetPendingSearchTerm().ToUpperInvariant())))
                                         select r).ToArray();
-                                    if (resultsGene.Count() == 1)
+                                    if (resultsGene.Length == 1)
                                         results = resultsGene;
                                 }
-                                if (results.Count() != 1 && uniqueProteinLength)
+                                if (results.Length != 1 && uniqueProteinLength)
                                 {
                                     // Didn't find an obvious match, but this is the only protein of this length in the search
                                     results = likelyResponses;
@@ -1501,7 +1536,7 @@ namespace pwiz.ProteomeDatabase.Fasta
                         lookupCount++; // done with this one
                     }
                 }
-                else if (proteins.Count() == 1)
+                else if (proteins.Count == 1)
                 {
                     proteins[0].SetWebSearchCompleted(); // no response for a single protein - we aren't going to get an answer
                     proteins[0].NoteSearchFailure();
@@ -1511,6 +1546,30 @@ namespace pwiz.ProteomeDatabase.Fasta
                 break; // No need for retry
             }
             return lookupCount;
+        }
+        public static void ValidateProteinSequence(string sequence, int lineNumber)
+        {
+            for (int i = 0; i < sequence.Length; i++)
+            {
+                var ch = sequence[i];
+                if (!IsValidProteinSequenceChar(ch))
+                {
+                    throw new InvalidDataException(string.Format(Resources.WebEnabledFastaImporter_ValidateProteinSequence_A_protein_sequence_cannot_contain_the_character___0___at_line__1_,
+                        ch, lineNumber));
+                }
+            }
+        }
+        public static bool IsValidProteinSequenceChar(char ch)
+        {
+            if (ch >= 'A' && ch <= 'Z')
+            {
+                return true;
+            }
+            if (ch == '*' || ch == '-')
+            {
+                return true;
+            }
+            return false;
         }
     }
 }

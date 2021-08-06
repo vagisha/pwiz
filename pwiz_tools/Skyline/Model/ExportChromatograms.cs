@@ -52,7 +52,7 @@ namespace pwiz.Skyline.Model
         private readonly float _matchTolerance;
         private readonly IList<ChromatogramSet> _chromatogramSets;
 
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         public static readonly string[] FIELD_NAMES =
         {
             "FileName",
@@ -66,7 +66,7 @@ namespace pwiz.Skyline.Model
             "Times",
             "Intensities"
         };
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         /// <summary>
         /// Executes an export for all chromatograms in the document
@@ -167,7 +167,7 @@ namespace pwiz.Skyline.Model
                                      CultureInfo cultureInfo)
         {
             string peptideModifiedSequence = _settings.GetDisplayName(peptideNode);
-            int precursorCharge = groupNode.TransitionGroup.PrecursorCharge;
+            var precursorCharge = groupNode.TransitionGroup.PrecursorAdduct;
             string labelType = groupNode.TransitionGroup.LabelType.Name;
             var filesInChrom = chromatograms.MSDataFilePaths.Select(path=>path.GetFileName()).ToList();
             // Don't load the chromatogram group if none of its files are being exported
@@ -202,7 +202,7 @@ namespace pwiz.Skyline.Model
                         continue;
                     int productCharge = nodeTran.Transition.Charge;
                     float productMz = (float)nodeTran.Mz;
-                    var chromInfo = chromGroupInfo.GetTransitionInfo(nodeTran.Mz, _matchTolerance);
+                    var chromInfo = chromGroupInfo.GetTransitionInfo(nodeTran, _matchTolerance, chromatograms.OptimizationFunction);
                     // Sometimes a transition in the transition group does not have results for a particular file
                     // If this happens just skip it for that file
                     if (chromInfo == null)
@@ -287,9 +287,11 @@ namespace pwiz.Skyline.Model
             switch (extractor)
             {
                 case ChromExtractor.base_peak:
-                    return "BasePeak"; // Not L10N
+                    return @"BasePeak"; 
                 case ChromExtractor.summed:
-                    return "Summed"; // Not L10N
+                    return @"Summed";
+                case ChromExtractor.qc:
+                    return @"QC";
                 default:
                     throw new InvalidDataException(Resources.ChromatogramExporter_GetExtractorName_Invalid_extractor_name_);
             }

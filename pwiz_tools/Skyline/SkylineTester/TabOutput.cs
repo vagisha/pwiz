@@ -32,6 +32,7 @@ namespace SkylineTester
     public class TabOutput : TabBase
     {
         public Action AfterLoad { get; set; }
+        public HashSet<string> FailedTests { get { return new HashSet<string>(_failedTests.Select(ParseTestName)); } }
 
         private readonly List<string> _buildProblems = new List<string>();
         private readonly List<string> _failedTests = new List<string>();
@@ -71,6 +72,7 @@ namespace SkylineTester
         {
             _buildProblems.Clear();
             _failedTests.Clear();
+            MainWindow.EnableButtonSelectFailedTests(false); // No failed tests to select
             _leakingTests.Clear();
             _jumpList = new List<JumpToPattern>
             {
@@ -113,6 +115,7 @@ namespace SkylineTester
                 foreach (var problem in _buildProblems)
                     MainWindow.ErrorConsole.AppendText("  {0}".With(problem));
             }
+            MainWindow.EnableButtonSelectFailedTests(_failedTests.Count > 0); // Make it convenient to re run failed tests
             if (_failedTests.Count > 0)
             {
                 if (MainWindow.ErrorConsole.TextLength > 0)
@@ -131,7 +134,7 @@ namespace SkylineTester
                     var parts = test.Split(' ');
                     var testName = parts[1];
                     var leakedBytes = parts[3];
-                    MainWindow.ErrorConsole.AppendText("  {0,-46} {1,8} bytes\n".With(testName, leakedBytes));
+                    MainWindow.ErrorConsole.AppendText("  {0,-46} {1,8} {2}\n".With(testName, leakedBytes, parts[4].Trim()));
                 }
             }
             _addingErrors = false;
@@ -153,7 +156,7 @@ namespace SkylineTester
                 return;
             if (line.StartsWith("..."))
                 _buildProblems.Add(line);
-            else if (line.Contains(" LEAKED "))
+            else if (line.Contains(" LEAKED ") || line.Contains("-LEAKED "))
                 _leakingTests.Add(line);
             else
                 _failedTests.Add(line);
@@ -250,10 +253,10 @@ namespace SkylineTester
             while (parentDirectory != null)
             {
                 var skylineSln = Path.Combine(parentDirectory, "Skyline.sln");
-                if (File.Exists(skylineSln))
+                var vsExe = SkylineTesterWindow.GetExistingVsIdeFilePath("devenv.exe");
+                if (vsExe != null && File.Exists(skylineSln))
                 {
-                    System.Diagnostics.Process.Start(
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft Visual Studio 12.0\Common7\IDE\devenv.exe"),
+                    System.Diagnostics.Process.Start(vsExe,
                         @"{0} {1} /command ""Edit.Goto {2}""".With(skylineSln, file, lineNumberText));
                     return null;
                 }
@@ -353,6 +356,12 @@ namespace SkylineTester
             _addingErrors = false;
         }
 
+        private static string ParseTestName(string searchText)
+        {
+            var parts = searchText.Trim().Split(' ');
+            return parts[parts.Length > 1 ? 1 : 0];
+        }
+
         private class JumpToPattern
         {
             public readonly string Pattern;
@@ -369,6 +378,9 @@ namespace SkylineTester
 
         public void PrepareJumpTo()
         {
+            if (_jumpList == null)
+                return;
+
             var text = MainWindow.CommandShell.Text;
             int findCount = 0;
             foreach (var jumpItem in _jumpList)

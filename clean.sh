@@ -6,8 +6,8 @@ pushd $pwiz_root > /dev/null
 echo "Cleaning project..."
 if (ls build-*-* > /dev/null 2>&1); then rm -fr build-*-*; fi;
 if (ls libraries/boost_*_*_? > /dev/null 2>&1); then rm -fr libraries/boost_*_*_?; fi;
-if [ -d libraries/boost-build/engine/bin ]; then rm -fr libraries/boost-build/engine/bin; fi;
-if [ -d libraries/boost-build/engine/bootstrap ]; then rm -fr libraries/boost-build/engine/bootstrap; fi;
+if [ -d libraries/boost-build/src/engine/bin ]; then rm -fr libraries/boost-build/src/engine/bin; fi;
+if [ -d libraries/boost-build/src/engine/bootstrap ]; then rm -fr libraries/boost-build/src/engine/bootstrap; fi;
 if [ -d libraries/gd-2.0.33 ]; then rm -fr libraries/gd-2.0.33; fi;
 if [ -d libraries/zlib-1.2.3 ]; then rm -fr libraries/zlib-1.2.3; fi;
 if [ -d libraries/libgd-2.1.0alpha ]; then rm -fr libraries/libgd-2.1.0alpha; fi;
@@ -26,14 +26,10 @@ if [ -f pwiz/data/identdata/Version.cpp ]; then rm -f pwiz/data/identdata/Versio
 if [ -f pwiz/data/proteome/Version.cpp ]; then rm -f pwiz/data/proteome/Version.cpp; fi;
 if [ -f pwiz/analysis/Version.cpp ]; then rm -f pwiz/analysis/Version.cpp; fi;
 
-if [ -d pwiz/data/vendor_readers/Thermo/Reader_Thermo_Test.data ]; then rm -fr pwiz/data/vendor_readers/Thermo/Reader_Thermo_Test.data; fi;
-if [ -d pwiz/data/vendor_readers/Agilent/Reader_Agilent_Test.data ]; then rm -fr pwiz/data/vendor_readers/Agilent/Reader_Agilent_Test.data; fi;
-if [ -d pwiz/data/vendor_readers/ABI/Reader_ABI_Test.data ]; then rm -fr pwiz/data/vendor_readers/ABI/Reader_ABI_Test.data; fi;
 if [ -d pwiz/data/vendor_readers/ABI/T2D/Reader_ABI_T2D_Test.data ]; then rm -fr pwiz/data/vendor_readers/ABI/T2D/Reader_ABI_T2D_Test.data; fi;
-if [ -d pwiz/data/vendor_readers/Waters/Reader_Waters_Test.data ]; then rm -fr pwiz/data/vendor_readers/Waters/Reader_Waters_Test.data; fi;
-if [ -d pwiz/data/vendor_readers/Bruker/Reader_Bruker_Test.data ]; then rm -fr pwiz/data/vendor_readers/Bruker/Reader_Bruker_Test.data; fi;
 
-if [ -d pwiz_tools/BiblioSpec/tests/inputs ]; then rm -fr pwiz_tools/BiblioSpec/tests/inputs; fi;
-if [ -d pwiz_tools/BiblioSpec/tests/output ]; then rm -fr pwiz_tools/BiblioSpec/tests/output; fi;
+git clean -f -x pwiz/data/vendor_readers
+git clean -f -x pwiz_tools/BiblioSpec/tests/inputs
+git clean -f -x pwiz_tools/BiblioSpec/tests/output
 
 popd > /dev/null

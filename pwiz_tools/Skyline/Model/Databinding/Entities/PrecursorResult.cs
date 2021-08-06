@@ -17,10 +17,14 @@
  * limitations under the License.
  */
 
+using System;
 using System.ComponentModel;
 using System.Linq;
+using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Attributes;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
+using pwiz.Skyline.Model.ElementLocators;
 using pwiz.Skyline.Model.Hibernate;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Model.Results.Scoring;
@@ -28,23 +32,26 @@ using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.Model.Databinding.Entities
 {
+    [InvariantDisplayName(nameof(PrecursorResult))]
     [AnnotationTarget(AnnotationDef.AnnotationTarget.precursor_result)]
     public class PrecursorResult : Result
     {
         private readonly CachedValue<TransitionGroupChromInfo> _chromInfo;
+        private readonly CachedValue<PrecursorQuantificationResult> _quantificationResult;
         public PrecursorResult(Precursor precursor, ResultFile file) : base(precursor, file)
         {
             _chromInfo = CachedValue.Create(DataSchema, ()=>GetResultFile().FindChromInfo(precursor.DocNode.Results));
+            _quantificationResult = CachedValue.Create(DataSchema, GetQuantification);
         }
 
         [HideWhen(AncestorOfType = typeof(Precursor))]
         public Precursor Precursor { get { return SkylineDocNode as Precursor; } }
         [Browsable(false)]
         public TransitionGroupChromInfo ChromInfo { get { return _chromInfo.Value; } }
-        public void ChangeChromInfo(EditDescription editDescription, TransitionGroupChromInfo newChromInfo)
+        public void ChangeChromInfo(EditDescription editDescription, Func<TransitionGroupChromInfo, TransitionGroupChromInfo> newChromInfo)
         {
-            var newDocNode = Precursor.DocNode.ChangeResults(GetResultFile().ChangeChromInfo(Precursor.DocNode.Results, newChromInfo));
-            Precursor.ChangeDocNode(editDescription, newDocNode);
+            Precursor.ChangeDocNode(editDescription, docNode => docNode.ChangeResults(GetResultFile()
+                .ChangeChromInfo(docNode.Results, newChromInfo)));
         }
         [Format(Formats.PValue, NullValue = TextUtil.EXCEL_NA)]
         public double? DetectionQValue { get { return ChromInfo.QValue; } }
@@ -102,7 +109,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 {
                     return null;
                 }
-                return ceRegression.GetCollisionEnergy(Precursor.Charge, Precursor.GetRegressionMz(), ChromInfo.OptimizationStep);
+                return ceRegression.GetCollisionEnergy(Precursor.DocNode.PrecursorAdduct, Precursor.GetRegressionMz(), ChromInfo.OptimizationStep);
             }
         }
         [Format(Formats.OPT_PARAMETER, NullValue = TextUtil.EXCEL_NA)]
@@ -129,28 +136,63 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 {
                     return null;
                 }
-                return SrmDocument.GetOptimizedCompensationVoltage(Precursor.Peptide.DocNode, Precursor.DocNode);
+                return SrmDocument.GetCompensationVoltage(Precursor.Peptide.DocNode, Precursor.DocNode, null, ChromInfo.OptimizationStep, covRegression.TuneLevel);
             }
         }
 
         [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
-        public double? CollisionalCrossSection { get { return ChromInfo.DriftInfo.CollisionalCrossSection; } }
+        public double? CollisionalCrossSection { get { return ChromInfo.IonMobilityInfo.CollisionalCrossSection; } }
+
+        [Obsolete("use IonMobilityMS1 instead")] 
         [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
-        public double? DriftTimeMS1 { get { return ChromInfo.DriftInfo.DriftTimeMS1; } }
+        public double? DriftTimeMS1 { get { return ChromInfo.IonMobilityInfo.DriftTimeMS1; } }
+
+        [Obsolete("use IonMobilityFragment instead")] 
         [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
-        public double? DriftTimeFragment { get { return ChromInfo.DriftInfo.DriftTimeFragment; } }
+        public double? DriftTimeFragment { get { return ChromInfo.IonMobilityInfo.DriftTimeFragment; } }
+
+        [Obsolete("use IonMobilityWindow instead")]
         [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
-        public double? DriftTimeWindow { get { return ChromInfo.DriftInfo.DriftTimeWindow; } }
+        public double? DriftTimeWindow { get { return ChromInfo.IonMobilityInfo.DriftTimeWindow; } }
+
+        [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
+        public double? IonMobilityMS1 { get { return ChromInfo.IonMobilityInfo.IonMobilityMS1; } }
+        [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
+        public double? IonMobilityFragment { get { return ChromInfo.IonMobilityInfo.IonMobilityFragment; } }
+        [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
+        public double? IonMobilityWindow { get { return ChromInfo.IonMobilityInfo.IonMobilityWindow; } }
+
+        [Format(NullValue = TextUtil.EXCEL_NA)]
+        public string IonMobilityUnits { get { return IonMobilityFilter.IonMobilityUnitsL10NString(ChromInfo.IonMobilityInfo.IonMobilityUnits); } }
+
+        public LinkValue<PrecursorQuantificationResult> PrecursorQuantification
+        {
+            get
+            {
+                return new LinkValue<PrecursorQuantificationResult>(_quantificationResult.Value, (sender, args) =>
+                {
+                    SkylineWindow skylineWindow = DataSchema.SkylineWindow;
+                    if (skylineWindow != null)
+                    {
+                        skylineWindow.ShowCalibrationForm();
+                        skylineWindow.SelectedResultsIndex = GetResultFile().Replicate.ReplicateIndex;
+                        skylineWindow.SelectedPath = Precursor.IdentityPath;
+                        Properties.Settings.Default.CalibrationCurveOptions.SingleBatch = true;
+                    }
+                });
+            }
+        }
+
 
         [InvariantDisplayName("PrecursorReplicateNote")]
+        [Importable]
         public string Note 
         { 
             get { return ChromInfo.Annotations.Note; } 
             set
             {
-                ChangeChromInfo(
-                    EditDescription.SetColumn("PrecursorReplicateNote", value), // Not L10N
-                    ChromInfo.ChangeAnnotations(ChromInfo.Annotations.ChangeNote(value)));
+                ChangeChromInfo(EditColumnDescription(nameof(Note), value),
+                    chromInfo=>chromInfo.ChangeAnnotations(chromInfo.Annotations.ChangeNote(value)));
             }
         }
 
@@ -163,7 +205,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 return;
 
             ChangeChromInfo(EditDescription.SetAnnotation(annotationDef, value), 
-                ChromInfo.ChangeAnnotations(ChromInfo.Annotations.ChangeAnnotation(annotationDef, value)));
+                chromInfo=>chromInfo.ChangeAnnotations(chromInfo.Annotations.ChangeAnnotation(annotationDef, value)));
         }
 
         public override object GetAnnotation(AnnotationDef annotationDef)
@@ -174,12 +216,12 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             else if (Equals(annotationDef.Name, MProphetResultsHandler.MAnnotationName))
                 return DetectionZScore;
 
-            return ChromInfo.Annotations.GetAnnotation(annotationDef);
+            return DataSchema.AnnotationCalculator.GetAnnotation(annotationDef, this, ChromInfo.Annotations);
         }
 
         public override string ToString()
         {
-            return string.Format("{0:0}", ChromInfo.Area); // Not L10N
+            return string.Format(@"{0:0}", ChromInfo.Area);
         }
 
         private PeptideResult _peptideResult;
@@ -187,6 +229,26 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         public PeptideResult PeptideResult 
         {
             get { return _peptideResult = _peptideResult ?? new PeptideResult(Precursor.Peptide, GetResultFile()); }
+        }
+
+        [InvariantDisplayName("PrecursorResultLocator")]
+        public string Locator { get { return GetLocator(); } }
+
+        public override ElementRef GetElementRef()
+        {
+            return PrecursorResultRef.PROTOTYPE.ChangeChromInfo(GetResultFile().Replicate.ChromatogramSet, ChromInfo)
+                .ChangeParent(Precursor.GetElementRef());
+        }
+
+        public override bool IsEmpty()
+        {
+            return !ChromInfo.RetentionTime.HasValue;
+        }
+        private PrecursorQuantificationResult GetQuantification()
+        {
+            var calibrationCurveFitter = PeptideResult.GetCalibrationCurveFitter();
+            return calibrationCurveFitter.GetPrecursorQuantificationResult(GetResultFile().Replicate.ReplicateIndex,
+                Precursor.DocNode);
         }
     }
 }

@@ -18,28 +18,21 @@
  */
 
 using System;
-using System.Collections;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace pwiz.Common.DataBinding.Internal
 {
     internal class QueryRequestor : IDisposable
     {
-        private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly BindingListView _bindingListView;
         private Request _request;
         private QueryParameters _queryParameters;
-        private IRowSourceWrapper _rowSourceWrapper;
         public QueryRequestor(BindingListView bindingListView)
         {
             _bindingListView = bindingListView;
             // ReSharper disable once PossiblyMistakenUseOfParamsMethod
-            _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(bindingListView.CancellationToken);
             _queryParameters = QueryParameters.Empty;
-            _rowSourceWrapper = RowSourceWrapper.Empty;
         }
-        public TaskScheduler EventTaskScheduler { get { return _bindingListView.EventTaskScheduler; } }
         public QueryParameters QueryParameters
         {
             get { return _queryParameters; }
@@ -53,30 +46,7 @@ namespace pwiz.Common.DataBinding.Internal
                 Requery();
             }
         }
-        public IEnumerable RowSource
-        {
-            get { return (_rowSourceWrapper ?? RowSourceWrapper.Empty).WrappedRowSource; }
-            set
-            {
-                if (ReferenceEquals(value, RowSource))
-                {
-                    return;
-                }
-                _rowSourceWrapper = WrapRowSource(value);
-                Requery();
-            }
-        }
 
-        public void SetRowsAndParameters(IEnumerable rowSource, QueryParameters queryParameters)
-        {
-            if (ReferenceEquals(RowSource, rowSource) && Equals(QueryParameters, queryParameters))
-            {
-                return;
-            }
-            _rowSourceWrapper = WrapRowSource(rowSource);
-            _queryParameters = queryParameters;
-            Requery();
-        }
         public QueryResults QueryResults
         {
             get
@@ -87,55 +57,68 @@ namespace pwiz.Common.DataBinding.Internal
 
         public void Dispose()
         {
-            _cancellationTokenSource.Cancel();
             _queryParameters = null;
-            _rowSourceWrapper = null;
-            _request = null;
+            var request = Interlocked.Exchange(ref _request, null);
+            if (request != null)
+            {
+                request.Dispose();
+            }
         }
         public void Requery()
         {
-            if (null != _request)
+            using (var lastRequest = _request)
             {
-                _request.Dispose();
                 _request = null;
+                if (null == QueryParameters || null == QueryParameters.ViewInfo)
+                {
+                    return;
+                }
+                RowSourceWrapper rowSourceWrapper;
+                if (lastRequest != null && ReferenceEquals(lastRequest.RowSourceWrapper.WrappedRowSource,
+                        _bindingListView.RowSource))
+                {
+                    rowSourceWrapper = lastRequest.RowSourceWrapper;
+                }
+                else
+                {
+                    rowSourceWrapper = new RowSourceWrapper(_bindingListView.RowSource);
+                }
+                _request = new Request(this, _bindingListView.QueryLock, rowSourceWrapper);
+                _request.StartQuery();
             }
-            if (null == QueryParameters || null == QueryParameters.ViewInfo)
-            {
-                return;
-            }
-            _request = new Request(this);
-            _rowSourceWrapper.StartQuery(_request);
-        }
-
-        private IRowSourceWrapper WrapRowSource(IEnumerable items)
-        {
-            if (null == EventTaskScheduler)
-            {
-                return new RowSourceWrapper(items ?? new object[0]);
-            }
-            return RowSourceWrappers.Wrap(items);
         }
 
         class Request : IQueryRequest, IDisposable
         {
             private readonly CancellationTokenSource _cancellationTokenSource;
             private readonly QueryRequestor _queryRequestor;
-            public Request(QueryRequestor queryRequestor)
+            public Request(QueryRequestor queryRequestor, QueryLock queryLock, RowSourceWrapper rowSourceWrapper)
             {
                 _queryRequestor = queryRequestor;
+                RowSourceWrapper = rowSourceWrapper;
                 QueryParameters = _queryRequestor.QueryParameters;
                 // ReSharper disable PossiblyMistakenUseOfParamsMethod
-                _cancellationTokenSource =
-                    CancellationTokenSource.CreateLinkedTokenSource(queryRequestor._cancellationTokenSource.Token);
+                _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(queryLock.CancellationToken);
                 // ReSharper restore PossiblyMistakenUseOfParamsMethod
+                QueryLock = queryLock;
             }
 
-            public TaskScheduler EventTaskScheduler { get { return _queryRequestor._bindingListView.EventTaskScheduler; } }
+            public EventTaskScheduler EventTaskScheduler { get { return _queryRequestor._bindingListView.EventTaskScheduler; } }
+            public RowSourceWrapper RowSourceWrapper { get; private set; }
             public CancellationToken CancellationToken { get { return _cancellationTokenSource.Token; } }
             public QueryParameters QueryParameters { get; private set; }
-            public QueryResults InitialQueryResults
+            public QueryLock QueryLock { get; private set; }
+
+            public void StartQuery()
             {
-                get { return QueryResults.Empty.SetParameters(QueryParameters); }
+                if (null == EventTaskScheduler)
+                {
+                    new ForegroundQuery(RowSourceWrapper, this).Start();
+                }
+                else
+                {
+                    new BackgroundQuery(RowSourceWrapper, this).Start();
+                }
             }
 
             public void SetFinalQueryResults(QueryResults newResults)
@@ -144,7 +127,7 @@ namespace pwiz.Common.DataBinding.Internal
                     {
                         try
                         {
-                            LiveQueryResults = _queryRequestor._rowSourceWrapper.MakeLive(newResults);
+                            LiveQueryResults = newResults;
                             _queryRequestor._bindingListView.UpdateResults();
                         }
                         catch (Exception exception)
@@ -158,7 +141,7 @@ namespace pwiz.Common.DataBinding.Internal
                 }
                 else
                 {
-                    Task.Factory.StartNew(action, _cancellationTokenSource.Token, TaskCreationOptions.None, EventTaskScheduler);
+                    EventTaskScheduler.Run(action);
                 }
             }
 

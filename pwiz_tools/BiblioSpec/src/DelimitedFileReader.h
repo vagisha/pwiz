@@ -32,8 +32,7 @@
  */
 #pragma once
 
-#include <iostream>
-#include <fstream>
+#include "pwiz/utility/misc/Stream.hpp"
 #include <vector>
 #include "Verbosity.h"
 #include "BlibException.h"
@@ -78,7 +77,7 @@ template <typename STORAGE_TYPE> class DelimitedFileReader {
 
  private:
     std::string filename_; 
-    std::fstream delimFile_;
+    fstream delimFile_;
     // defines the delimiters and escape characters used to parse
     boost::escaped_list_separator<char>* separatorFunction_;
     // columns to grab, must be in the file
@@ -153,7 +152,7 @@ template <typename STORAGE_TYPE> class DelimitedFileReader {
 
         // parse header
         std::string line;
-        getline(delimFile_, line);
+        getlinePortable(delimFile_, line);
         curLineNumber_++;
         parseHeader(line);
 
@@ -236,7 +235,7 @@ template <typename STORAGE_TYPE> class DelimitedFileReader {
         std::string errorMsg;
         
         while( ! delimFile_.eof() ){
-            getline(delimFile_, line);
+            getlinePortable(delimFile_, line);
             curLineNumber_++;
 
             if (line.empty() && delimFile_.eof())

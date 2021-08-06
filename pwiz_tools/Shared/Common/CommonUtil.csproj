@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>pwiz.Common</RootNamespace>
     <AssemblyName>pwiz.CommonUtil</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
@@ -89,6 +89,9 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="JetBrains.Annotations">
+      <HintPath>..\Lib\JetBrains.Annotations.dll</HintPath>
+    </Reference>
     <Reference Include="Microsoft.ConcurrencyVisualizer.Markers, Version=12.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\Lib\Microsoft.ConcurrencyVisualizer.Markers.dll</HintPath>
@@ -111,21 +114,38 @@
   <ItemGroup>
     <Compile Include="Chemistry\AminoAcidFormulas.cs" />
     <Compile Include="Chemistry\Formula.cs" />
+    <Compile Include="Chemistry\IonMobilityValue.cs" />
     <Compile Include="Chemistry\IsotopeAbundances.cs" />
     <Compile Include="Chemistry\MassDistribution.cs" />
     <Compile Include="Chemistry\Molecule.cs" />
+    <Compile Include="Chemistry\MoleculeMassOffset.cs" />
+    <Compile Include="Chemistry\MzTolerance.cs" />
     <Compile Include="Chemistry\SignedMz.cs" />
+    <Compile Include="Collections\AbstractReadOnlyCollection.cs" />
+    <Compile Include="Collections\AbstractReadOnlyDictionary.cs" />
+    <Compile Include="Collections\AbstractReadOnlyList.cs" />
     <Compile Include="Collections\BindingLists.cs" />
+    <Compile Include="Collections\IdentityEqualityComparer.cs" />
     <Compile Include="Collections\LinqExtensions.cs" />
     <Compile Include="Collections\PrimitiveArrays.cs" />
     <Compile Include="Collections\CollectionUtil.cs" />
-    <Compile Include="Collections\ConvertedList.cs" />
     <Compile Include="Collections\ImmutableCollection.cs" />
     <Compile Include="Collections\ImmutableDictionary.cs" />
     <Compile Include="Collections\ImmutableList.cs" />
     <Compile Include="Collections\ImmutableSortedList.cs" />
     <Compile Include="Collections\Range.cs" />
+    <Compile Include="Collections\RangeList.cs" />
+    <Compile Include="Collections\ReadOnlyList.cs" />
     <Compile Include="Collections\StructSerializer.cs" />
+    <Compile Include="Collections\UniqueList.cs" />
+    <Compile Include="SystemUtil\CenterWinDialog.cs" />
+    <Compile Include="SystemUtil\CommonException.cs" />
+    <Compile Include="SystemUtil\ProgressHandler.cs" />
+    <Compile Include="SystemUtil\MemoryBlockingCollection.cs" />
+    <Compile Include="SystemUtil\ParallelEx.cs" />
+    <Compile Include="SystemUtil\TrackAttribute.cs" />
+    <Compile Include="SystemUtil\CommonActionUtil.cs" />
+    <Compile Include="SystemUtil\ValueCache.cs" />
     <Compile Include="Collections\ValueSet.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
@@ -133,6 +153,7 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+    <Compile Include="Collections\IndexedSubList.cs" />
     <Compile Include="SystemUtil\ConcurrencyVisualizer.cs" />
     <Compile Include="SystemUtil\FormUtil.cs" />
     <Compile Include="SystemUtil\Immutable.cs" />
@@ -144,7 +165,7 @@
     <Compile Include="SystemUtil\ProcessStreamReader.cs" />
     <Compile Include="SystemUtil\ProcessRunner.cs" />
     <Compile Include="SystemUtil\ProgressStatus.cs" />
-    <Compile Include="SystemUtil\QueueWorker.cs" />
+    <Compile Include="SystemUtil\ProducerConsumerWorker.cs" />
     <Compile Include="SystemUtil\StringPool.cs" />
     <Compile Include="SystemUtil\TaskbarProgress.cs" />
     <Compile Include="SystemUtil\TypeSafeEnum.cs" />

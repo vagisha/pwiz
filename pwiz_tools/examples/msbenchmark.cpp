@@ -28,10 +28,19 @@
 #include "pwiz/utility/misc/Std.hpp"
 #include "pwiz/analysis/spectrum_processing/SpectrumListFactory.hpp"
 #include "pwiz/data/msdata/SpectrumWorkerThreads.hpp"
+#include "pwiz/utility/misc/IterationListener.hpp"
+#include "pwiz/utility/misc/Filesystem.hpp"
 #include <boost/chrono.hpp>
+
+#ifdef _WIN32
+#include "windows.h"
+#include "psapi.h"
+#endif
+
 
 using namespace pwiz::data;
 using namespace pwiz::msdata;
+using namespace pwiz::util;
 
 
 /*
@@ -43,14 +52,60 @@ several different ways, recording the time taken to iterate each way.
 
 string keyValueProcessTimes(const boost::chrono::process_cpu_clock_times& times)
 {
+#ifdef _WIN32
+    PROCESS_MEMORY_COUNTERS_EX pmc;
+    GetProcessMemoryInfo(GetCurrentProcess(), (PPROCESS_MEMORY_COUNTERS)&pmc, sizeof(pmc));
+
+    return (boost::format("(real: %.3f; user: %.3f; sys: %.3f) seconds; memory usage: cur=%d peak=%d")
+            % (times.real / 1e9)
+            % (times.user / 1e9)
+            % (times.system / 1e9)
+            % abbreviate_byte_size(pmc.PrivateUsage, ByteSizeAbbreviation_IEC)
+            % abbreviate_byte_size(pmc.PeakWorkingSetSize, ByteSizeAbbreviation_IEC)).str();
+#else
     return (boost::format("(real: %.3f; user: %.3f; sys: %.3f) seconds")
             % (times.real / 1e9)
             % (times.user / 1e9)
             % (times.system / 1e9)).str();
+ #endif
 }
 
+class UserFeedbackIterationListener : public IterationListener
+{
+    std::streamoff longestMessage;
+    boost::chrono::time_point<boost::chrono::process_cpu_clock> start;
 
-void enumerateSpectra(const string& filename, DetailLevel detailLevel, const vector<string>& filters, const Reader::Config& config, bool reverseIteration)
+    public:
+
+    UserFeedbackIterationListener()
+    {
+        longestMessage = 0;
+        start = boost::chrono::process_cpu_clock::now();
+    }
+
+    virtual Status update(const UpdateMessage& updateMessage)
+    {
+        auto stop = boost::chrono::process_cpu_clock::now();
+
+        stringstream updateString;
+        if (updateMessage.message.empty())
+            updateString << updateMessage.iterationIndex + 1 << "/" << updateMessage.iterationCount;
+        else
+            updateString << updateMessage.message << ": " << updateMessage.iterationIndex + 1 << "/" << updateMessage.iterationCount;
+        updateString << " " << keyValueProcessTimes((stop - start).count());
+
+        longestMessage = max(longestMessage, (std::streamoff) updateString.tellp());
+        updateString << string(longestMessage - updateString.tellp(), ' '); // add whitespace to erase all of the previous line
+        cout << updateString.str() << endl;// "\r" << flush;
+
+        // spectrum and chromatogram lists both iterate; put them on different lines
+        if (updateMessage.iterationIndex + 1 == updateMessage.iterationCount)
+            cout << endl;
+        return Status_Ok;
+    }
+};
+
+void enumerateSpectra(const string& filename, DetailLevel detailLevel, const vector<string>& filters, const Reader::Config& config, bool reverseIteration, bool useWorkerThreads)
 {
     auto start = boost::chrono::process_cpu_clock::now();
 
@@ -73,31 +128,35 @@ void enumerateSpectra(const string& filename, DetailLevel detailLevel, const vec
 
     start = boost::chrono::process_cpu_clock::now();
 
-    SpectrumWorkerThreads multithreadedSpectrumList(sl);
+    SpectrumWorkerThreads multithreadedSpectrumList(sl, useWorkerThreads);
+
+    IterationListenerRegistry ilr;
+    IterationListenerPtr il(new UserFeedbackIterationListener);
+    ilr.addListenerWithTimer(il, 1);
 
     size_t totalArrayLength = 0;
+    string message = "Enumerating spectra";
     if (reverseIteration)
     {
         for (size_t size = sl.size(), i = size; i > 0; --i)
         {
-            //SpectrumPtr s = multithreadedSpectrumList.processBatch(i-1, detailLevel);
-            SpectrumPtr s = sl.spectrum(i-1, detailLevel);
+            SpectrumPtr s = multithreadedSpectrumList.processBatch(i-1, detailLevel);
 
             if (i == size)
             {
                 stop = boost::chrono::process_cpu_clock::now();
                 cout << "Time to get first spectrum: " << keyValueProcessTimes((stop - start).count()) << endl;
             }
-            totalArrayLength += s->defaultArrayLength;
-            if (i == 1 || (i % 100) == 0)
-                cout << "Enumerating spectra: " << (i) << '/' << size << " (" << totalArrayLength << " data points)\r" << flush;
+            totalArrayLength += s->getMZArray()->data.size();
+
+            //if (i == 1 || (i % 100) == 0)
+                ilr.broadcastUpdateMessage(IterationListener::UpdateMessage(i, size, message + " (" + lexical_cast<string>(totalArrayLength) + " data points)"));
         }
     }
     else
         for (size_t i=0, size=sl.size(); i != size; ++i)
         {
-            //SpectrumPtr s = multithreadedSpectrumList.processBatch(i, detailLevel);
-            SpectrumPtr s = sl.spectrum(i, detailLevel);
+            SpectrumPtr s = multithreadedSpectrumList.processBatch(i, detailLevel);
 
             if (i == 0)
             {
@@ -105,9 +164,9 @@ void enumerateSpectra(const string& filename, DetailLevel detailLevel, const vec
                 cout << "Time to get first spectrum: " << keyValueProcessTimes((stop - start).count()) << endl;
             }
 
-            totalArrayLength += s->defaultArrayLength;
-            if (i+1 == size || ((i+1) % 100) == 0)
-                cout << "Enumerating spectra: " << (i+1) << '/' << size << " (" << totalArrayLength << " data points)\r" << flush;
+            totalArrayLength += s->getMZArray()->data.size();
+            //if (i+1 == size || ((i+1) % 100) == 0)
+                ilr.broadcastUpdateMessage(IterationListener::UpdateMessage(i, size, message + " (" + lexical_cast<string>(totalArrayLength) + " data points)"));
         }
     cout << endl;
 
@@ -270,13 +329,13 @@ enum BenchmarkMode
 };
 
 
-void benchmark(const char* filename, BenchmarkMode benchmarkMode, DetailLevel detailLevel, const vector<string>& filters, const Reader::Config& config, bool reverseIteration)
+void benchmark(const char* filename, BenchmarkMode benchmarkMode, DetailLevel detailLevel, const vector<string>& filters, const Reader::Config& config, bool reverseIteration, bool useWorkerThreads)
 {
     switch (benchmarkMode)
     {
         default:
         case BenchmarkMode_Spectra:
-            enumerateSpectra(filename, detailLevel, filters, config, reverseIteration);
+            enumerateSpectra(filename, detailLevel, filters, config, reverseIteration, useWorkerThreads);
             break;
         case BenchmarkMode_Chromatograms:
             enumerateChromatograms(filename, (detailLevel == DetailLevel_FullData), reverseIteration);
@@ -303,8 +362,10 @@ int main(int argc, char* argv[])
                  << "Optional flags are:\n"
                  << "  --acceptZeroLengthSpectra (skip expensive checking for empty spectra when opening a file)\n"
                  << "  --ignoreZeroIntensityPoints (read profile data exactly as the vendor provides, even if there are no flanking zero points)\n"
+                 << "  --loop (repeat the run indefinitely)\n"
+                 << "  --singleThreaded (do not use multiple threads to read spectra)\n"
                  << "  --reverse (iterate backwards)\n\n"
-                 << "http://proteowizard.sourceforge.net\n"
+                 << "https://github.com/ProteoWizard\n"
                  << "support@proteowizard.org\n";
 
             if (argv[1] == string("--help"))
@@ -341,6 +402,8 @@ int main(int argc, char* argv[])
 
         Reader::Config readerConfig;
         bool reverseIteration = false;
+        bool loop = false;
+        bool useWorkerThreads = true;
 
         vector<string> filters;
         for (int i = 4; i < argc; i += 2)
@@ -360,6 +423,26 @@ int main(int argc, char* argv[])
                 readerConfig.acceptZeroLengthSpectra = true;
                 --i;
             }
+            else if (argv[i] == string("--simAsSpectra"))
+            {
+                readerConfig.simAsSpectra = true;
+                --i;
+            }
+            else if (argv[i] == string("--srmAsSpectra"))
+            {
+                readerConfig.srmAsSpectra = true;
+                --i;
+            }
+            else if (argv[i] == string("--loop"))
+            {
+                loop = true;
+                --i;
+            }
+            else if (argv[i] == string("--singleThreaded"))
+            {
+                useWorkerThreads = false;
+                --i;
+            }
             else if (argv[i] == string("--reverse"))
             {
                 reverseIteration = true;
@@ -368,7 +451,17 @@ int main(int argc, char* argv[])
             else
                 throw runtime_error("[msbenchmark] unknown option \"" + string(argv[i]) + "\"");
 
-        benchmark(filename, benchmarkMode, detailLevel, filters, readerConfig, reverseIteration);
+        do
+        {
+            benchmark(filename, benchmarkMode, detailLevel, filters, readerConfig, reverseIteration, useWorkerThreads);
+
+#ifdef _WIN32
+            PROCESS_MEMORY_COUNTERS_EX pmc;
+            GetProcessMemoryInfo(GetCurrentProcess(), (PPROCESS_MEMORY_COUNTERS) &pmc, sizeof(pmc));
+            cout << "Final memory usage: cur " << abbreviate_byte_size(pmc.PrivateUsage, ByteSizeAbbreviation_IEC)
+                 << ", peak " << abbreviate_byte_size(pmc.PeakWorkingSetSize, ByteSizeAbbreviation_IEC) << endl;
+#endif
+        } while (loop);
 
         return 0;
     }

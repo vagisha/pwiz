@@ -50,14 +50,13 @@
             this.comboPrecursorMass = new System.Windows.Forms.ComboBox();
             this.label1 = new System.Windows.Forms.Label();
             this.tabFilter = new System.Windows.Forms.TabPage();
-            this.textIonTypes = new System.Windows.Forms.TextBox();
-            this.label8 = new System.Windows.Forms.Label();
-            this.cbAutoSelect = new System.Windows.Forms.CheckBox();
-            this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.cbExclusionUseDIAWindow = new System.Windows.Forms.CheckBox();
             this.lbMZ = new System.Windows.Forms.Label();
-            this.textExclusionWindow = new System.Windows.Forms.TextBox();
-            this.lbPrecursorMzWindow = new System.Windows.Forms.Label();
+            this.tabControlPeptidesSmallMols = new System.Windows.Forms.TabControl();
+            this.tabPage1 = new System.Windows.Forms.TabPage();
+            this.label5 = new System.Windows.Forms.Label();
+            this.textPeptideIonTypes = new System.Windows.Forms.TextBox();
+            this.groupBox1 = new System.Windows.Forms.GroupBox();
             this.btnEditSpecialTransitions = new System.Windows.Forms.Button();
             this.label18 = new System.Windows.Forms.Label();
             this.listAlwaysAdd = new System.Windows.Forms.CheckedListBox();
@@ -65,13 +64,27 @@
             this.label3 = new System.Windows.Forms.Label();
             this.comboRangeTo = new System.Windows.Forms.ComboBox();
             this.label4 = new System.Windows.Forms.Label();
-            this.textIonCharges = new System.Windows.Forms.TextBox();
-            this.textPrecursorCharges = new System.Windows.Forms.TextBox();
             this.label6 = new System.Windows.Forms.Label();
-            this.label5 = new System.Windows.Forms.Label();
+            this.label8 = new System.Windows.Forms.Label();
+            this.textPeptidePrecursorCharges = new System.Windows.Forms.TextBox();
+            this.textPeptideIonCharges = new System.Windows.Forms.TextBox();
+            this.tabPage2 = new System.Windows.Forms.TabPage();
+            this.btnPrecursorAdduct = new System.Windows.Forms.Button();
+            this.btnFragmentAdduct = new System.Windows.Forms.Button();
+            this.textSmallMoleculeFragmentAdducts = new System.Windows.Forms.TextBox();
+            this.labelSmallMoleculeFragmentAdducts = new System.Windows.Forms.Label();
+            this.textSmallMoleculeIonTypes = new System.Windows.Forms.TextBox();
+            this.labelSmallMoleculeIonTypes = new System.Windows.Forms.Label();
+            this.textSmallMoleculePrecursorAdducts = new System.Windows.Forms.TextBox();
+            this.lblSmallMoleculePrecursorAdducts = new System.Windows.Forms.Label();
+            this.textExclusionWindow = new System.Windows.Forms.TextBox();
+            this.cbAutoSelect = new System.Windows.Forms.CheckBox();
+            this.lbPrecursorMzWindow = new System.Windows.Forms.Label();
             this.tabLibrary = new System.Windows.Forms.TabPage();
             this.label9 = new System.Windows.Forms.Label();
             this.panelPick = new System.Windows.Forms.Panel();
+            this.label22 = new System.Windows.Forms.Label();
+            this.textMinIonCount = new System.Windows.Forms.TextBox();
             this.radioAllAndFiltered = new System.Windows.Forms.RadioButton();
             this.radioFiltered = new System.Windows.Forms.RadioButton();
             this.radioAll = new System.Windows.Forms.RadioButton();
@@ -82,6 +95,7 @@
             this.cbLibraryPick = new System.Windows.Forms.CheckBox();
             this.label13 = new System.Windows.Forms.Label();
             this.tabInstrument = new System.Windows.Forms.TabPage();
+            this.cbxTriggeredAcquisition = new System.Windows.Forms.CheckBox();
             this.textMaxInclusions = new System.Windows.Forms.TextBox();
             this.label21 = new System.Windows.Forms.Label();
             this.label30 = new System.Windows.Forms.Label();
@@ -103,14 +117,22 @@
             this.textMaxMz = new System.Windows.Forms.TextBox();
             this.textMinMz = new System.Windows.Forms.TextBox();
             this.tabFullScan = new System.Windows.Forms.TabPage();
+            this.tabIonMobility = new System.Windows.Forms.TabPage();
+            this.ionMobilityFilteringControl = new pwiz.Skyline.SettingsUI.IonMobility.IonMobilityFilteringUserControl();
             this.helpTip = new System.Windows.Forms.ToolTip(this.components);
+            this.contextMenuStripPrecursorAdduct = new System.Windows.Forms.ContextMenuStrip(this.components);
+            this.contextMenuStripFragmentAdduct = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.tabControl1.SuspendLayout();
             this.tabGeneral.SuspendLayout();
             this.tabFilter.SuspendLayout();
+            this.tabControlPeptidesSmallMols.SuspendLayout();
+            this.tabPage1.SuspendLayout();
             this.groupBox1.SuspendLayout();
+            this.tabPage2.SuspendLayout();
             this.tabLibrary.SuspendLayout();
             this.panelPick.SuspendLayout();
             this.tabInstrument.SuspendLayout();
+            this.tabIonMobility.SuspendLayout();
             this.SuspendLayout();
             // 
             // btnCancel
@@ -135,6 +157,7 @@
             this.tabControl1.Controls.Add(this.tabLibrary);
             this.tabControl1.Controls.Add(this.tabInstrument);
             this.tabControl1.Controls.Add(this.tabFullScan);
+            this.tabControl1.Controls.Add(this.tabIonMobility);
             this.tabControl1.DataBindings.Add(new System.Windows.Forms.Binding("SelectedIndex", global::pwiz.Skyline.Properties.Settings.Default, "TransitionSettingsTab", true, System.Windows.Forms.DataSourceUpdateMode.OnPropertyChanged));
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = global::pwiz.Skyline.Properties.Settings.Default.TransitionSettingsTab;
@@ -272,52 +295,15 @@
             // 
             // tabFilter
             // 
-            this.tabFilter.Controls.Add(this.textIonTypes);
-            this.tabFilter.Controls.Add(this.label8);
+            this.tabFilter.Controls.Add(this.cbExclusionUseDIAWindow);
+            this.tabFilter.Controls.Add(this.lbMZ);
+            this.tabFilter.Controls.Add(this.tabControlPeptidesSmallMols);
+            this.tabFilter.Controls.Add(this.textExclusionWindow);
             this.tabFilter.Controls.Add(this.cbAutoSelect);
-            this.tabFilter.Controls.Add(this.groupBox1);
-            this.tabFilter.Controls.Add(this.textIonCharges);
-            this.tabFilter.Controls.Add(this.textPrecursorCharges);
-            this.tabFilter.Controls.Add(this.label6);
-            this.tabFilter.Controls.Add(this.label5);
+            this.tabFilter.Controls.Add(this.lbPrecursorMzWindow);
             resources.ApplyResources(this.tabFilter, "tabFilter");
             this.tabFilter.Name = "tabFilter";
             this.tabFilter.UseVisualStyleBackColor = true;
-            // 
-            // textIonTypes
-            // 
-            resources.ApplyResources(this.textIonTypes, "textIonTypes");
-            this.textIonTypes.Name = "textIonTypes";
-            this.helpTip.SetToolTip(this.textIonTypes, resources.GetString("textIonTypes.ToolTip"));
-            // 
-            // label8
-            // 
-            resources.ApplyResources(this.label8, "label8");
-            this.label8.Name = "label8";
-            // 
-            // cbAutoSelect
-            // 
-            resources.ApplyResources(this.cbAutoSelect, "cbAutoSelect");
-            this.cbAutoSelect.Name = "cbAutoSelect";
-            this.helpTip.SetToolTip(this.cbAutoSelect, resources.GetString("cbAutoSelect.ToolTip"));
-            this.cbAutoSelect.UseVisualStyleBackColor = true;
-            // 
-            // groupBox1
-            // 
-            this.groupBox1.Controls.Add(this.cbExclusionUseDIAWindow);
-            this.groupBox1.Controls.Add(this.lbMZ);
-            this.groupBox1.Controls.Add(this.textExclusionWindow);
-            this.groupBox1.Controls.Add(this.lbPrecursorMzWindow);
-            this.groupBox1.Controls.Add(this.btnEditSpecialTransitions);
-            this.groupBox1.Controls.Add(this.label18);
-            this.groupBox1.Controls.Add(this.listAlwaysAdd);
-            this.groupBox1.Controls.Add(this.comboRangeFrom);
-            this.groupBox1.Controls.Add(this.label3);
-            this.groupBox1.Controls.Add(this.comboRangeTo);
-            this.groupBox1.Controls.Add(this.label4);
-            resources.ApplyResources(this.groupBox1, "groupBox1");
-            this.groupBox1.Name = "groupBox1";
-            this.groupBox1.TabStop = false;
             // 
             // cbExclusionUseDIAWindow
             // 
@@ -331,16 +317,51 @@
             resources.ApplyResources(this.lbMZ, "lbMZ");
             this.lbMZ.Name = "lbMZ";
             // 
-            // textExclusionWindow
+            // tabControlPeptidesSmallMols
             // 
-            resources.ApplyResources(this.textExclusionWindow, "textExclusionWindow");
-            this.textExclusionWindow.Name = "textExclusionWindow";
-            this.helpTip.SetToolTip(this.textExclusionWindow, resources.GetString("textExclusionWindow.ToolTip"));
+            this.tabControlPeptidesSmallMols.Controls.Add(this.tabPage1);
+            this.tabControlPeptidesSmallMols.Controls.Add(this.tabPage2);
+            resources.ApplyResources(this.tabControlPeptidesSmallMols, "tabControlPeptidesSmallMols");
+            this.tabControlPeptidesSmallMols.Name = "tabControlPeptidesSmallMols";
+            this.tabControlPeptidesSmallMols.SelectedIndex = 0;
             // 
-            // lbPrecursorMzWindow
+            // tabPage1
             // 
-            resources.ApplyResources(this.lbPrecursorMzWindow, "lbPrecursorMzWindow");
-            this.lbPrecursorMzWindow.Name = "lbPrecursorMzWindow";
+            this.tabPage1.Controls.Add(this.label5);
+            this.tabPage1.Controls.Add(this.textPeptideIonTypes);
+            this.tabPage1.Controls.Add(this.groupBox1);
+            this.tabPage1.Controls.Add(this.label6);
+            this.tabPage1.Controls.Add(this.label8);
+            this.tabPage1.Controls.Add(this.textPeptidePrecursorCharges);
+            this.tabPage1.Controls.Add(this.textPeptideIonCharges);
+            resources.ApplyResources(this.tabPage1, "tabPage1");
+            this.tabPage1.Name = "tabPage1";
+            this.modeUIHandler.SetUIMode(this.tabPage1, pwiz.Skyline.Util.Helpers.ModeUIExtender.MODE_UI_HANDLING_TYPE.proteomic);
+            this.tabPage1.UseVisualStyleBackColor = true;
+            // 
+            // label5
+            // 
+            resources.ApplyResources(this.label5, "label5");
+            this.label5.Name = "label5";
+            // 
+            // textPeptideIonTypes
+            // 
+            resources.ApplyResources(this.textPeptideIonTypes, "textPeptideIonTypes");
+            this.textPeptideIonTypes.Name = "textPeptideIonTypes";
+            this.helpTip.SetToolTip(this.textPeptideIonTypes, resources.GetString("textPeptideIonTypes.ToolTip"));
+            // 
+            // groupBox1
+            // 
+            this.groupBox1.Controls.Add(this.btnEditSpecialTransitions);
+            this.groupBox1.Controls.Add(this.label18);
+            this.groupBox1.Controls.Add(this.listAlwaysAdd);
+            this.groupBox1.Controls.Add(this.comboRangeFrom);
+            this.groupBox1.Controls.Add(this.label3);
+            this.groupBox1.Controls.Add(this.comboRangeTo);
+            this.groupBox1.Controls.Add(this.label4);
+            resources.ApplyResources(this.groupBox1, "groupBox1");
+            this.groupBox1.Name = "groupBox1";
+            this.groupBox1.TabStop = false;
             // 
             // btnEditSpecialTransitions
             // 
@@ -391,27 +412,106 @@
             resources.ApplyResources(this.label4, "label4");
             this.label4.Name = "label4";
             // 
-            // textIonCharges
-            // 
-            resources.ApplyResources(this.textIonCharges, "textIonCharges");
-            this.textIonCharges.Name = "textIonCharges";
-            this.helpTip.SetToolTip(this.textIonCharges, resources.GetString("textIonCharges.ToolTip"));
-            // 
-            // textPrecursorCharges
-            // 
-            resources.ApplyResources(this.textPrecursorCharges, "textPrecursorCharges");
-            this.textPrecursorCharges.Name = "textPrecursorCharges";
-            this.helpTip.SetToolTip(this.textPrecursorCharges, resources.GetString("textPrecursorCharges.ToolTip"));
-            // 
             // label6
             // 
             resources.ApplyResources(this.label6, "label6");
             this.label6.Name = "label6";
             // 
-            // label5
+            // label8
             // 
-            resources.ApplyResources(this.label5, "label5");
-            this.label5.Name = "label5";
+            resources.ApplyResources(this.label8, "label8");
+            this.label8.Name = "label8";
+            // 
+            // textPeptidePrecursorCharges
+            // 
+            resources.ApplyResources(this.textPeptidePrecursorCharges, "textPeptidePrecursorCharges");
+            this.textPeptidePrecursorCharges.Name = "textPeptidePrecursorCharges";
+            this.helpTip.SetToolTip(this.textPeptidePrecursorCharges, resources.GetString("textPeptidePrecursorCharges.ToolTip"));
+            // 
+            // textPeptideIonCharges
+            // 
+            resources.ApplyResources(this.textPeptideIonCharges, "textPeptideIonCharges");
+            this.textPeptideIonCharges.Name = "textPeptideIonCharges";
+            this.helpTip.SetToolTip(this.textPeptideIonCharges, resources.GetString("textPeptideIonCharges.ToolTip"));
+            // 
+            // tabPage2
+            // 
+            this.tabPage2.Controls.Add(this.btnPrecursorAdduct);
+            this.tabPage2.Controls.Add(this.btnFragmentAdduct);
+            this.tabPage2.Controls.Add(this.textSmallMoleculeFragmentAdducts);
+            this.tabPage2.Controls.Add(this.labelSmallMoleculeFragmentAdducts);
+            this.tabPage2.Controls.Add(this.textSmallMoleculeIonTypes);
+            this.tabPage2.Controls.Add(this.labelSmallMoleculeIonTypes);
+            this.tabPage2.Controls.Add(this.textSmallMoleculePrecursorAdducts);
+            this.tabPage2.Controls.Add(this.lblSmallMoleculePrecursorAdducts);
+            resources.ApplyResources(this.tabPage2, "tabPage2");
+            this.tabPage2.Name = "tabPage2";
+            this.modeUIHandler.SetUIMode(this.tabPage2, pwiz.Skyline.Util.Helpers.ModeUIExtender.MODE_UI_HANDLING_TYPE.small_mol);
+            this.tabPage2.UseVisualStyleBackColor = true;
+            // 
+            // btnPrecursorAdduct
+            // 
+            resources.ApplyResources(this.btnPrecursorAdduct, "btnPrecursorAdduct");
+            this.btnPrecursorAdduct.Name = "btnPrecursorAdduct";
+            this.btnPrecursorAdduct.UseVisualStyleBackColor = true;
+            this.btnPrecursorAdduct.Click += new System.EventHandler(this.btnPrecursorAdductClick);
+            // 
+            // btnFragmentAdduct
+            // 
+            resources.ApplyResources(this.btnFragmentAdduct, "btnFragmentAdduct");
+            this.btnFragmentAdduct.Name = "btnFragmentAdduct";
+            this.btnFragmentAdduct.Click += new System.EventHandler(this.btnFragmentAdductClick);
+            // 
+            // textSmallMoleculeFragmentAdducts
+            // 
+            resources.ApplyResources(this.textSmallMoleculeFragmentAdducts, "textSmallMoleculeFragmentAdducts");
+            this.textSmallMoleculeFragmentAdducts.Name = "textSmallMoleculeFragmentAdducts";
+            this.helpTip.SetToolTip(this.textSmallMoleculeFragmentAdducts, resources.GetString("textSmallMoleculeFragmentAdducts.ToolTip"));
+            // 
+            // labelSmallMoleculeFragmentAdducts
+            // 
+            resources.ApplyResources(this.labelSmallMoleculeFragmentAdducts, "labelSmallMoleculeFragmentAdducts");
+            this.labelSmallMoleculeFragmentAdducts.Name = "labelSmallMoleculeFragmentAdducts";
+            // 
+            // textSmallMoleculeIonTypes
+            // 
+            resources.ApplyResources(this.textSmallMoleculeIonTypes, "textSmallMoleculeIonTypes");
+            this.textSmallMoleculeIonTypes.Name = "textSmallMoleculeIonTypes";
+            this.helpTip.SetToolTip(this.textSmallMoleculeIonTypes, resources.GetString("textSmallMoleculeIonTypes.ToolTip"));
+            // 
+            // labelSmallMoleculeIonTypes
+            // 
+            resources.ApplyResources(this.labelSmallMoleculeIonTypes, "labelSmallMoleculeIonTypes");
+            this.labelSmallMoleculeIonTypes.Name = "labelSmallMoleculeIonTypes";
+            // 
+            // textSmallMoleculePrecursorAdducts
+            // 
+            resources.ApplyResources(this.textSmallMoleculePrecursorAdducts, "textSmallMoleculePrecursorAdducts");
+            this.textSmallMoleculePrecursorAdducts.Name = "textSmallMoleculePrecursorAdducts";
+            this.helpTip.SetToolTip(this.textSmallMoleculePrecursorAdducts, resources.GetString("textSmallMoleculePrecursorAdducts.ToolTip"));
+            // 
+            // lblSmallMoleculePrecursorAdducts
+            // 
+            resources.ApplyResources(this.lblSmallMoleculePrecursorAdducts, "lblSmallMoleculePrecursorAdducts");
+            this.lblSmallMoleculePrecursorAdducts.Name = "lblSmallMoleculePrecursorAdducts";
+            // 
+            // textExclusionWindow
+            // 
+            resources.ApplyResources(this.textExclusionWindow, "textExclusionWindow");
+            this.textExclusionWindow.Name = "textExclusionWindow";
+            this.helpTip.SetToolTip(this.textExclusionWindow, resources.GetString("textExclusionWindow.ToolTip"));
+            // 
+            // cbAutoSelect
+            // 
+            resources.ApplyResources(this.cbAutoSelect, "cbAutoSelect");
+            this.cbAutoSelect.Name = "cbAutoSelect";
+            this.helpTip.SetToolTip(this.cbAutoSelect, resources.GetString("cbAutoSelect.ToolTip"));
+            this.cbAutoSelect.UseVisualStyleBackColor = true;
+            // 
+            // lbPrecursorMzWindow
+            // 
+            resources.ApplyResources(this.lbPrecursorMzWindow, "lbPrecursorMzWindow");
+            this.lbPrecursorMzWindow.Name = "lbPrecursorMzWindow";
             // 
             // tabLibrary
             // 
@@ -431,6 +531,8 @@
             // 
             // panelPick
             // 
+            this.panelPick.Controls.Add(this.label22);
+            this.panelPick.Controls.Add(this.textMinIonCount);
             this.panelPick.Controls.Add(this.radioAllAndFiltered);
             this.panelPick.Controls.Add(this.radioFiltered);
             this.panelPick.Controls.Add(this.radioAll);
@@ -439,6 +541,17 @@
             this.panelPick.Controls.Add(this.textIonCount);
             resources.ApplyResources(this.panelPick, "panelPick");
             this.panelPick.Name = "panelPick";
+            // 
+            // label22
+            // 
+            resources.ApplyResources(this.label22, "label22");
+            this.label22.Name = "label22";
+            // 
+            // textMinIonCount
+            // 
+            resources.ApplyResources(this.textMinIonCount, "textMinIonCount");
+            this.textMinIonCount.Name = "textMinIonCount";
+            this.helpTip.SetToolTip(this.textMinIonCount, resources.GetString("textMinIonCount.ToolTip"));
             // 
             // radioAllAndFiltered
             // 
@@ -501,6 +614,7 @@
             // 
             // tabInstrument
             // 
+            this.tabInstrument.Controls.Add(this.cbxTriggeredAcquisition);
             this.tabInstrument.Controls.Add(this.textMaxInclusions);
             this.tabInstrument.Controls.Add(this.label21);
             this.tabInstrument.Controls.Add(this.label30);
@@ -524,6 +638,13 @@
             resources.ApplyResources(this.tabInstrument, "tabInstrument");
             this.tabInstrument.Name = "tabInstrument";
             this.tabInstrument.UseVisualStyleBackColor = true;
+            // 
+            // cbxTriggeredAcquisition
+            // 
+            resources.ApplyResources(this.cbxTriggeredAcquisition, "cbxTriggeredAcquisition");
+            this.cbxTriggeredAcquisition.Name = "cbxTriggeredAcquisition";
+            this.helpTip.SetToolTip(this.cbxTriggeredAcquisition, resources.GetString("cbxTriggeredAcquisition.ToolTip"));
+            this.cbxTriggeredAcquisition.UseVisualStyleBackColor = true;
             // 
             // textMaxInclusions
             // 
@@ -640,11 +761,35 @@
             this.tabFullScan.Name = "tabFullScan";
             this.tabFullScan.UseVisualStyleBackColor = true;
             // 
+            // tabIonMobility
+            // 
+            this.tabIonMobility.Controls.Add(this.ionMobilityFilteringControl);
+            resources.ApplyResources(this.tabIonMobility, "tabIonMobility");
+            this.tabIonMobility.Name = "tabIonMobility";
+            this.tabIonMobility.UseVisualStyleBackColor = true;
+            // 
+            // ionMobilityFilteringControl
+            // 
+            this.ionMobilityFilteringControl.IonMobilityFilterResolvingPower = null;
+            this.ionMobilityFilteringControl.IsUseSpectralLibraryIonMobilities = false;
+            resources.ApplyResources(this.ionMobilityFilteringControl, "ionMobilityFilteringControl");
+            this.ionMobilityFilteringControl.Name = "ionMobilityFilteringControl";
+            // 
             // helpTip
             // 
             this.helpTip.AutoPopDelay = 32767;
             this.helpTip.InitialDelay = 500;
             this.helpTip.ReshowDelay = 100;
+            // 
+            // contextMenuStripPrecursorAdduct
+            // 
+            this.contextMenuStripPrecursorAdduct.Name = "contextMenuStripPrecursorAdduct";
+            resources.ApplyResources(this.contextMenuStripPrecursorAdduct, "contextMenuStripPrecursorAdduct");
+            // 
+            // contextMenuStripFragmentAdduct
+            // 
+            this.contextMenuStripFragmentAdduct.Name = "contextMenuStripFragmentAdduct";
+            resources.ApplyResources(this.contextMenuStripFragmentAdduct, "contextMenuStripFragmentAdduct");
             // 
             // TransitionSettingsUI
             // 
@@ -665,14 +810,20 @@
             this.tabGeneral.PerformLayout();
             this.tabFilter.ResumeLayout(false);
             this.tabFilter.PerformLayout();
+            this.tabControlPeptidesSmallMols.ResumeLayout(false);
+            this.tabPage1.ResumeLayout(false);
+            this.tabPage1.PerformLayout();
             this.groupBox1.ResumeLayout(false);
             this.groupBox1.PerformLayout();
+            this.tabPage2.ResumeLayout(false);
+            this.tabPage2.PerformLayout();
             this.tabLibrary.ResumeLayout(false);
             this.tabLibrary.PerformLayout();
             this.panelPick.ResumeLayout(false);
             this.panelPick.PerformLayout();
             this.tabInstrument.ResumeLayout(false);
             this.tabInstrument.PerformLayout();
+            this.tabIonMobility.ResumeLayout(false);
             this.ResumeLayout(false);
 
         }
@@ -696,18 +847,20 @@
         private System.Windows.Forms.ComboBox comboRangeTo;
         private System.Windows.Forms.ComboBox comboCollisionEnergy;
         private System.Windows.Forms.Label label7;
-        private System.Windows.Forms.TextBox textIonCharges;
-        private System.Windows.Forms.TextBox textPrecursorCharges;
+        private System.Windows.Forms.TextBox textPeptideIonCharges;
+        private System.Windows.Forms.TextBox textPeptidePrecursorCharges;
         private System.Windows.Forms.GroupBox groupBox1;
         private System.Windows.Forms.CheckBox cbAutoSelect;
         private System.Windows.Forms.TabPage tabInstrument;
+        private IonMobility.IonMobilityFilteringUserControl ionMobilityFilteringControl;
+        private System.Windows.Forms.TabPage tabIonMobility;
         private System.Windows.Forms.Label label10;
         private System.Windows.Forms.Label label11;
         private System.Windows.Forms.TextBox textMaxMz;
         private System.Windows.Forms.TextBox textMinMz;
         private System.Windows.Forms.ComboBox comboDeclusterPotential;
         private System.Windows.Forms.Label label12;
-        private System.Windows.Forms.TextBox textIonTypes;
+        private System.Windows.Forms.TextBox textPeptideIonTypes;
         private System.Windows.Forms.Label label8;
         private System.Windows.Forms.TabPage tabLibrary;
         private System.Windows.Forms.Label label14;
@@ -753,5 +906,21 @@
         private System.Windows.Forms.CheckBox cbExclusionUseDIAWindow;
         private System.Windows.Forms.ComboBox comboCompensationVoltage;
         private System.Windows.Forms.Label label19;
+        private System.Windows.Forms.TabControl tabControlPeptidesSmallMols;
+        private System.Windows.Forms.TabPage tabPage1;
+        private System.Windows.Forms.TabPage tabPage2;
+        private System.Windows.Forms.TextBox textSmallMoleculeFragmentAdducts;
+        private System.Windows.Forms.Label labelSmallMoleculeFragmentAdducts;
+        private System.Windows.Forms.TextBox textSmallMoleculeIonTypes;
+        private System.Windows.Forms.Label labelSmallMoleculeIonTypes;
+        private System.Windows.Forms.TextBox textSmallMoleculePrecursorAdducts;
+        private System.Windows.Forms.Label lblSmallMoleculePrecursorAdducts;
+        private System.Windows.Forms.Button btnPrecursorAdduct;
+        private System.Windows.Forms.ContextMenuStrip contextMenuStripPrecursorAdduct;
+        private System.Windows.Forms.Button btnFragmentAdduct;
+        private System.Windows.Forms.ContextMenuStrip contextMenuStripFragmentAdduct;
+        private System.Windows.Forms.Label label22;
+        private System.Windows.Forms.TextBox textMinIonCount;
+        private System.Windows.Forms.CheckBox cbxTriggeredAcquisition;
     }
 }

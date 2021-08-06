@@ -19,14 +19,20 @@
     <property name="PeptideSeq" column="peptideSeq" index="idxPeptide" not-null="true"/>
     <property name="PeptideModSeq" column="peptideModSeq" index="idxPeptideMod" not-null="true"/>
     <property name="PrecursorCharge" column="precursorCharge" index="idxPeptideMod" not-null="true"/>
+    <property name="PrecursorAdduct" column="precursorAdduct" index="idxMoleculeName"/>
     <property name="PrecursorMZ" column="precursorMZ" not-null="true"/>
+    <property name="MoleculeName" column="moleculeName" index="idxMoleculeName" not-null="true"/>
+    <property name="ChemicalFormula" column="chemicalFormula" not-null="true"/>
+    <property name="InChiKey" column="inchiKey" index="idxInChiKey" not-null="true"/>
+    <property name="OtherKeys" column="otherKeys" not-null="true"/>
     <property name="PrevAA" column="prevAA"/>
     <property name="NextAA" column="nextAA"/>
     <property name="Copies" column="copies" not-null="true"/>
     <property name="NumPeaks" column="numPeaks" not-null="true"/>
-    <property name="DriftTimeMsec" column="driftTimeMsec"/>
+    <property name="IonMobility" column="ionMobility"/>
     <property name="CollisionalCrossSectionSqA" column="collisionalCrossSectionSqA"/>
-    <property name="DriftTimeHighEnergyOffsetMsec" column="driftTimeHighEnergyOffsetMsec"/>
+    <property name="IonMobilityHighEnergyOffset" column="ionMobilityHighEnergyOffset"/>
+    <property name="IonMobilityType" column="ionMobilityType"/>
     <property name="RetentionTime" column="retentionTime"/>
     <property name="FileId" column="fileId"/>
     <property name="SpecIdInFile" column="SpecIDinFile"/>
@@ -36,6 +42,10 @@
     <bag name="Modifications" cascade="save-update">
       <key column="RefSpectraId"/>
       <one-to-many class="DbModification"/>
+    </bag>
+    <bag name="PeakAnnotations" cascade="save-update">
+      <key column="RefSpectraId"/>
+      <one-to-many class="DbRefSpectraPeakAnnotations"/>
     </bag>
     <bag name="RetentionTimes" cascade="save-update">
       <key column="RefSpectraId"/>
@@ -71,9 +81,10 @@
     <many-to-one name="RefSpectra" column="RefSpectraId"/>
     <property name="RedundantRefSpectraId" column="RedundantRefSpectraId"/>
     <property name="SpectrumSourceId" column="SpectrumSourceId"/>
-    <property name="DriftTimeMsec" column="driftTimeMsec"/>
+    <property name="IonMobility" column="ionMobility"/>
     <property name="CollisionalCrossSectionSqA" column="collisionalCrossSectionSqA"/>
-    <property name="HighEnergyDriftTimeOffsetMsec" column="driftTimeHighEnergyOffsetMsec"/>
+    <property name="IonMobilityHighEnergyOffset" column="ionMobilityHighEnergyOffset"/>
+    <property name="IonMobilityType" column="ionMobilityType"/>
     <property name="RetentionTime" column="retentionTime"/>
     <property name="BestSpectrum" column="bestSpectrum"/>
   </class>
@@ -90,5 +101,24 @@
       <generator class="native"/>
     </id>
     <property name="FileName" column="fileName"/>
+    <property name="IdFileName" column="idFileName"/>
+    <property name="CutoffScore" column="cutoffScore"/>
+  </class>
+  <class name="DbRefSpectraPeakAnnotations" table="RefSpectraPeakAnnotations">
+    <id name="Id">
+      <column name="id" not-null="true"/>
+      <generator class="native" />
+    </id>
+    <many-to-one name="RefSpectra" column="RefSpectraID"/>
+    <property name="PeakIndex" column="peakIndex" not-null="true"/>
+    <property name="Name" column="name"/>  
+    <property name="Formula" column="formula"/> 
+    <property name="InchiKey" column="inchiKey"/> 
+    <property name="OtherKeys" column="otherKeys"/>  
+    <property name="Charge" column="charge"/> 
+    <property name="Adduct" column="adduct"/> 
+    <property name="Comment" column="comment"/> 
+    <property name="mzTheoretical" column="mzTheoretical" not-null="true"/>
+    <property name="mzObserved" column="mzObserved" not-null="true"/>
   </class>
 </hibernate-mapping>

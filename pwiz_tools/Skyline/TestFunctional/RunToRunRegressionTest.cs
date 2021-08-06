@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Model.DocSettings;
@@ -108,10 +109,10 @@ namespace pwiz.SkylineTestFunctional
 
             WaitForGraphs();
 
-            Assert.IsTrue(graphSummary.IsRunToRun);
             RTLinearRegressionGraphPane regressionPane;
             if (!graphSummary.TryGetGraphPane(out regressionPane))
                 Assert.Fail("First graph pane was not RTLinearRegressionGraphPane");
+            Assert.IsTrue(regressionPane.HasToolbar);
 
             //Assert all values in regression match
             for (var i = 0; i < REPLICATES; i++)
@@ -121,40 +122,45 @@ namespace pwiz.SkylineTestFunctional
                     if (i == j)
                         continue;
                     int targetIndex = i, originalIndex = j;
+                    var summary = graphSummary;
                     RunUI(() =>
                     {
-                        graphSummary.RunToRunTargetReplicate.SelectedIndex = targetIndex;
-                        graphSummary.RunToRunOriginalReplicate.SelectedIndex = originalIndex;
+                        RunToRunTargetReplicate(summary).SelectedIndex = targetIndex;
+                        RunToRunOriginalReplicate(summary).SelectedIndex = originalIndex;
 
-                        Assert.AreEqual(targetIndex, graphSummary.StateProvider.SelectedResultsIndex);
+                        Assert.AreEqual(targetIndex, summary.StateProvider.SelectedResultsIndex);
                     });
                     WaitForGraphs();
-
-                    var window = TestRegressionStatisitcs(regressionPane, i, j);
+                    WaitForConditionUI(() => regressionPane._progressBar == null);
+                    var window = TestRegressionStatistics(regressionPane, i, j);
 
                     RunUI(() => SkylineWindow.ShowPlotType(PlotTypeRT.residuals));
-
-                    // Check that residual graph makes sense
-                    var pointList = regressionPane.CurveList.First().Points;
-                    var yList = new List<double>();
-                    for (var p = 0; p < pointList.Count; p++)
+                    WaitForGraphs();
+                    RunUI(() =>
                     {
-                        var point = pointList[p];
-                        yList.Add(point.Y);
-                    }
+                        // Check that residual graph makes sense
+                        var pointList = regressionPane.CurveList.First().Points;
+                        var yList = new List<double>();
+                        for (var p = 0; p < pointList.Count; p++)
+                        {
+                            var point = pointList[p];
+                            yList.Add(point.Y);
+                        }
 
-                    var residualStat = new Statistics(yList);
+                        var residualStat = new Statistics(yList);
 
-                    // Value taken from Prediction.CalcRegression
-                    var windowFromResidualGraph = Math.Max(0.5, 4 * residualStat.StdDev());
+                        // Value taken from Prediction.CalcRegression
+                        var windowFromResidualGraph = Math.Max(0.5, 4 * residualStat.StdDev());
 
-                    if (!IsRecordMode)
-                        Assert.AreEqual(window, windowFromResidualGraph, 0.001);
+                        if (!IsRecordMode)
+                            Assert.AreEqual(window, windowFromResidualGraph, 0.001);
+                    });
 
                     // Go back to correlation graph and make sure everything is still right
                     RunUI(() => SkylineWindow.ShowPlotType(PlotTypeRT.correlation));
-
-                    TestRegressionStatisitcs(regressionPane, i, j);
+                    WaitForGraphs();
+                    WaitForConditionUI(() => regressionPane._progressBar == null);
+                    TestRegressionStatistics(regressionPane, i, j);
                 }
             }
 
@@ -165,29 +171,37 @@ namespace pwiz.SkylineTestFunctional
             for (var i = 0; i < REPLICATES; i++)
             {
                 int selfIndex = i;
+                var summary = graphSummary;
                 RunUI(() =>
                 {
                     SkylineWindow.ShowPlotType(PlotTypeRT.correlation);
-                    graphSummary.RunToRunTargetReplicate.SelectedIndex = selfIndex;
-                    graphSummary.RunToRunOriginalReplicate.SelectedIndex = selfIndex;
+                    RunToRunTargetReplicate(summary).SelectedIndex = selfIndex;
+                    RunToRunOriginalReplicate(summary).SelectedIndex = selfIndex;
                 });
                 WaitForGraphs();
-                var regression = regressionPane.RegressionRefined;
-                var statistics = regressionPane.StatisticsRefined;
-                Assert.AreEqual(1, statistics.R, 10e-3);
-                var regressionLine = (RegressionLineElement) regression.Conversion;
-                Assert.AreEqual(1, regressionLine.Slope, 10e-3);
-                Assert.AreEqual(0, regressionLine.Intercept, 10e-3);
-                Assert.AreEqual(0.5, regression.TimeWindow, 0.00001);
+                WaitForConditionUI(() => regressionPane._progressBar == null);
+                RunUI(() =>
+                {
+                    var regression = regressionPane.RegressionRefined;
+                    var statistics = regressionPane.StatisticsRefined;
+                    Assert.AreEqual(1, statistics.R, 10e-3);
+                    var regressionLine = (RegressionLineElement)regression.Conversion;
+                    Assert.AreEqual(1, regressionLine.Slope, 10e-3);
+                    Assert.AreEqual(0, regressionLine.Intercept, 10e-3);
+                    Assert.AreEqual(0.5, regression.TimeWindow, 0.00001);
+                });
 
                 RunUI(() => SkylineWindow.ShowPlotType(PlotTypeRT.residuals));
-
-                //All residuals should be zero
-                var pointList = regressionPane.CurveList.First().Points;
-                for (var p = 0; p < pointList.Count; p++)
+                WaitForGraphs();
+                RunUI(() =>
                 {
-                    Assert.AreEqual(0, pointList[p].Y);
-                }
+                    //All residuals should be zero
+                    var pointList = regressionPane.CurveList.First().Points;
+                    for (var p = 0; p < pointList.Count; p++)
+                    {
+                        Assert.AreEqual(0, pointList[p].Y);
+                    }
+                });
             }
 
             // Make sure switching to score to run works correctly
@@ -196,13 +210,16 @@ namespace pwiz.SkylineTestFunctional
                 SkylineWindow.ShowPlotType(PlotTypeRT.correlation);
                 SkylineWindow.ShowRTRegressionGraphScoreToRun();
             });
-            if (!graphSummary.TryGetGraphPane(out regressionPane))
+            graphSummary = SkylineWindow.GraphRetentionTime;
+            RTLinearRegressionGraphPane regressionPaneScore;           
+            if (!graphSummary.TryGetGraphPane(out regressionPaneScore))
                 Assert.Fail("First graph pane was not RTLinearRegressionGraphPane");
-            WaitForCondition(() => regressionPane.IsRefined);
+            WaitForCondition(() => regressionPaneScore.IsRefined);
+            WaitForConditionUI(() => regressionPaneScore._progressBar == null);
 
-            Assert.IsFalse(graphSummary.IsRunToRun);
-            var regressionScoreToRun = regressionPane.RegressionRefined;
-            var statisticsScoreToRun = regressionPane.StatisticsRefined;
+            Assert.IsFalse(regressionPaneScore.HasToolbar);
+            var regressionScoreToRun = regressionPaneScore.RegressionRefined;
+            var statisticsScoreToRun = regressionPaneScore.StatisticsRefined;
             var regressionScoreToRunLine = (RegressionLineElement) regressionScoreToRun.Conversion;
             Assert.AreEqual(1.01, regressionScoreToRunLine.Slope, 10e-3);
             Assert.AreEqual(0.32, regressionScoreToRunLine.Intercept, 10e-3);
@@ -210,10 +227,29 @@ namespace pwiz.SkylineTestFunctional
             Assert.AreEqual(0.9483, statisticsScoreToRun.R, 10e-3);
 
             RunUI(SkylineWindow.ShowRTRegressionGraphRunToRun);
-            Assert.IsTrue(graphSummary.IsRunToRun);
+            WaitForGraphs();
+            graphSummary = SkylineWindow.GraphRetentionTime;
+            if (!graphSummary.TryGetGraphPane(out regressionPane))
+                Assert.Fail("First graph pane was not RTLinearRegressionGraphPane");
+            Assert.IsTrue(regressionPane.HasToolbar);
         }
 
-        private double TestRegressionStatisitcs(RTLinearRegressionGraphPane regressionPane, int i, int j)
+        public RunToRunRegressionToolbar RegressionToolbar(GraphSummary graphSummary)
+        {
+            return graphSummary.Toolbar as RunToRunRegressionToolbar;
+        }
+
+        public ToolStripComboBox RunToRunTargetReplicate(GraphSummary graphSummary)
+        {
+            return RegressionToolbar(graphSummary).RunToRunTargetReplicate;
+        }
+
+        public ToolStripComboBox RunToRunOriginalReplicate(GraphSummary graphSummary)
+        {
+            return RegressionToolbar(graphSummary).RunToRunOriginalReplicate;
+        }
+
+        private double TestRegressionStatistics(RTLinearRegressionGraphPane regressionPane, int i, int j)
         {
             var regression = regressionPane.RegressionRefined;
             var statistics = regressionPane.StatisticsRefined;

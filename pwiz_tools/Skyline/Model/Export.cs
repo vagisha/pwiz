@@ -20,6 +20,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -27,17 +28,22 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
 using System.Xml;
 using System.Xml.Serialization;
+using Microsoft.Win32;
+using pwiz.CLI.Bruker.PrmScheduling;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 using Shimadzu.LabSolutions.MethodConverter;
 using Shimadzu.LabSolutions.MethodWriter;
+using ZedGraph;
+using Process = System.Diagnostics.Process;
+using Thread = System.Threading.Thread;
 
 namespace pwiz.Skyline.Model
 {
@@ -162,20 +168,21 @@ namespace pwiz.Skyline.Model
 // ReSharper restore InconsistentNaming
     public static class ExportInstrumentType
     {
-        // ReSharper disable NonLocalizedString
-        public const string ABI = "AB SCIEX";
-        public const string ABI_QTRAP = "AB SCIEX QTRAP";
-        public const string ABI_TOF = "AB SCIEX TOF";
+        public const string ABI = "SCIEX";
+        public const string ABI_QTRAP = "SCIEX QTRAP";
+        public const string ABI_TOF = "SCIEX QTOF";
         public const string AGILENT = "Agilent";
-        public const string AGILENT_TOF = "Agilent TOF";
+        public const string AGILENT_TOF = "Agilent QTOF";
         public const string AGILENT6400 = "Agilent 6400 Series";
         public const string BRUKER = "Bruker";
-        public const string BRUKER_TOF = "Bruker TOF";
+        public const string BRUKER_TOF = "Bruker QTOF";
+        public const string BRUKER_TIMSTOF = "Bruker timsTOF";
         public const string SHIMADZU = "Shimadzu";
         public const string THERMO = "Thermo";
         public const string THERMO_TSQ = "Thermo TSQ";
         public const string THERMO_ENDURA = "Thermo Endura";
         public const string THERMO_QUANTIVA = "Thermo Quantiva";
+        public const string THERMO_ALTIS = "Thermo Altis";
         public const string THERMO_FUSION = "Thermo Fusion";
         public const string THERMO_LTQ = "Thermo LTQ";
         public const string THERMO_Q_EXACTIVE = "Thermo Q Exactive";
@@ -189,21 +196,23 @@ namespace pwiz.Skyline.Model
         public const string EXT_AB_SCIEX = ".dam";
         public const string EXT_AGILENT = ".m";
         public const string EXT_BRUKER = ".m";
+        public const string EXT_BRUKER_TIMSTOF = ".prmsqlite";
         public const string EXT_SHIMADZU = ".lcm";
         public const string EXT_THERMO = ".meth";
         public const string EXT_WATERS = ".exp";
-        // ReSharper restore NonLocalizedString
 
         public static readonly string[] METHOD_TYPES =
             {
-                ABI_QTRAP,
-                ABI_TOF,
                 AGILENT6400,
                 BRUKER_TOF,
+                BRUKER_TIMSTOF,
+                ABI_QTRAP,
+                ABI_TOF,
                 SHIMADZU,
                 THERMO_TSQ,
                 THERMO_LTQ,
                 THERMO_QUANTIVA,
+                THERMO_ALTIS,
                 THERMO_FUSION,
                 WATERS_XEVO_TQ,
                 WATERS_QUATTRO_PREMIER,
@@ -211,19 +220,20 @@ namespace pwiz.Skyline.Model
 
         public static readonly string[] TRANSITION_LIST_TYPES =
             {
-                ABI,
                 AGILENT,
                 BRUKER,
+                ABI,
                 SHIMADZU,
                 THERMO,
                 THERMO_QUANTIVA,
+                THERMO_ALTIS,
                 WATERS
             };
 
         public static readonly string[] ISOLATION_LIST_TYPES =
             {
-                ABI_TOF,
                 AGILENT_TOF,
+                ABI_TOF,
                 THERMO_Q_EXACTIVE,
                 THERMO_FUSION,
                 WATERS_SYNAPT_TRAP,
@@ -241,10 +251,12 @@ namespace pwiz.Skyline.Model
                                        {ABI_TOF, EXT_AB_SCIEX},
                                        {AGILENT6400, EXT_AGILENT},
                                        {BRUKER_TOF, EXT_BRUKER},
+                                       {BRUKER_TIMSTOF, EXT_BRUKER_TIMSTOF},
                                        {SHIMADZU, EXT_SHIMADZU},
                                        {THERMO_TSQ, EXT_THERMO},
                                        {THERMO_LTQ, EXT_THERMO},
                                        {THERMO_QUANTIVA, EXT_THERMO},
+                                       {THERMO_ALTIS, EXT_THERMO},
                                        {THERMO_FUSION, EXT_THERMO},
                                        {WATERS_XEVO_TQ, EXT_WATERS},
                                        {WATERS_QUATTRO_PREMIER, EXT_WATERS}
@@ -343,6 +355,7 @@ namespace pwiz.Skyline.Model
     public abstract class ExportProperties
     {
         public virtual ExportStrategy ExportStrategy { get; set; }
+        public virtual bool SortByMz { get; set; }
         public virtual bool IgnoreProteins { get; set; }
         public virtual int? MaxTransitions { get; set; }
         public virtual ExportMethodType MethodType { get; set; }
@@ -356,10 +369,12 @@ namespace pwiz.Skyline.Model
         public virtual int PrimaryTransitionCount { get; set; }
         public virtual int DwellTime { get; set; }
         public virtual bool UseSlens { get; set; }
+        public virtual bool WriteCompensationVoltages { get; set; }
         public virtual bool AddEnergyRamp { get; set; }
         public virtual bool AddTriggerReference { get; set; }
         public virtual double RunLength { get; set; }
         public virtual bool FullScans { get; set; }
+        public virtual bool Tune3 { get; set; }
 
         public virtual bool Ms1Scan { get; set; }
         public virtual bool InclusionList { get; set; }
@@ -375,10 +390,13 @@ namespace pwiz.Skyline.Model
 
         public virtual bool ExportEdcMass { get; set; }
 
+        public virtual double Ms1RepetitionTime { get; set; }
+
         public TExp InitExporter<TExp>(TExp exporter)
             where TExp : AbstractMassListExporter
         {
             exporter.Strategy = ExportStrategy;
+            exporter.SortByMz = SortByMz;
             exporter.IgnoreProteins = IgnoreProteins;
             exporter.InclusionList = InclusionList;
             exporter.MaxTransitions = MaxTransitions;
@@ -429,6 +447,8 @@ namespace pwiz.Skyline.Model
                         return null;
                     }
                     return ExportBrukerMethod(doc, path, template);
+                case ExportInstrumentType.BRUKER_TIMSTOF:
+                    return ExportBrukerTimsTofMethod(doc, path, template);
                 case ExportInstrumentType.THERMO:
                 case ExportInstrumentType.THERMO_TSQ:
                     if (type == ExportFileType.List)
@@ -436,13 +456,26 @@ namespace pwiz.Skyline.Model
                     else
                         return ExportThermoMethod(doc, path, template);
                 case ExportInstrumentType.THERMO_QUANTIVA:
+                case ExportInstrumentType.THERMO_ALTIS:
                     if (type == ExportFileType.List)
                         return ExportThermoQuantivaCsv(doc, path);
                     else
                         return ExportThermoQuantivaMethod(doc, path, template, instrumentType);
                 case ExportInstrumentType.THERMO_FUSION:
                     if (type == ExportFileType.IsolationList)
+                    {
+                        if (doc.Settings.TransitionSettings.FullScan.AcquisitionMethod == FullScanAcquisitionMethod.DIA)
+                        {
+                            ExportThermoFusionDiaList(
+                                doc.Settings.TransitionSettings.FullScan.IsolationScheme,
+                                doc.Settings.TransitionSettings.Instrument.MaxInclusions,
+                                path,
+                                MultiplexIsolationListCalculationTime,
+                                DebugCycles);
+                            return null;
+                        }
                         return ExportThermoFusionIsolationList(doc, path, template);
+                    }
                     else
                         return ExportThermoFusionMethod(doc, path, template);
                 case ExportInstrumentType.SHIMADZU:
@@ -572,6 +605,15 @@ namespace pwiz.Skyline.Model
             PerformLongExport(m => exporter.ExportMethod(fileName, templateName, m));
         }
 
+        public AbstractMassListExporter ExportBrukerTimsTofMethod(SrmDocument document, string filename, string templateName)
+        {
+            var exporter = InitExporter(new BrukerTimsTofMethodExporter(document));
+            exporter.RunLength = RunLength;
+            exporter.Ms1RepetitionTime = Ms1RepetitionTime;
+            PerformLongExport(m => exporter.ExportMethod(filename, templateName, m, out _, out _, false));
+            return exporter;
+        }
+
         public AbstractMassListExporter ExportThermoCsv(SrmDocument document, string fileName)
         {
             var exporter = InitExporter(new ThermoMassListExporter(document));
@@ -588,6 +630,7 @@ namespace pwiz.Skyline.Model
         {
             var exporter = InitExporter(new ThermoQuantivaMassListExporter(document));
             exporter.UseSlens = UseSlens;
+            exporter.WriteFaimsCv = WriteCompensationVoltages;
             if (MethodType == ExportMethodType.Standard)
                 exporter.RunLength = RunLength;
             exporter.RetentionStartAndEnd = RetentionStartAndEnd;
@@ -668,6 +711,7 @@ namespace pwiz.Skyline.Model
         {
             var exporter = InitExporter(new ThermoFusionMethodExporter(document));
             exporter.UseSlens = UseSlens;
+            exporter.WriteFaimsCv = WriteCompensationVoltages;
 
             if (MethodType == ExportMethodType.Standard)
                 exporter.RunLength = RunLength;
@@ -681,9 +725,22 @@ namespace pwiz.Skyline.Model
         {
             var exporter = InitExporter(new ThermoFusionIsolationListExporter(document));
             exporter.UseSlens = UseSlens;
+            exporter.WriteFaimsCv = WriteCompensationVoltages;
+            exporter.Tune3 = Tune3;
             PerformLongExport(m => exporter.ExportMethod(fileName, templateName, m));
 
             return exporter;
+        }
+
+        public void ExportThermoFusionDiaList(IsolationScheme isolationScheme, int? maxInclusions, string fileName,
+            int calculationTime, bool debugCycles)
+        {
+            var exporter = new ThermoFusionDiaExporter(isolationScheme, maxInclusions)
+            {
+                CalculationTime = calculationTime,
+                DebugCycles = debugCycles
+            };
+            PerformLongExport(m => exporter.ExportIsolationList(fileName, m));
         }
 
         public AbstractMassListExporter ExportThermoQExactiveIsolationList(SrmDocument document, string fileName, string templateName)
@@ -777,12 +834,12 @@ namespace pwiz.Skyline.Model
     {
         private bool _addTriggerReference;
         public const double DEFAULT_SLENS = 50; // per Rick Bagshaw
-        protected HashSet<string> _setRTStandards;
+        protected HashSet<Target> _setRTStandards;
 
         public ThermoMassListExporter(SrmDocument document)
             : base(document, null)
         {
-            _setRTStandards = new HashSet<string>();
+            _setRTStandards = new HashSet<Target>();
         }
 
         public bool AddEnergyRamp { get; set; }
@@ -864,11 +921,11 @@ namespace pwiz.Skyline.Model
 
                 if (UseSlens)
                 {
-                    writer.Write(nodeTranGroup.ExplicitValues.SLens ?? DEFAULT_SLENS);
+                    writer.Write(ExplicitTransitionValues.Get(nodeTran).SLens ?? DEFAULT_SLENS);
                     writer.Write(FieldSeparator);
                 }
 
-                writer.Write((nodeTranGroup.TransitionGroup.PrecursorCharge > 0) ? 1 : 0);  // Polarity
+                writer.Write((nodeTranGroup.TransitionGroup.PrecursorAdduct.AdductCharge > 0) ? 1 : 0);  // Polarity
                 writer.Write(FieldSeparator);                    
 
                 if (MethodType == ExportMethodType.Triggered)
@@ -889,7 +946,7 @@ namespace pwiz.Skyline.Model
                     }
                     else
                     {
-                        writer.Write("1.0E+10");  // Trigger // Not L10N: Number
+                        writer.Write(@"1.0E+10");  // Trigger 
                         writer.Write(FieldSeparator);
                         writer.Write(1);          // Secondary
                         writer.Write(FieldSeparator);
@@ -906,7 +963,7 @@ namespace pwiz.Skyline.Model
                     }
                     else
                     {
-                        writer.Write("1.0E+10");  // Trigger // Not L10N: Number
+                        writer.Write(@"1.0E+10");  // Trigger 
                         writer.Write(FieldSeparator);
                         writer.Write(0);     // Reference
                         writer.Write(FieldSeparator);
@@ -929,7 +986,7 @@ namespace pwiz.Skyline.Model
                     writer.Write(RunLength);
                     writer.Write(FieldSeparator);
                 }
-                writer.Write((nodeTranGroup.TransitionGroup.PrecursorCharge > 0) ? 1 : 0);  // Polarity
+                writer.Write((nodeTranGroup.TransitionGroup.PrecursorAdduct.AdductCharge > 0) ? 1 : 0);  // Polarity
                 writer.Write(FieldSeparator);                                    
             }
             // Write modified sequence for the light peptide molecular structure
@@ -949,6 +1006,87 @@ namespace pwiz.Skyline.Model
 
             writer.WriteLine();
         }
+
+        protected const string EXE_BUILD_METHOD = @"Method\Thermo\BuildThermoMethod";
+
+        // ReSharper disable LocalizableElement
+        private static readonly string[] DEPENDENCY_LIBRARIES = {
+                                                                    "Thermo.TNG.MethodXMLFactory.dll",
+                                                                    "Thermo.TNG.MethodXMLInterface.dll"
+                                                                };
+        // ReSharper restore LocalizableElement
+
+        protected static void EnsureLibraries()
+        {
+            string skylinePath = Assembly.GetExecutingAssembly().Location;
+            if (string.IsNullOrEmpty(skylinePath))
+                throw new IOException(Resources.ThermoMassListExporter_EnsureLibraries_Thermo_method_creation_software_may_not_be_installed_correctly_);
+
+            // ReSharper disable ConstantNullCoalescingCondition
+            string buildSubdir = Path.GetDirectoryName(EXE_BUILD_METHOD) ?? string.Empty;
+            string exeDir = Path.Combine(Path.GetDirectoryName(skylinePath) ?? string.Empty, buildSubdir);
+            string instrumentSoftwarePath = GetSoftwarePath();                                                        
+            if (instrumentSoftwarePath == null)
+            {
+                // If all the necessary libraries exist, then continue even if MassLynx is gone.
+                foreach (var libraryName in DEPENDENCY_LIBRARIES)
+                {
+                    if (!File.Exists(Path.Combine(exeDir, libraryName)))
+                        throw new IOException(Resources.ThermoMassListExporter_EnsureLibraries_Failed_to_find_a_valid_Thermo_instrument_installation_);
+                }
+                return;
+            }
+
+            // ReSharper restore ConstantNullCoalescingCondition
+            foreach (var library in DEPENDENCY_LIBRARIES)
+            {
+                string srcFile = Path.Combine(instrumentSoftwarePath, library);
+                if (!File.Exists(srcFile))
+                {
+                    throw new IOException(
+                        string.Format(Resources.ThermoMassListExporter_EnsureLibraries_Thermo_instrument_software_may_not_be_installed_correctly__The_library__0__could_not_be_found_,
+                                      srcFile));
+                }
+                // If destination file does not exist or has a different modification time from
+                // the source, then copy the source file from the installation.
+                string destFile = Path.Combine(exeDir, library);
+                if (!File.Exists(destFile) || !Equals(File.GetLastWriteTime(destFile), File.GetLastWriteTime(srcFile)))
+                    File.Copy(srcFile, destFile, true);
+            }
+        }
+
+        private static string GetSoftwarePath()
+        {
+            try
+            {
+                // CONSIDER: Might be worth breaking this up to provide more helpful error messages
+                using (var tngKey = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Wow6432Node\Thermo Instruments\TNG"))
+                using (var machineKey = GetFirstSubKey(tngKey))
+                using (var versionKey = GetFirstSubKey(machineKey))
+                {
+                    if (versionKey == null)
+                        return null;
+                    var valueObject = versionKey.GetValue(@"ProgramPath");
+                    if (valueObject == null)
+                        return null;
+                    return valueObject.ToString();
+                }
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static RegistryKey GetFirstSubKey(RegistryKey parentKey)
+        {
+            if (parentKey == null)
+                return null;
+            int keyCount = parentKey.SubKeyCount;
+            if (keyCount < 1)
+                return null;
+            return parentKey.OpenSubKey(parentKey.GetSubKeyNames()[0]);
+        }
     }
 
     public class ThermoQuantivaMassListExporter : ThermoMassListExporter
@@ -959,6 +1097,8 @@ namespace pwiz.Skyline.Model
 
         protected bool USE_COMPOUND_COUNT_WORKAROUND { get { return true; } }
 
+        public bool WriteFaimsCv { get; set; }
+
         public ThermoQuantivaMassListExporter(SrmDocument document)
             : base(document)
         {
@@ -966,42 +1106,46 @@ namespace pwiz.Skyline.Model
 
         protected override string InstrumentType
         {
-            get { return ExportInstrumentType.THERMO_QUANTIVA; }
+            get { return ExportInstrumentType.THERMO_QUANTIVA; }    // and THERMO_ALTIS
         }
 
         public override bool HasHeaders { get { return true; } }
 
         protected override void WriteHeaders(TextWriter writer)
         {
-            writer.Write("Compound"); // Not L10N
+            writer.Write(@"Compound");
             writer.Write(FieldSeparator);
             if (RetentionStartAndEnd)
             {
-                writer.Write("Start Time (min)"); // Not L10N
+                writer.Write(@"Start Time (min)");
                 writer.Write(FieldSeparator);
-                writer.Write("End Time (min)"); // Not L10N
+                writer.Write(@"End Time (min)");
                 writer.Write(FieldSeparator);
             }
             else
             {
-                writer.Write("Retention Time (min)"); // Not L10N
+                writer.Write(@"Retention Time (min)");
                 writer.Write(FieldSeparator);
-                writer.Write("RT Window (min)"); // Not L10N
+                writer.Write(@"RT Window (min)");
                 writer.Write(FieldSeparator);
             }
-            writer.Write("Polarity"); // Not L10N
+            writer.Write(@"Polarity");
             writer.Write(FieldSeparator);
-            writer.Write("Precursor (m/z)"); // Not L10N
+            writer.Write(@"Precursor (m/z)");
             writer.Write(FieldSeparator);
-            writer.Write("Product (m/z)"); // Not L10N
+            writer.Write(@"Product (m/z)");
             writer.Write(FieldSeparator);
-            writer.Write("Collision Energy (V)"); // Not L10N
+            writer.Write(@"Collision Energy (V)");
             if (UseSlens)
             {
                 writer.Write(FieldSeparator);
-                writer.Write("S-lens"); // Not L10N
+                writer.Write(@"S-lens");
             }
-
+            if (WriteFaimsCv)
+            {
+                writer.Write(FieldSeparator);
+                writer.Write(@"FAIMS CV (V)");
+            }
             writer.WriteLine();
         }
 
@@ -1014,7 +1158,7 @@ namespace pwiz.Skyline.Model
                                                 TransitionDocNode nodeTran,
                                                 int step)
         {
-            string compound = string.Format("{0}{1}({2}{3})", // Not L10N
+            string compound = string.Format(@"{0}{1}({2}{3})",
                                             GetCompound(nodePep, nodeTranGroup),
                                             nodeTranGroup.TransitionGroup.LabelTypeText,
                                             nodeTranGroup.PrecursorCharge >= 0 ? '+' : '-',
@@ -1034,7 +1178,7 @@ namespace pwiz.Skyline.Model
                 {
                     int compoundStep = ++_compoundCounts[compound]/MAX_COMPOUND_NAME + 1;
                     if (compoundStep > 1)
-                        compound += '.' + compoundStep;
+                        compound += '.' + compoundStep.ToString(CultureInfo);
                 }
             }
             writer.WriteDsvField(compound, FieldSeparator);
@@ -1092,7 +1236,7 @@ namespace pwiz.Skyline.Model
                 }
             }
 
-            writer.Write(nodeTranGroup.PrecursorCharge>0?"Positive":"Negative"); // Not L10N
+            writer.Write(nodeTranGroup.PrecursorCharge>0?@"Positive":@"Negative");
             writer.Write(FieldSeparator);
             writer.Write((Math.Truncate(1000*nodeTranGroup.PrecursorMz)/1000).ToString(CultureInfo));
             writer.Write(FieldSeparator);
@@ -1102,7 +1246,12 @@ namespace pwiz.Skyline.Model
             if (UseSlens)
             {
                 writer.Write(FieldSeparator);
-                writer.Write((nodeTranGroup.ExplicitValues.SLens ?? DEFAULT_SLENS).ToString(CultureInfo));
+                writer.Write((ExplicitTransitionValues.Get(nodeTran).SLens ?? DEFAULT_SLENS).ToString(CultureInfo));
+            }
+            if (WriteFaimsCv)
+            {
+                writer.Write(FieldSeparator);
+                writer.Write(GetCompensationVoltage(nodePep, nodeTranGroup, nodeTran, step));
             }
             writer.WriteLine();
         }
@@ -1111,42 +1260,44 @@ namespace pwiz.Skyline.Model
     public class ShimadzuMassListExporter : AbstractMassListExporter
     {
         public double? RunLength { get; set; }
-        private readonly Dictionary<GroupStepKey, int> _peptidesSeen = new Dictionary<GroupStepKey, int>();
         private int LastFileNumber { get; set; }
 
-        private struct GroupStepKey
+        private EventInfo _eventInfo;
+
+        private class EventInfo
         {
-            private readonly int _groupGlobalIndex;
-            private readonly int _step;
+            private const int MAX_TRANSITIONS_PER_EVENT = 32;
+            public int Id { get; set; }
+            public int PeptideId { get; set; }
+            private int TransitionsWritten { get; set; }
 
-            public GroupStepKey(int groupGlobalIndex, int step)
+            public EventInfo()
             {
-                _groupGlobalIndex = groupGlobalIndex;
-                _step = step;
+                Id = 0;
+                PeptideId = -1;
+                TransitionsWritten = 0;
             }
 
-            #region object overrides
-
-            private bool Equals(GroupStepKey other)
+            public void Write(TextWriter writer, int peptideId)
             {
-                return _groupGlobalIndex == other._groupGlobalIndex && _step == other._step;
-            }
-
-            public override bool Equals(object obj)
-            {
-                if (ReferenceEquals(null, obj)) return false;
-                return obj is GroupStepKey && Equals((GroupStepKey) obj);
-            }
-
-            public override int GetHashCode()
-            {
-                unchecked
+                if (peptideId != PeptideId)
                 {
-                    return (_groupGlobalIndex*397) ^ _step;
+                    Next();
+                    PeptideId = peptideId;
+                }
+                writer.Write(Id);
+                TransitionsWritten++;
+                if (TransitionsWritten >= MAX_TRANSITIONS_PER_EVENT)
+                {
+                    Next();
                 }
             }
 
-            #endregion
+            private void Next()
+            {
+                Id++;
+                TransitionsWritten = 0;
+            }
         }
 
         public ShimadzuMassListExporter(SrmDocument document)
@@ -1164,23 +1315,23 @@ namespace pwiz.Skyline.Model
 
         protected override void WriteHeaders(TextWriter writer)
         {
-            writer.Write("Peptide"); // Not L10N
+            writer.Write(@"Peptide");
             writer.Write(FieldSeparator);
-            writer.Write("ID"); // Not L10N
+            writer.Write(@"ID");
             writer.Write(FieldSeparator);
-            writer.Write("Type"); // Not L10N
+            writer.Write(@"Type");
             writer.Write(FieldSeparator);
-            writer.Write("Precursor"); // Not L10N
+            writer.Write(@"Precursor");
             writer.Write(FieldSeparator);
-            writer.Write("Product"); // Not L10N
+            writer.Write(@"Product");
             writer.Write(FieldSeparator);
-            writer.Write("RT"); // Not L10N
+            writer.Write(@"RT");
             writer.Write(FieldSeparator);
-            writer.Write("RT Window"); // Not L10N
+            writer.Write(@"RT Window");
             writer.Write(FieldSeparator);
-            writer.Write("CE"); // Not L10N
+            writer.Write(@"CE");
             writer.Write(FieldSeparator);
-            writer.Write("Polarity"); // Not L10N
+            writer.Write(@"Polarity");
 
             writer.WriteLine();
         }
@@ -1198,28 +1349,20 @@ namespace pwiz.Skyline.Model
             {
                 // When generating multiple files, Shimadzu expects each one to start from ID 1,
                 // so reset if this is a new file
-                _peptidesSeen.Clear();
                 LastFileNumber = fileNumber;
+                _eventInfo = new EventInfo();
             }
-            var compound = GetCompound(nodePep, nodeTranGroup) +
-                  "_" + nodeTranGroup.TransitionGroup.LabelType; // Not L10N
+            var compound = GetCompound(nodePep, nodeTranGroup) + @"_" + nodeTranGroup.TransitionGroup.LabelType;
             if (step != 0)
-                compound += ("_" + step); // Not L10N
+                compound += (@"_" + step);
             writer.WriteDsvField(compound.Replace(' ', '_'), FieldSeparator);
             writer.Write(FieldSeparator);
-            int id;
-            var key = new GroupStepKey(nodeTranGroup.Id.GlobalIndex, step);
-            if (!_peptidesSeen.TryGetValue(key, out id))
-            {
-                id = _peptidesSeen.Count + 1;
-                _peptidesSeen.Add(key, id);
-            }
-            writer.Write(id);
+            _eventInfo.Write(writer, nodePep.Id.GlobalIndex);
             writer.Write(FieldSeparator);
             var istdTypes = Document.Settings.PeptideSettings.Modifications.InternalStandardTypes;
             writer.Write(istdTypes.Contains(nodeTranGroup.TransitionGroup.LabelType)
-                             ? "ISTD" // Not L10N
-                             : String.Empty); // Not L10N
+                             ? @"ISTD"
+                             : String.Empty);
             writer.Write(FieldSeparator);
             writer.Write(SequenceMassCalc.PersistentMZ(nodeTranGroup.PrecursorMz).ToString(CultureInfo));
             writer.Write(FieldSeparator);
@@ -1271,8 +1414,8 @@ namespace pwiz.Skyline.Model
 
     public class ShimadzuNativeMassListExporter : ShimadzuMassListExporter
     {
-        public const string EXT_SHIMADZU_TRANSITION_LIST = ".txt"; // Not L10N
-//        public const string EXE_BUILD_TSQ_METHOD = @"Method\Thermo\BuildTSQEZMethod"; // Not L10N
+        public const string EXT_SHIMADZU_TRANSITION_LIST = ".txt";
+//        public const string EXE_BUILD_TSQ_METHOD = @"Method\Thermo\BuildTSQEZMethod";
 
         public ShimadzuNativeMassListExporter(SrmDocument document)
             : base(document)
@@ -1284,8 +1427,7 @@ namespace pwiz.Skyline.Model
             if (!InitExport(fileName, progressMonitor))
                 return;
 
-            string baseName = Path.Combine(Path.GetDirectoryName(fileName) ?? string.Empty,
-                                           Path.GetFileNameWithoutExtension(fileName) ?? string.Empty);
+            string baseName = Path.Combine(Path.GetDirectoryName(fileName) ?? string.Empty, Path.GetFileNameWithoutExtension(fileName) ?? string.Empty);
             string ext = Path.GetExtension(fileName);
 
             var methodConverter = new MassMethodConverter();
@@ -1299,17 +1441,24 @@ namespace pwiz.Skyline.Model
                 {
                     string tranList = pair.Value.ToString();
                     var result = methodConverter.ConvertMethod(fs.SafeName, tranList);
-                    switch (result)
+                    if (result != ConverterResult.OK)
                     {
-                        case ConverterResult.CannotOpenOutputFile:
-                            throw new IOException(string.Format(Resources.ShimadzuNativeMassListExporter_ExportNativeList_Failure_attempting_to_save_to_the_temporary_file__0_, fs.SafeName));
-                        case ConverterResult.MaxTransitionError:
-                            throw new ArgumentException(string.Format(Resources.ShimadzuNativeMassListExporter_ExportNativeList_The_transition_count__0__exceeds_the_maximum_allowed_for_this_instrument_type, tranList.Split('\n').Length));
-                        case ConverterResult.InputCannotBeParsed:
-                        case ConverterResult.InputIsEmpty:
-                        case ConverterResult.InvalidParameter:
-                            Assume.Fail(string.Format(Resources.ShimadzuNativeMassListExporter_ExportNativeList_Unexpected_response__0__from_Shimadzu_method_converter, result));
-                            break;
+                        var errorMessages = new Dictionary<ConverterResult, string>
+                        {
+                            {ConverterResult.InputIsEmpty, Resources.ShimadzuNativeMassListExporter_ExportNativeList_Input_string_is_empty_},
+                            {ConverterResult.InputCannotBeParsed, Resources.ShimadzuNativeMassListExporter_ExportNativeList_Input_string_cannot_be_parsed_},
+                            {ConverterResult.CannotOpenOutputFile, Resources.ShimadzuNativeMassListExporter_ExportNativeList_Cannot_open_output_file_},
+                            {ConverterResult.InvalidParameter, Resources.ShimadzuNativeMassListExporter_ExportNativeList_Invalid_parameter__Cannot_create_output_method_},
+                            {ConverterResult.OutOfRangeEventNoError, Resources.ShimadzuNativeMassListExporter_ExportNativeList_Number_of_events_exceed_maximum_allowed_by_LabSolutions__1000__},
+                            {ConverterResult.EventNotContiguous, Resources.ShimadzuNativeMassListExporter_ExportNativeList_Input_events_are_not_contiguous_},
+                            {ConverterResult.EventNotAscending, Resources.ShimadzuNativeMassListExporter_ExportNativeList_Input_events_are_not_in_ascending_order},
+                            {ConverterResult.MaxTransitionError, string.Format(
+                                Resources.ShimadzuNativeMassListExporter_ExportNativeList_The_transition_count__0__exceeds_the_maximum_allowed_for_this_instrument_type,
+                                tranList.Split('\n').Length)},
+                        };
+                        if (!errorMessages.TryGetValue(result, out var errorMessage))
+                            errorMessage = string.Format(Resources.ShimadzuNativeMassListExporter_ExportNativeList_Unexpected_response__0__from_Shimadzu_method_converter, result);
+                        Assume.Fail(TextUtil.LineSeparate(Resources.ShimadzuNativeMassListExporter_ExportNativeList_Shimadzu_method_converter_encountered_an_error_, errorMessage));
                     }
                     fs.Commit();
                 }
@@ -1329,8 +1478,7 @@ namespace pwiz.Skyline.Model
             if (!InitExport(fileName, progressMonitor))
                 return;
 
-            string baseName = Path.Combine(Path.GetDirectoryName(fileName) ?? string.Empty,
-                                           Path.GetFileNameWithoutExtension(fileName) ?? string.Empty);
+            string baseName = Path.Combine(Path.GetDirectoryName(fileName) ?? string.Empty, Path.GetFileNameWithoutExtension(fileName) ?? string.Empty);
             string ext = Path.GetExtension(fileName);
 
             var methodWriter = new MassMethodWriter();
@@ -1380,14 +1528,26 @@ namespace pwiz.Skyline.Model
                         }
                     }
 
-                    switch (result)
+                    var errorMessages = new Dictionary<WriterResult, string>
                     {
-                        case WriterResult.MaxTransitionError:
-                            throw new ArgumentException(string.Format(Resources.ShimadzuMethodExporter_ExportMethod_The_transition_count__0__exceeds_the_maximum_allowed_for_this_instrument_type_, tranList.Split('\n').Length));
-                        default:
-                            Assume.Fail(string.Format(Resources.ShimadzuMethodExporter_ExportMethod_Unexpected_response__0__from_Shimadzu_method_writer_,result));
-                            break;
-                    }
+                        {WriterResult.InputIsEmpty, Resources.ShimadzuMethodExporter_ExportMethod_Input_string_is_empty_},
+                        {WriterResult.InputCannotBeParsed, Resources.ShimadzuMethodExporter_ExportMethod_Input_string_cannot_be_parsed_},
+                        {WriterResult.OutputIsEmpty, Resources.ShimadzuMethodExporter_ExportMethod_Output_path_is_not_specified_},
+                        {WriterResult.CannotOpenFile, Resources.ShimadzuMethodExporter_ExportMethod_Cannot_open_output_file_},
+                        {WriterResult.InvalidParameter, Resources.ShimadzuMethodExporter_ExportMethod_Invalid_parameter__Cannot_create_output_method_},
+                        {WriterResult.UnsupportedFile, Resources.ShimadzuMethodExporter_ExportMethod_Output_file_type_is_not_supported_},
+                        {WriterResult.SerializeIOException, Resources.ShimadzuMethodExporter_ExportMethod_Exception_raised_during_output_serialization_},
+                        {WriterResult.OutOfRangeEventNoError, Resources.ShimadzuMethodExporter_ExportMethod_Number_of_events_exceed_the_maximum_allowed_by_LabSolutions__1000__},
+                        {WriterResult.OutputMethodEmpty, Resources.ShimadzuMethodExporter_ExportMethod_Output_method_does_not_contain_any_events_},
+                        {WriterResult.EventNotContiguous, Resources.ShimadzuMethodExporter_ExportMethod_Input_events_are_not_contiguous_},
+                        {WriterResult.EventNotAscending, Resources.ShimadzuMethodExporter_ExportMethod_Input_events_are_not_in_ascending_order},
+                        {WriterResult.MaxTransitionError, string.Format(
+                            Resources.ShimadzuMethodExporter_ExportMethod_The_transition_count__0__exceeds_the_maximum_allowed_for_this_instrument_type_,
+                            tranList.Split('\n').Length)},
+                    };
+                    if (!errorMessages.TryGetValue(result, out var errorMessage))
+                        errorMessage = string.Format(Resources.ShimadzuMethodExporter_ExportMethod_Unexpected_response__0__from_Shimadzu_method_writer_, result);
+                    Assume.Fail(TextUtil.LineSeparate(Resources.ShimadzuMethodExporter_ExportMethod_Shimadzu_method_writer_encountered_an_error_, errorMessage));
                 }
             }
         }
@@ -1413,79 +1573,79 @@ namespace pwiz.Skyline.Model
 
         protected override void WriteHeaders(TextWriter writer)
         {
-            writer.Write("Compound Name"); // Not L10N
+            writer.Write(@"Compound Name");
             writer.Write(FieldSeparator);
-            writer.Write("Retention Time"); // Not L10N
+            writer.Write(@"Retention Time");
             writer.Write(FieldSeparator);
-            writer.Write("Retention Time Window"); // Not L10N
+            writer.Write(@"Retention Time Window");
             writer.Write(FieldSeparator);
-            writer.Write("CAS Number"); // Not L10N
+            writer.Write(@"CAS Number");
             writer.Write(FieldSeparator);
-            writer.Write("Retention Index"); // Not L10N
+            writer.Write(@"Retention Index");
             writer.Write(FieldSeparator);
-            writer.Write("Scan Type"); // Not L10N
+            writer.Write(@"Scan Type");
             writer.Write(FieldSeparator);
-            writer.Write("Polarity"); // Not L10N
+            writer.Write(@"Polarity");
             writer.Write(FieldSeparator);
-            writer.Write("Scan Time (ms)"); // Not L10N
+            writer.Write(@"Scan Time (ms)");
             writer.Write(FieldSeparator);
-            writer.Write("Separation Method"); // Not L10N
+            writer.Write(@"Separation Method");
             writer.Write(FieldSeparator);
-            writer.Write("Source"); // Not L10N
+            writer.Write(@"Source");
             writer.Write(FieldSeparator);
-            writer.Write("Regulation"); // Not L10N
+            writer.Write(@"Regulation");
             writer.Write(FieldSeparator);
-            writer.Write("Classification"); // Not L10N
+            writer.Write(@"Classification");
             writer.Write(FieldSeparator);
-            writer.Write("Comment"); // Not L10N
+            writer.Write(@"Comment");
             writer.Write(FieldSeparator);
-            writer.Write("Transitions Count"); // Not L10N
+            writer.Write(@"Transitions Count");
             writer.Write(FieldSeparator);
-            writer.Write("Q1 First Mass"); // Not L10N
+            writer.Write(@"Q1 First Mass");
             writer.Write(FieldSeparator);
-            writer.Write("Q1 Last Mass"); // Not L10N
+            writer.Write(@"Q1 Last Mass");
             writer.Write(FieldSeparator);
-            writer.Write("Q1 Resolution"); // Not L10N
+            writer.Write(@"Q1 Resolution");
             writer.Write(FieldSeparator);
-            writer.Write("Q3 First Mass"); // Not L10N
+            writer.Write(@"Q3 First Mass");
             writer.Write(FieldSeparator);
-            writer.Write("Q3 Last Mass"); // Not L10N
+            writer.Write(@"Q3 Last Mass");
             writer.Write(FieldSeparator);
-            writer.Write("Q3 Resolution"); // Not L10N
+            writer.Write(@"Q3 Resolution");
             writer.Write(FieldSeparator);
-            writer.Write("Collision Energy"); // Not L10N
+            writer.Write(@"Collision Energy");
             writer.Write(FieldSeparator);
-            writer.Write("Dwell Time (ms)"); // Not L10N
+            writer.Write(@"Dwell Time (ms)");
             writer.Write(FieldSeparator);
-            writer.Write("Is Quantifier"); // Not L10N
+            writer.Write(@"Is Quantifier");
             writer.Write(FieldSeparator);
-            writer.Write("Quantifier Ions"); // Not L10N
+            writer.Write(@"Quantifier Ions");
             writer.Write(FieldSeparator);
-            writer.Write("Is Qualifier"); // Not L10N
+            writer.Write(@"Is Qualifier");
             writer.Write(FieldSeparator);
-            writer.Write("Qualifier Count"); // Not L10N
+            writer.Write(@"Qualifier Count");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Mass 1"); // Not L10N
+            writer.Write(@"Qual Mass 1");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Ratio 1"); // Not L10N
+            writer.Write(@"Qual Ratio 1");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Mass 2"); // Not L10N
+            writer.Write(@"Qual Mass 2");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Ratio 2"); // Not L10N
+            writer.Write(@"Qual Ratio 2");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Mass 3"); // Not L10N
+            writer.Write(@"Qual Mass 3");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Ratio 3"); // Not L10N
+            writer.Write(@"Qual Ratio 3");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Mass 4"); // Not L10N
+            writer.Write(@"Qual Mass 4");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Ratio 4"); // Not L10N
+            writer.Write(@"Qual Ratio 4");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Mass 5"); // Not L10N
+            writer.Write(@"Qual Mass 5");
             writer.Write(FieldSeparator);
-            writer.Write("Qual Ratio 5"); // Not L10N
+            writer.Write(@"Qual Ratio 5");
             writer.Write(FieldSeparator);
-            writer.Write("GUID (Dont fill this Column)"); // Not L10N
+            writer.Write(@"GUID (Dont fill this Column)");
 
             writer.WriteLine();
         }
@@ -1501,10 +1661,7 @@ namespace pwiz.Skyline.Model
         {
             // Compound Name
             var compound = GetCompound(nodePep, nodeTranGroup);
-            for (int i = 0; i < nodeTranGroup.PrecursorCharge; ++i)
-                compound+='+';
-            for (int ineg = 0; ineg > nodeTranGroup.PrecursorCharge; --ineg)
-                compound+='-';
+            compound += nodeTranGroup.PrecursorAdduct.AsFormulaOrSigns(); // Something like +++ or -- or [M+Na]
             writer.WriteDsvField(compound, FieldSeparator);
             writer.Write(FieldSeparator);
             // Retention Time
@@ -1532,6 +1689,7 @@ namespace pwiz.Skyline.Model
                 writer.Write(FieldSeparator);
             }
             // CAS Number
+            writer.Write(GetCAS(nodePep, nodeTranGroup));
             writer.Write(FieldSeparator);
             // Retention Index
             double retentionIndexKey = rt.GetValueOrDefault();
@@ -1546,19 +1704,19 @@ namespace pwiz.Skyline.Model
             }
             writer.Write(FieldSeparator);
             // Scan Type
-            writer.Write("MRM"); // Not L10N
+            writer.Write(@"MRM");
             writer.Write(FieldSeparator);
             // Polarity
             if (nodeTranGroup.TransitionGroup.PrecursorCharge > 0)
-                writer.Write("Positive"); // Not L10N
+                writer.Write(@"Positive");
             else
-                writer.Write("Negative"); // Not L10N
+                writer.Write(@"Negative");
             writer.Write(FieldSeparator);
             // Scan Time (ms)
-            writer.Write("100"); // Not L10N
+            writer.Write(@"100");
             writer.Write(FieldSeparator);
             // Separation Method
-            writer.Write("LCMS"); // Not L10N
+            writer.Write(@"LCMS");
             writer.Write(FieldSeparator);
             // Source
             writer.Write(FieldSeparator);
@@ -1633,7 +1791,7 @@ namespace pwiz.Skyline.Model
 
     public class ThermoMethodExporter : ThermoMassListExporter
     {
-        public const string EXE_BUILD_TSQ_METHOD = @"Method\Thermo\BuildTSQEZMethod"; // Not L10N
+        public const string EXE_BUILD_TSQ_METHOD = @"Method\Thermo\BuildTSQEZMethod";
 
         public ThermoMethodExporter(SrmDocument document)
             : base(document)
@@ -1654,7 +1812,7 @@ namespace pwiz.Skyline.Model
 
     public class ThermoLtqMethodExporter : ThermoMassListExporter
     {
-        public const string EXE_BUILD_LTQ_METHOD = @"Method\Thermo\BuildLTQMethod"; // Not L10N
+        public const string EXE_BUILD_LTQ_METHOD = @"Method\Thermo\BuildLTQMethod";
 
         public ThermoLtqMethodExporter(SrmDocument document)
             : base(document)
@@ -1674,15 +1832,15 @@ namespace pwiz.Skyline.Model
 
             var argv = new List<string>();
             if (FullScans)
-                argv.Add("-f"); // Not L10N
+                argv.Add(@"-f");
             if(MsAnalyzer != null)
-                argv.Add(String.Format("-a {0}", MsAnalyzer)); // Not L10N
+                argv.Add(String.Format(@"-a {0}", MsAnalyzer));
             if(MsMsAnalyzer != null)
-                argv.Add(String.Format("-b {0}", MsMsAnalyzer)); // Not L10N
+                argv.Add(String.Format(@"-b {0}", MsMsAnalyzer));
             if(InclusionList)
-                argv.Add("-i"); // Not L10N
+                argv.Add(@"-i");
             if(Ms1Scan)
-                argv.Add("-1"); // Not L10N
+                argv.Add(@"-1");
             MethodExporter.ExportMethod(EXE_BUILD_LTQ_METHOD, argv,
                 fileName, templateName, MemoryOutput, progressMonitor);
         }
@@ -1690,8 +1848,6 @@ namespace pwiz.Skyline.Model
 
     public class ThermoQuantivaMethodExporter : ThermoQuantivaMassListExporter
     {
-        public const string EXE_BUILD_METHOD = @"Method\Thermo\BuildThermoMethod"; // Not L10N
-
         public ThermoQuantivaMethodExporter(SrmDocument document)
             : base(document)
         {
@@ -1699,17 +1855,24 @@ namespace pwiz.Skyline.Model
 
         public void ExportMethod(string fileName, string templateName, string instrumentType, IProgressMonitor progressMonitor)
         {
+            if (fileName != null)
+                EnsureLibraries();
+
             if (!InitExport(fileName, progressMonitor))
                 return;
 
             var argv = new List<string>();
             if (instrumentType.Equals(ExportInstrumentType.THERMO_ENDURA))
             {
-                argv.Add("-e"); // Not L10N
+                argv.Add(@"-e");
             }
             else if (instrumentType.Equals(ExportInstrumentType.THERMO_QUANTIVA))
             {
-                argv.Add("-q"); // Not L10N
+                argv.Add(@"-q");
+            }
+            else if (instrumentType.Equals(ExportInstrumentType.THERMO_ALTIS))
+            {
+                argv.Add(@"-a");
             }
             MethodExporter.ExportMethod(EXE_BUILD_METHOD, argv, fileName, templateName, MemoryOutput, progressMonitor);
         }
@@ -1717,20 +1880,22 @@ namespace pwiz.Skyline.Model
 
     public class ThermoFusionMethodExporter : ThermoFusionMassListExporter
     {
-        public const string EXE_BUILD_METHOD = @"Method\Thermo\BuildThermoMethod"; // Not L10N
-
         public ThermoFusionMethodExporter(SrmDocument document)
             : base(document)
         {
             IsolationList = true;
+            IsPrecursorLimited = true;
         }
 
         public void ExportMethod(string fileName, string templateName, IProgressMonitor progressMonitor)
         {
+            if (fileName != null)
+                EnsureLibraries();
+
             if (!InitExport(fileName, progressMonitor))
                 return;
 
-            var argv = new List<string> {"-f"}; // Not L10N
+            var argv = new List<string> {@"-f"};
             MethodExporter.ExportMethod(EXE_BUILD_METHOD, argv, fileName, templateName, MemoryOutput, progressMonitor);
         }
     }
@@ -1751,6 +1916,60 @@ namespace pwiz.Skyline.Model
         }
     }
 
+    public class ThermoFusionDiaExporter : AbstractDiaExporter
+    {
+        private const char FIELD_SEPARATOR = ',';
+        
+        public ThermoFusionDiaExporter(IsolationScheme isolationScheme, int? maxInclusions)
+            : base(isolationScheme, maxInclusions)
+        {
+        }
+
+        public void ExportIsolationList(string fileName, IProgressMonitor progressMonitor)
+        {
+            if (!InitExport(fileName, progressMonitor))
+                return;
+
+            Export(fileName, progressMonitor);
+        }
+
+        public override bool HasHeaders { get { return true; } }
+
+        protected override void WriteHeaders(TextWriter writer)
+        {
+            writer.Write(@"m/z");
+            writer.Write(FIELD_SEPARATOR);
+            writer.Write(@"z");
+            writer.Write(FIELD_SEPARATOR);
+            writer.Write(@"t start (min)");
+            writer.Write(FIELD_SEPARATOR);
+            writer.Write(@"t stop (min)");
+            writer.Write(FIELD_SEPARATOR);
+            writer.Write(@"Name");
+            writer.Write(FIELD_SEPARATOR);
+            writer.Write(@"Isolation Window (m/z)");
+            writer.WriteLine();
+        }
+
+        protected override void WriteIsolationWindow(TextWriter writer, IsolationWindow isolationWindow)
+        {
+            // m/z
+            writer.Write(SequenceMassCalc.PersistentMZ(isolationWindow.Target ?? isolationWindow.MethodCenter).ToString(CultureInfo.InvariantCulture));
+            writer.Write(FIELD_SEPARATOR);
+            // z
+            writer.Write(FIELD_SEPARATOR);
+            // t start (min)
+            writer.Write(FIELD_SEPARATOR);
+            // t stop (min)
+            writer.Write(FIELD_SEPARATOR);
+            // Name
+            writer.Write(FIELD_SEPARATOR);
+            // Isolation Window (m/z)
+            writer.Write(SequenceMassCalc.PersistentMZ(isolationWindow.MethodEnd - isolationWindow.MethodStart).ToString(CultureInfo.InvariantCulture));
+            writer.WriteLine();
+        }
+    }
+
     public class AbiMassListExporter : AbstractMassListExporter
     {
         public AbiMassListExporter(SrmDocument document)
@@ -1768,7 +1987,7 @@ namespace pwiz.Skyline.Model
 
         private int OptimizeStepIndex { get; set; }
 
-        private readonly Dictionary<string, int> _groupNamesToCharge = new Dictionary<string, int>();
+        private readonly Dictionary<string, Adduct> _groupNamesToCharge = new Dictionary<string, Adduct>();
 
         protected override string InstrumentType
         {
@@ -1842,6 +2061,11 @@ namespace pwiz.Skyline.Model
             }
         }
 
+        // Helper function for emitting CE, Dxp and CoV values consistent with ionization mode, for Sciex
+        private double AdjustParameterPolarity(TransitionDocNode nodeTran, double paramValue)
+        {
+            return nodeTran.Transition.Charge < 0 ? -paramValue : paramValue;
+        }
 
         protected override void WriteTransition(TextWriter writer,
                                                 int fileNumber,
@@ -1864,8 +2088,19 @@ namespace pwiz.Skyline.Model
             string extGroupId;
             GetPeptideAndGroupNames(nodePepGroup, nodePep, nodeTranGroup, nodeTran, step, out extPeptideId, out extGroupId);
 
-            string dp = Math.Round(GetDeclusteringPotential(nodePep, nodeTranGroup, nodeTran, step), 1).ToString(CultureInfo);
-            string ce = Math.Round(GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step), 1).ToString(CultureInfo);
+            double ceValue = GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step);
+            if (ceValue < 10) // SCIEX does not allow CE below 10
+            {
+                if (OptimizeType == ExportOptimize.CE)
+                    return;
+                ceValue = 10;
+            }
+            ceValue = AdjustParameterPolarity(nodeTran, ceValue); // Sciex wants negative CE values for negative ion mode
+            string ce = Math.Round(ceValue, 1).ToString(CultureInfo);
+            double dpValue = GetDeclusteringPotential(nodePep, nodeTranGroup, nodeTran, step);
+            // CONSIDER: Is there a minimum DP value?
+            dpValue = AdjustParameterPolarity(nodeTran, dpValue); // Sciex wants negative DxP values for negative ion mode
+            string dp = Math.Round(dpValue, 1).ToString(CultureInfo);
 
             string precursorWindow = string.Empty;
             string productWindow = string.Empty;
@@ -1890,15 +2125,19 @@ namespace pwiz.Skyline.Model
             string primaryOrSecondary = string.Empty;
             if (MethodType == ExportMethodType.Triggered)
             {
-                primaryOrSecondary = IsPrimary(nodeTranGroup, nodeTranGroupPrimary, nodeTran) ? "1" : "2"; // Not L10N
+                primaryOrSecondary = IsPrimary(nodeTranGroup, nodeTranGroupPrimary, nodeTran) ? @"1" : @"2";
             }
 
             // TODO: Need better way to handle case where user give all CoV as explicit
-            string compensationVoltage = Document.Settings.TransitionSettings.Prediction.CompensationVoltage != null
-                ? string.Format(",{0}", GetCompensationVoltage(nodePep, nodeTranGroup, nodeTran, step).ToString("0.00", CultureInfo)) // Not L10N
-                : null;
+            string compensationVoltage = null;
+            if (Document.Settings.TransitionSettings.Prediction.CompensationVoltage != null)
+            {
+                var coV = GetCompensationVoltage(nodePep, nodeTranGroup, nodeTran, step).GetValueOrDefault();
+                coV = AdjustParameterPolarity(nodeTran, coV); // Sciex wants negative CoV values for negative ion mode
+                compensationVoltage =  string.Format(@",{0}", coV.ToString(@"0.00", CultureInfo));
+            }
 
-           string oneLine = string.Format("{0},{1},{2},{3}{4}{5}", q1, q3, dwellOrRt, extPeptideId, // Not L10N
+           string oneLine = string.Format(@"{0},{1},{2},{3}{4}{5}", q1, q3, dwellOrRt, extPeptideId,
                                            GetOptionalColumns(dp,
                                                               ce,
                                                               precursorWindow,
@@ -1913,20 +2152,6 @@ namespace pwiz.Skyline.Model
             writer.WriteLine();
         }
 
-        protected override bool SkipTransition(PeptideGroupDocNode nodePepGroup, PeptideDocNode nodePep, TransitionGroupDocNode nodeGroup,
-            TransitionGroupDocNode nodeGroupPrimary, TransitionDocNode nodeTran)
-        {
-            if (Document.Settings.TransitionSettings.Prediction.CompensationVoltage != null &&
-                ExportOptimize.CompensationVoltageTuneTypes.Contains(OptimizeType) &&
-                nodeGroup.TransitionCount > 1 && PrimaryTransitionCount > 0)
-            {
-                // If we know the top ranked transition for every precursor and this is not it, skip writing it
-                int? rank = GetRank(nodeGroup, nodeGroupPrimary, nodeTran);
-                return !rank.HasValue || rank.Value > PrimaryTransitionCount;
-            }
-            return false;
-        }
-
         protected virtual string GetOptionalColumns(string dp,
                                           string ce,
                                           string precursorWindow,
@@ -1938,18 +2163,18 @@ namespace pwiz.Skyline.Model
         {
             if (MethodType == ExportMethodType.Triggered) // CSV for triggered
             {
-                return string.Format(",{0},{1},{2},{3},{4},{5},{6}",    // Not L10N
+                return string.Format(@",{0},{1},{2},{3},{4},{5},{6}",
                     extGroupId,
                     variableRtWindowText,
                     primaryOrSecondary,
-                    "1000", // Not L10N
-                    "1.0", // Not L10N
+                    @"1000",
+                    @"1.0",
                     dp,
                     ce);
             }
             else // CSV
             {
-                return string.Format(",{0},{1}",    // Not L10N
+                return string.Format(@",{0},{1}",
                     dp,
                     ce);
             }
@@ -1978,62 +2203,67 @@ namespace pwiz.Skyline.Model
             // because AB uses periods as field separators
             string modifiedPepSequence = GetSequenceWithModsString(nodePep, Document.Settings);
 
-            int charge = nodeTranGroup.TransitionGroup.PrecursorCharge;
+            var charge = nodeTranGroup.TransitionGroup.PrecursorAdduct;
             var pepGroupName = nodePepGroup.Name.Replace('.', '_');
-            if (OptimizeType == null)
-            {
-                extPeptideId = string.Format("{0}.{1}.{2}.{3}", // Not L10N
-                    pepGroupName,
-                    modifiedPepSequence,
-                    GetTransitionName(charge, nodeTran),
-                    nodeTranGroup.TransitionGroup.LabelType);
-                extGroupId = string.Format("{0}.{1}.{2}", // Not L10N
-                    pepGroupName,
-                    modifiedPepSequence,
-                    nodeTranGroup.TransitionGroup.LabelType);
-            }
-            else if (ExportOptimize.CompensationVoltageTuneTypes.Contains(OptimizeType))
-            {
-                extPeptideId = string.Format("{0}.{1}.{2}.CoV_{3}.{4}", // Not L10N
-                    pepGroupName,
-                    modifiedPepSequence,
-                    GetTransitionName(charge, nodeTran),
-                    GetCompensationVoltage(nodePep, nodeTranGroup, nodeTran, step).ToString("0.0", CultureInfo.InvariantCulture), // Not L10N
-                    nodeTranGroup.TransitionGroup.LabelType);
-                extGroupId = string.Format("{0}.{1}.{2}.{3}", // Not L10N
-                    pepGroupName,
-                    modifiedPepSequence,
-                    GetTransitionName(charge, nodeTran),
-                    nodeTranGroup.TransitionGroup.LabelType);
-            }
-            else
-            {
-                extPeptideId = string.Format("{0}.{1}.{2}.CE_{3}.{4}", // Not L10N
-                    pepGroupName,
-                    modifiedPepSequence,
-                    GetTransitionName(charge, nodeTran),
-                    GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step).ToString("0.0", CultureInfo.InvariantCulture), // Not L10N
-                    nodeTranGroup.TransitionGroup.LabelType);
-                extGroupId = string.Format("{0}.{1}.{2}.{3}", // Not L10N
-                    pepGroupName,
-                    modifiedPepSequence,
-                    GetTransitionName(charge, nodeTran),
-                    nodeTranGroup.TransitionGroup.LabelType);
-            }
+            extPeptideId = string.Format(@"{0}.{1}.{2}.{3}{4}",
+                pepGroupName,
+                modifiedPepSequence,
+                GetTransitionName(charge, nodeTran),
+                GetOptValueText(nodePepGroup, nodePep, nodeTranGroup, nodeTran, step),
+                nodeTranGroup.TransitionGroup.LabelType);
+            extGroupId = string.Format(@"{0}.{1}.{2}",
+                pepGroupName,
+                modifiedPepSequence,
+                nodeTranGroup.TransitionGroup.LabelType);
 
             // remove commas to prevent addition of extra columns that will be misinterpretted in method builder exe 
-            extPeptideId = extPeptideId.Replace(',', '_').Replace('/', '_').Replace(@"\", "_"); // Not L10N
-            extGroupId = extGroupId.Replace(',', '_').Replace('/', '_').Replace(@"\", "_"); // Not L10N
+            extPeptideId = extPeptideId.Replace(',', '_').Replace('/', '_').Replace(@"\", @"_");
+            extGroupId = extGroupId.Replace(',', '_').Replace('/', '_').Replace(@"\", @"_");
 
-            int existCharge;
+            Adduct existCharge;
             if (!_groupNamesToCharge.TryGetValue(extGroupId, out existCharge))
             {
                 _groupNamesToCharge.Add(extGroupId, charge);
             }
             else if (existCharge != charge)
             {
-                extGroupId = string.Format("{0} {1:+#;#}", extGroupId, charge); // Not L10N
+                extGroupId = string.Format(@"{0} {1}", extGroupId, charge.AsFormulaOrSignedInt());
             }
+        }
+
+        private string GetOptValueText(PeptideGroupDocNode nodePepGroup, PeptideDocNode nodePep, TransitionGroupDocNode nodeTranGroup, TransitionDocNode nodeTran, int step)
+        {
+            if (OptimizeType != null)
+            {
+                string optPrefix = null;
+                double optValue = 0;
+                if (ExportOptimize.CE == OptimizeType)
+                {
+                    optPrefix = @"CE";
+                    optValue = GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step);
+                }
+                else if (ExportOptimize.DP == OptimizeType)
+                {
+                    optPrefix = @"DP";
+                    optValue = GetDeclusteringPotential(nodePep, nodeTranGroup, nodeTran, step);
+                }
+                else if (ExportOptimize.CompensationVoltageTuneTypes.Contains(OptimizeType))
+                {
+                    optPrefix = @"CoV";
+                    optValue = GetCompensationVoltage(nodePep, nodeTranGroup, nodeTran, step).GetValueOrDefault();
+                }
+                else
+                {
+                    Assume.Fail(string.Format(@"Unexpected optimization type {0}", OptimizeType));
+                }
+
+                if (optPrefix != null)
+                {
+                    optValue = AdjustParameterPolarity(nodeTran, optValue);  // Sciex wants negative values for negative ion mode
+                    return string.Format(@"{0}_{1}.", optPrefix, optValue.ToString(@"0.0", CultureInfo.InvariantCulture));
+                }
+            }
+            return string.Empty;
         }
 
         private void GetTransitionTimeValues(PeptideDocNode nodePep, TransitionGroupDocNode nodeTranGroup, out double? predictedRT, out string dwellOrRt)
@@ -2098,9 +2328,9 @@ namespace pwiz.Skyline.Model
         internal static string GetSequenceWithModsString(PeptideDocNode nodePep, SrmSettings settings)
         {
             string result;
-            if (nodePep.Peptide.IsCustomIon)
+            if (nodePep.Peptide.IsCustomMolecule)
             {
-                result = nodePep.CustomIon.DisplayName;
+                result = nodePep.CustomMolecule.DisplayName;
             }
             else
             {
@@ -2113,7 +2343,7 @@ namespace pwiz.Skyline.Model
                                         staticExplicitMods,
                                         staticModsList, 
                                         new List<TypedModifications>(),
-                                        null);
+                                        null).ChangeCrosslinkStructure(nodePep.CrosslinkStructure);
             
                 if (nodePep.ExplicitMods != null)
                 {
@@ -2136,16 +2366,16 @@ namespace pwiz.Skyline.Model
                     mods = mods.ChangeStaticModifications(staticMods);
                 }
 
-                result = settings.GetModifiedSequence(nodePep.Peptide.Sequence,
+                result = settings.GetModifiedSequence(nodePep.Peptide.Target,
                                                                             IsotopeLabelType.light,
                                                                             mods, SequenceModFormatType.three_letter_code,
-                                                                            true);
+                                                                            true).ToString();
             }
 
             return result.Replace('.', '_');
         }
 
-        private static string GetTransitionName(int precursorCharge, TransitionDocNode transitionNode)
+        private static string GetTransitionName(Adduct precursorCharge, TransitionDocNode transitionNode)
         {
             string ionName = transitionNode.GetFragmentIonName(CultureInfo.InvariantCulture);
             if (transitionNode.Transition.IsPrecursor())
@@ -2154,32 +2384,32 @@ namespace pwiz.Skyline.Model
             }
             else
             {
-                return GetTransitionName(precursorCharge, ionName, transitionNode.Transition.Charge).Replace('.', '_');
+                return GetTransitionName(precursorCharge, ionName, transitionNode.Transition.Adduct).Replace('.', '_');
             }
         }
 
-        public static string GetTransitionName(int precursorCharge, string fragmentIonName, int fragmentCharge)
+        public static string GetTransitionName(Adduct precursorCharge, string fragmentIonName, Adduct fragmentCharge)
         {
-            return string.Format("{0:+#;#}{1}{2}", precursorCharge, // Not L10N
+            return string.Format(@"{0}{1}{2}", precursorCharge.AsFormulaOrSignedInt(),
                                  fragmentIonName,
-                                 fragmentCharge != 1
-                                     ? string.Format("{0:+#;#}", fragmentCharge) // Not L10N
-                                     : string.Empty); // Not L10N
+                                 fragmentCharge != Adduct.SINGLY_PROTONATED
+                                     ? fragmentCharge.AsFormulaOrSignedInt()
+                                     : string.Empty);
         }
 
-        public static string GetPrecursorTransitionName(int precursorCharge, string fragmentIonName, int isotopeIndex)
+        public static string GetPrecursorTransitionName(Adduct precursorCharge, string fragmentIonName, int isotopeIndex)
         {
-            return string.Format("{0:+#;#}{1}{2}", precursorCharge, // Not L10N
+            return string.Format(@"{0}{1}{2}", precursorCharge.AsFormulaOrSignedInt(),
                                  fragmentIonName,
                                  isotopeIndex > 0
-                                     ? string.Format("[M+{0}]", isotopeIndex) // Not L10N
-                                     : string.Empty); // Not L10N
+                                     ? string.Format(@"[M+{0}]", isotopeIndex)
+                                     : string.Empty);
         }
     }
 
     public abstract class AbiMethodExporter : AbiMassListExporter
     {
-        private const string ANALYST_EXE = "Analyst.exe"; // Not L10N
+        private const string ANALYST_EXE = "Analyst.exe";
 
         protected AbiMethodExporter(SrmDocument document)
             : base(document)
@@ -2206,7 +2436,7 @@ namespace pwiz.Skyline.Model
 
         private void EnsureAnalyst(IProgressMonitor progressMonitor)
         {
-            string analystPath = AdvApi.GetPathFromProgId("Analyst.MassSpecMethod.1"); // Not L10N
+            string analystPath = AdvApi.GetPathFromProgId(@"Analyst.MassSpecMethod.1");
             string analystDir = null;
             if (analystPath != null)
                 analystDir = Path.GetDirectoryName(analystPath);
@@ -2246,8 +2476,8 @@ namespace pwiz.Skyline.Model
                 return false;
             }
 
-            if (process.MainWindowTitle.StartsWith("Analyst") // Not L10N
-                && process.MainWindowTitle.Contains("Registration") == false) // Not L10N
+            if (process.MainWindowTitle.StartsWith(@"Analyst")
+                && process.MainWindowTitle.Contains(@"Registration") == false)
             {
                 return true;
             }
@@ -2271,6 +2501,7 @@ namespace pwiz.Skyline.Model
         {
             try
             {
+                // ReSharper disable once PossibleNullReferenceException
                 return proc.MainModule.ModuleName;
             }
             catch
@@ -2289,7 +2520,7 @@ namespace pwiz.Skyline.Model
                                                      string primaryOrSecondary)
         {
             // Provide all columns for method export
-            return string.Format(",{0},{1},{2},{3},{4},{5},{6},{7},{8}",    // Not L10N
+            return string.Format(@",{0},{1},{2},{3},{4},{5},{6},{7},{8}",
                                  dp,
                                  ce,
                                  precursorWindow,
@@ -2311,12 +2542,12 @@ namespace pwiz.Skyline.Model
 
         protected override string GetRegQueryKey()
         {
-            return @"SOFTWARE\PE SCIEX\Products\Analyst3Q"; // Not L10N
+            return @"SOFTWARE\PE SCIEX\Products\Analyst3Q";
         }
 
         protected override string GetExeName()
         {
-            return @"Method\AbSciex\TQ\BuildQTRAPMethod"; // Not L10N
+            return @"Method\AbSciex\TQ\BuildQTRAPMethod";
         }
 
         protected override List<string> GetArgs()
@@ -2324,7 +2555,7 @@ namespace pwiz.Skyline.Model
             var argv = new List<string>();
             if (RTWindow.HasValue)
             {
-                argv.Add("-w"); // Not L10N
+                argv.Add(@"-w");
                 argv.Add(RTWindow.Value.ToString(CultureInfo.InvariantCulture));
             }
             return argv;
@@ -2343,12 +2574,12 @@ namespace pwiz.Skyline.Model
 
         protected override string GetRegQueryKey()
         {
-            return @"SOFTWARE\PE SCIEX\Products\AnalystQS"; // Not L10N
+            return @"SOFTWARE\PE SCIEX\Products\AnalystQS";
         }
 
         protected override string GetExeName()
         {
-            return @"Method\AbSciex\TOF\BuildAnalystFullScanMethod"; // Not L10N
+            return @"Method\AbSciex\TOF\BuildAnalystFullScanMethod";
         }
 
         protected override List<string> GetArgs()
@@ -2363,18 +2594,18 @@ namespace pwiz.Skyline.Model
             */
             var argv = new List<string>();
             if (Ms1Scan)
-                argv.Add("-1"); // Not L10N
+                argv.Add(@"-1");
             if (InclusionList)
-                argv.Add("-i"); // Not L10N
+                argv.Add(@"-i");
             if (MethodType == ExportMethodType.Scheduled)
-                argv.Add("-r"); // Not L10N
+                argv.Add(@"-r");
             if (RTWindow.HasValue)
             {
-                argv.Add("-w"); // Not L10N
+                argv.Add(@"-w");
                 argv.Add(RTWindow.Value.ToString(CultureInfo.InvariantCulture));
             }
             if (ExportMultiQuant)
-                argv.Add("-mq"); // Not L10N
+                argv.Add(@"-mq");
 
             return argv;
         }
@@ -2382,7 +2613,7 @@ namespace pwiz.Skyline.Model
 
     public class AbiTofIsolationListExporter : AbstractMassListExporter
     {
-        public const string EXT_ABI_TOF_ISOLATION_LIST = ".txt"; // Not L10N
+        public const string EXT_ABI_TOF_ISOLATION_LIST = ".txt";
 
         public AbiTofIsolationListExporter(SrmDocument document)
             : base(document, null)
@@ -2418,7 +2649,9 @@ namespace pwiz.Skyline.Model
         // Write values separated by the field separator, and a line separator at the end.
         private void Write(StreamWriter writer, params double[] vals)
         {
-            writer.WriteLine(string.Join("\t", vals.Select(s => s.ToString(CultureInfo.InvariantCulture)))); // Not L10N
+            // ReSharper disable LocalizableElement
+            writer.WriteLine(string.Join("\t", vals.Select(s => s.ToString(CultureInfo.InvariantCulture))));
+            // ReSharper restore LocalizableElement
         }
 
         protected override string InstrumentType
@@ -2462,50 +2695,63 @@ namespace pwiz.Skyline.Model
 
         protected override void WriteHeaders(TextWriter writer)
         {
-            writer.Write("Compound Group"); // Not L10N
+            writer.Write(@"Compound Group");
             writer.Write(FieldSeparator);
-            writer.Write("Compound Name"); // Not L10N
+            writer.Write(@"Compound Name");
             writer.Write(FieldSeparator);
-            writer.Write("ISTD?"); // Not L10N
+            writer.Write(@"ISTD?");
             writer.Write(FieldSeparator);
-            writer.Write("Precursor Ion"); // Not L10N
+            writer.Write(@"Precursor Ion");
             writer.Write(FieldSeparator);
-            writer.Write("MS1 Res"); // Not L10N
+            writer.Write(@"MS1 Res");
             writer.Write(FieldSeparator);
-            writer.Write("Product Ion"); // Not L10N
+            writer.Write(@"Product Ion");
             writer.Write(FieldSeparator);
-            writer.Write("MS2 Res"); // Not L10N
+            writer.Write(@"MS2 Res");
             if (MethodType == ExportMethodType.Standard)
             {
                 writer.Write(FieldSeparator);
-                writer.Write("Dwell"); // Not L10N                
+                writer.Write(@"Dwell");
             }
-            else if (MethodType == ExportMethodType.Triggered)
+            else
             {
                 writer.Write(FieldSeparator);
-                writer.Write("Primary"); // Not L10N
+                writer.Write(@"Primary");
                 writer.Write(FieldSeparator);
-                writer.Write("Trigger"); // Not L10N
+                writer.Write(@"Trigger");
+                writer.Write(FieldSeparator);
+                writer.Write(@"Threshold");
+                writer.Write(FieldSeparator);
+                writer.Write(@"Ret Time (min)");
+                writer.Write(FieldSeparator);
+                writer.Write(@"Delta Ret Time");
             }
             writer.Write(FieldSeparator);
-            writer.Write("Fragmentor"); // Not L10N
+            writer.Write(@"Fragmentor");
             writer.Write(FieldSeparator);
-            writer.Write("Collision Energy"); // Not L10N
+            writer.Write(@"Collision Energy");
             writer.Write(FieldSeparator);
-            writer.Write("Cell Accelerator Voltage"); // Not L10N
+            writer.Write(@"Cell Accelerator Voltage");
+            writer.Write(FieldSeparator);
+            writer.Write(@"Polarity");
             if (MethodType != ExportMethodType.Standard)
             {
                 writer.Write(FieldSeparator);
-                writer.Write("Ret Time (min)"); // Not L10N
+                writer.Write(@"Trigger Entrance Delay (cycles)");
                 writer.Write(FieldSeparator);
-                writer.Write("Delta Ret Time"); // Not L10N
-            }
-            writer.Write(FieldSeparator);
-            writer.Write("Ion Name"); // Not L10N
-            if (Document.Settings.PeptideSettings.Libraries.HasLibraries)
-            {
+                writer.Write(@"Trigger Delay (cycles)");
                 writer.Write(FieldSeparator);
-                writer.Write("Library Rank"); // Not L10N
+                writer.Write(@"Trigger Window");
+                writer.Write(FieldSeparator);
+                writer.Write(@"IsLogicEnabled");
+                writer.Write(FieldSeparator);
+                writer.Write(@"Trigger Logic Flag");
+                writer.Write(FieldSeparator);
+                writer.Write(@"Trigger Ratio");
+                writer.Write(FieldSeparator);
+                writer.Write(@"Trigger Ratio Window");
+                writer.Write(FieldSeparator);
+                writer.Write(@"Ignore MRM");
             }
             writer.WriteLine();
         }
@@ -2523,57 +2769,44 @@ namespace pwiz.Skyline.Model
             writer.Write(FieldSeparator);
             // Write modified sequence for the light peptide molecule
             string compound = GetCompound(nodePep, nodeTranGroup);
-            string compoundName = string.Format("{0}.{1}", compound, nodeTranGroup.TransitionGroup.LabelType); // Not L10N
+            string compoundName = string.Format(@"{0}.{1}", compound, nodeTranGroup.TransitionGroup.LabelType);
             writer.WriteDsvField(compoundName, FieldSeparator, FieldSeparatorReplacement);
 
             writer.Write(FieldSeparator);
             var istdTypes = Document.Settings.PeptideSettings.Modifications.InternalStandardTypes;
-            writer.Write(istdTypes.Contains(nodeTranGroup.TransitionGroup.LabelType)    // ISTD?
-                             ? "TRUE" // Not L10N
-                             : "FALSE"); // Not L10N
+            writer.Write(BoolToString(istdTypes.Contains(nodeTranGroup.TransitionGroup.LabelType))); // ISTD?
             writer.Write(FieldSeparator);
             writer.Write(SequenceMassCalc.PersistentMZ(nodeTranGroup.PrecursorMz).ToString(CultureInfo));
             writer.Write(FieldSeparator);
-            writer.Write("Unit");   // MS1 Res // Not L10N
+            writer.Write(@"Unit");   // MS1 Res
             writer.Write(FieldSeparator);
             writer.Write(GetProductMz(SequenceMassCalc.PersistentMZ(nodeTran.Mz), step).ToString(CultureInfo));
             writer.Write(FieldSeparator);
-            writer.Write("Unit");   // MS2 Res // Not L10N
+            writer.Write(@"Unit");   // MS2 Res
+            writer.Write(FieldSeparator);
 
             if (MethodType == ExportMethodType.Standard)
             {
-                writer.Write(FieldSeparator);
                 writer.Write(Math.Round(DwellTime, 2).ToString(CultureInfo));
             }
-            else if (MethodType == ExportMethodType.Triggered)
+            else
             {
-                writer.Write(FieldSeparator);
                 int? rank = GetRank(nodeTranGroup, nodeTranGroupPrimary, nodeTran);
-                writer.Write(rank.HasValue && rank.Value <= PrimaryTransitionCount  // Primary
-                    ? "TRUE"    // Not L10N
-                    : "FALSE"); // Not L10N
+                writer.Write(BoolToString(rank.HasValue && rank.Value <= PrimaryTransitionCount)); // Primary
                 writer.Write(FieldSeparator);
                 // Trigger must be rank 1 transition, of analyte type and minimum precursor charge
-                bool trigger = false;
-                if (IsTriggerType(nodePep, nodeTranGroup, istdTypes) && rank.HasValue && rank.Value == 1)
+                var trigger = false;
+                if (MethodType == ExportMethodType.Triggered && IsTriggerType(nodePep, nodeTranGroup, istdTypes) && rank.HasValue && rank.Value == 1)
                 {
                     int minCharge = nodePep.TransitionGroups.Select(g => Math.Abs(g.PrecursorCharge)).Min();
                     if (Math.Abs(nodeTranGroup.PrecursorCharge) == minCharge)
                         trigger = true;
                 }
-                writer.Write(trigger ? "TRUE" : "FALSE"); // Not L10N
-            }
+                writer.Write(BoolToString(trigger));
+                writer.Write(FieldSeparator);
+                writer.Write(0.ToString(CultureInfo)); // Threshold
+                writer.Write(FieldSeparator);
 
-            writer.Write(FieldSeparator);
-            writer.Write(Fragmentor.ToString(CultureInfo));
-            writer.Write(FieldSeparator);
-            writer.Write(Math.Round(GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step), 1).ToString(CultureInfo));
-            writer.Write(FieldSeparator);
-            writer.Write(4);    // Cell Accelerator Voltage
-            writer.Write(FieldSeparator);
-
-            if (MethodType != ExportMethodType.Standard)
-            {
                 // Scheduling information
                 var prediction = Document.Settings.PeptideSettings.Prediction;
                 double windowRT;
@@ -2585,20 +2818,42 @@ namespace pwiz.Skyline.Model
                     writer.Write((RetentionTimeRegression.GetRetentionTimeDisplay(predictedRT) ?? 0).ToString(CultureInfo));
                     writer.Write(FieldSeparator);
                     writer.Write(Math.Round(windowRT, 1).ToString(CultureInfo));
-                    writer.Write(FieldSeparator);
                 }
                 else
                 {
                     writer.Write(FieldSeparator);
-                    writer.Write(FieldSeparator);
                 }
             }
 
-            // Extra information not used by instrument
-            writer.WriteDsvField(nodeTran.Transition.GetFragmentIonName(CultureInfo.InvariantCulture), FieldSeparator, FieldSeparatorReplacement);
             writer.Write(FieldSeparator);
-            if (nodeTran.HasLibInfo)
-                writer.Write(nodeTran.LibInfo.Rank);
+            writer.Write(Fragmentor.ToString(CultureInfo));
+            writer.Write(FieldSeparator);
+            writer.Write(Math.Round(GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step), 1).ToString(CultureInfo));
+            writer.Write(FieldSeparator);
+            writer.Write(4);    // Cell Accelerator Voltage
+            writer.Write(FieldSeparator);
+            writer.Write(nodeTranGroup.PrecursorCharge > 0 ? @"Positive" : @"Negative"); // Polarity
+
+            if (MethodType != ExportMethodType.Standard)
+            {
+                writer.Write(FieldSeparator);
+                writer.Write(0.ToString(CultureInfo)); // Trigger Entrance Delay
+                writer.Write(FieldSeparator);
+                writer.Write(0.ToString(CultureInfo)); // Trigger Delay
+                writer.Write(FieldSeparator);
+                writer.Write(0.ToString(CultureInfo)); // Trigger Window
+                writer.Write(FieldSeparator);
+                writer.Write(BoolToString(false)); // IsLogicEnabled
+                writer.Write(FieldSeparator);
+                writer.Write(@"AND"); // Trigger Logic Flag
+                writer.Write(FieldSeparator);
+                writer.Write(1.ToString(CultureInfo)); // Trigger Ratio
+                writer.Write(FieldSeparator);
+                writer.Write(1.ToString(CultureInfo)); // Trigger Ratio Window
+                writer.Write(FieldSeparator);
+                writer.Write(BoolToString(false)); // Ignore MRM
+            }
+
             writer.WriteLine();
         }
 
@@ -2609,7 +2864,7 @@ namespace pwiz.Skyline.Model
                 return true;
             // Get all precursors with the same charge state and at least 1 transition, including this one
             var arrayTranGroups = nodePep.TransitionGroups
-                .Where(g => g.PrecursorCharge == nodeTranGroup.PrecursorCharge &&
+                .Where(g => g.PrecursorAdduct.Equals(nodeTranGroup.PrecursorAdduct) &&
                             g.TransitionCount > 0).ToArray();
             // If it is the only precursor of this charge state, then it must be the trigger
             if (arrayTranGroups.Length == 1)
@@ -2626,11 +2881,16 @@ namespace pwiz.Skyline.Model
             // Otherwise, the first precursor in the list is the trigger.
             return ReferenceEquals(firstGroup, nodeTranGroup);
         }
+
+        private static string BoolToString(bool b)
+        {
+            return b ? @"TRUE" : @"FALSE";
+        }
     }
 
     public class AgilentMethodExporter : AgilentMassListExporter
     {
-        public const string EXE_BUILD_AGILENT_METHOD = @"Method\Agilent\BuildAgilentMethod"; // Not L10N
+        public const string EXE_BUILD_AGILENT_METHOD = @"Method\Agilent\BuildAgilentMethod";
 
         public AgilentMethodExporter(SrmDocument document)
             : base(document)
@@ -2648,7 +2908,7 @@ namespace pwiz.Skyline.Model
 
         public static bool IsAgilentMethodPath(string methodPath)
         {
-            return methodPath.EndsWith(ExportInstrumentType.EXT_AGILENT) && File.Exists(Path.Combine(methodPath, "qqqacqmeth.xsd")); // Not L10N
+            return methodPath.EndsWith(ExportInstrumentType.EXT_AGILENT) && File.Exists(Path.Combine(methodPath, @"qqqacqmeth.xsd"));
         }
     }
 
@@ -2683,12 +2943,12 @@ namespace pwiz.Skyline.Model
 
         public static string GetDdaHeader(char fieldSeparator)
         {
-            return "On,Prec. m/z,Delta m/z (ppm),Z,Prec. Type,Ret. Time (min),Delta Ret. Time (min),Iso. Width,Collision Energy".Replace(',', fieldSeparator); // Not L10N
+            return @"On,Prec. m/z,Delta m/z (ppm),Z,Prec. Type,Ret. Time (min),Delta Ret. Time (min),Iso. Width,Collision Energy".Replace(',', fieldSeparator);
         }
 
         public static string GetTargetedHeader(char fieldSeparator)
         {
-            return "On,Prec. m/z,Z,Ret. Time (min),Delta Ret. Time (min),Iso. Width,Collision Energy,Acquisition Time (ms/spec)".Replace(',', fieldSeparator); // Not L10N
+            return @"On,Prec. m/z,Z,Ret. Time (min),Delta Ret. Time (min),Iso. Width,Collision Energy,Acquisition Time (ms/spec)".Replace(',', fieldSeparator);
         }
 
         protected override void WriteTransition(TextWriter writer,
@@ -2701,9 +2961,9 @@ namespace pwiz.Skyline.Model
                                                 int step)
         {
             string precursorMz = SequenceMassCalc.PersistentMZ(nodeTranGroup.PrecursorMz).ToString(CultureInfo);
-            string z = nodeTranGroup.TransitionGroup.PrecursorCharge.ToString(CultureInfo);
-            string retentionTime = "0"; // Not L10N
-            string deltaRetentionTime = string.Empty; // Not L10N
+            string z = nodeTranGroup.TransitionGroup.PrecursorCharge.ToString(CultureInfo); // CONSIDER(bspratt): Is charge all that's interesting, or are we implying protonation
+            string retentionTime = @"0";
+            string deltaRetentionTime = string.Empty;
             if (MethodType == ExportMethodType.Scheduled)
             {
                 // Scheduling information
@@ -2717,20 +2977,20 @@ namespace pwiz.Skyline.Model
                     deltaRetentionTime = Math.Round(windowRT, 1).ToString(CultureInfo); // Delta Ret. Time (min)
                 }
             }
-            string isolationWidth = string.Format(CultureInfo, "Narrow (~{0:0.0} m/z)", 1.3); // Not L10N
+            string isolationWidth = string.Format(CultureInfo, @"Narrow (~{0:0.0} m/z)", 1.3);
             string collisionEnergy = Math.Round(GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step), 1).ToString(CultureInfo);
 
             if (IsDda)
             {
-                const string deltaMz = "20"; // Not L10N // TODO check: Delta m/z (ppm) 
-                Write(writer, "True", precursorMz, deltaMz, z, // Not L10N
-                      "Preferred", retentionTime, // Not L10N
+                const string deltaMz = "20"; // // TODO check: Delta m/z (ppm) 
+                Write(writer, @"True", precursorMz, deltaMz, z,
+                      @"Preferred", retentionTime,
                       deltaRetentionTime, isolationWidth, collisionEnergy);
             }
             else
             {
                 string acquisitionTime = string.Empty;  // TODO check: nothing to write for: Acquisition Time (ms/spec)
-                Write(writer, "True", precursorMz, z, retentionTime, // Not L10N
+                Write(writer, @"True", precursorMz, z, retentionTime,
                       deltaRetentionTime, isolationWidth, collisionEnergy, acquisitionTime);
             }
         }
@@ -2738,7 +2998,7 @@ namespace pwiz.Skyline.Model
 
     public class BrukerMethodExporter : AbstractMassListExporter
     {
-        public const string EXE_BUILD_BRUKER_METHOD = @"Method\Bruker\BuildBrukerMethod"; // Not L10N
+        public const string EXE_BUILD_BRUKER_METHOD = @"Method\Bruker\BuildBrukerMethod";
 
         public BrukerMethodExporter(SrmDocument document)
             : base(document, null)
@@ -2758,13 +3018,13 @@ namespace pwiz.Skyline.Model
 
         protected override void WriteHeaders(TextWriter writer)
         {
-            writer.Write("Ret Time (min)"); // Not L10N
+            writer.Write(@"Ret Time (min)");
             writer.Write(FieldSeparator);
-            writer.Write("Tolerance"); // Not L10N
+            writer.Write(@"Tolerance");
             writer.Write(FieldSeparator);
-            writer.Write("Precursor Ion Min"); // Not L10N
+            writer.Write(@"Precursor Ion Min");
             writer.Write(FieldSeparator);
-            writer.Write("Precursor Ion Max"); // Not L10N
+            writer.Write(@"Precursor Ion Max");
 
             writer.WriteLine();
         }
@@ -2827,7 +3087,7 @@ namespace pwiz.Skyline.Model
 
         public static bool IsBrukerMethodPath(string methodPath)
         {
-            return methodPath.EndsWith(ExportInstrumentType.EXT_BRUKER) && File.Exists(Path.Combine(methodPath, "submethods.xml")); // Not L10N
+            return methodPath.EndsWith(ExportInstrumentType.EXT_BRUKER) && File.Exists(Path.Combine(methodPath, @"submethods.xml"));
         }
     }
 
@@ -2850,13 +3110,13 @@ namespace pwiz.Skyline.Model
 
         protected override void WriteHeaders(TextWriter writer)
         {
-            writer.Write("Ret Time (min)"); // Not L10N
+            writer.Write(@"Ret Time (min)");
             writer.Write(FieldSeparator);
-            writer.Write("Tolerance"); // Not L10N
+            writer.Write(@"Tolerance");
             writer.Write(FieldSeparator);
-            writer.Write("Precursor Ion Min"); // Not L10N
+            writer.Write(@"Precursor Ion Min");
             writer.Write(FieldSeparator);
-            writer.Write("Precursor Ion Max"); // Not L10N
+            writer.Write(@"Precursor Ion Max");
 
             writer.WriteLine();
         }
@@ -2891,7 +3151,288 @@ namespace pwiz.Skyline.Model
         }
     }
 
+    public class BrukerTimsTofMethodExporter : AbstractMassListExporter
+    {
+        private readonly List<Tuple<InputTarget, string>> _targets;
+        private readonly HashSet<LibKey> _missingIonMobility;
 
+        private double _oneOverK0UpperLimit = 1.2;
+        private Metrics _schedulingMetrics;
+
+        public double RunLength { get; set; }
+        public double Ms1RepetitionTime { get; set; }
+
+        public LibKey[] MissingIonMobility => _missingIonMobility.OrderBy(k => k.ToString()).ToArray();
+
+        public BrukerTimsTofMethodExporter(SrmDocument document)
+            : base(document, null)
+        {
+            IsPrecursorLimited = true;
+            IsolationList = true;
+            _targets = new List<Tuple<InputTarget, string>>();
+            _missingIonMobility = new HashSet<LibKey>();
+            _schedulingMetrics = null;
+        }
+
+        public int Id { get; set; }
+
+        protected override string InstrumentType
+        {
+            get { return ExportInstrumentType.BRUKER_TIMSTOF; }
+        }
+
+        public override bool HasHeaders { get { return false; } }
+
+        protected override void WriteTransition(TextWriter writer,
+            int fileNumber,
+            PeptideGroupDocNode nodePepGroup,
+            PeptideDocNode nodePep,
+            TransitionGroupDocNode nodeTranGroup,
+            TransitionGroupDocNode nodeTranGroupPrimary,
+            TransitionDocNode nodeTran,
+            int step)
+        {
+            var target = new InputTarget();
+            
+            var prediction = Document.Settings.PeptideSettings.Prediction;
+
+            if (MethodType == ExportMethodType.Standard)
+            {
+                target.time_in_seconds_begin = 0;
+                target.time_in_seconds_end = RunLength * 60;
+            }
+            else
+            {
+                var predictedRT = prediction.PredictRetentionTime(Document, nodePep, nodeTranGroup,
+                    SchedulingReplicateIndex, SchedulingAlgorithm, false, out var windowRT);
+                target.time_in_seconds_begin = (predictedRT - windowRT / 2) * 60 ?? 0;
+                target.time_in_seconds_end = (predictedRT + windowRT / 2) * 60 ?? 0;
+            }
+            target.time_in_seconds = (target.time_in_seconds_begin + target.time_in_seconds_end) / 2;
+
+            target.isolation_mz = nodeTranGroup.PrecursorMz;
+            target.monoisotopic_mz = nodeTranGroup.PrecursorMz;
+            target.isolation_width = 3.0;
+
+            double? ionMobility = null;
+            var windowIM = 0.4;
+            if (Document.Settings.TransitionSettings.IonMobilityFiltering != null)
+            {
+                var result = Document.Settings.GetIonMobilityFilter(nodePep, nodeTranGroup, nodeTran, null, null, _oneOverK0UpperLimit);
+                if (result.HasIonMobilityValue)
+                {
+                    ionMobility = result.IonMobility.Mobility.Value;
+                    windowIM = Document.Settings.TransitionSettings.IonMobilityFiltering.FilterWindowWidthCalculator
+                        .WidthAt(ionMobility.Value, _oneOverK0UpperLimit);
+                }
+            }
+            if (!ionMobility.HasValue)
+                _missingIonMobility.Add(nodeTranGroup.GetLibKey(Document.Settings, nodePep));
+            target.one_over_k0_lower_limit = (ionMobility ?? 1.0) - windowIM / 2;
+            target.one_over_k0_upper_limit = (ionMobility ?? 1.0) + windowIM / 2;
+            target.one_over_k0 = (target.one_over_k0_lower_limit + target.one_over_k0_upper_limit) / 2;
+
+            target.charge = nodeTranGroup.PrecursorCharge;
+            target.collision_energy = (int) Math.Round(GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step));
+
+            _targets.Add(Tuple.Create(target, nodePep.ModifiedSequenceDisplay));
+        }
+
+        public void ExportMethod(string fileName, string templateName, IProgressMonitor progressMonitor, out TimeSegmentList timeSegments, out SchedulingEntryList schedulingEntries,
+            bool getMetrics)
+        {
+            if (templateName == null)
+                throw new IOException(Resources.BrukerTimsTofMethodExporter_ExportMethod_Template_is_required_for_method_export_);
+
+            using (var s = new Scheduler(templateName))
+            {
+                var methodInfo = s.GetPrmMethodInfo();
+                if (methodInfo.Any())
+                {
+                    _oneOverK0UpperLimit = methodInfo[0].one_over_k0_upper_limit;
+                }
+            }
+
+            _missingIonMobility.Clear();
+            InitExport(fileName, progressMonitor);
+
+            if (!Equals(templateName, fileName) && !string.IsNullOrEmpty(fileName))
+                File.Copy(templateName, fileName, true);
+
+            using (var s = new Scheduler(fileName ?? templateName))
+            {
+                s.SetAdditionalMeasurementParameters(new AdditionalMeasurementParameters
+                {
+                    ms1_repetition_time = Ms1RepetitionTime,
+                    default_pasef_collision_energies = _targets.All(t => t.Item1.collision_energy == 0)
+                });
+                for (var i = 0; i < _targets.Count; i++)
+                {
+                    var id = (i + 1).ToString();
+                    var description = id;
+                    s.AddInputTarget(_targets[i].Item1, id, description);
+                }
+
+                var progress = new ProgressStatus(Resources.BrukerTimsTofMethodExporter_ExportMethod_Getting_scheduling___);
+
+                timeSegments = new TimeSegmentList();
+                schedulingEntries = new SchedulingEntryList();
+
+                bool ProgressCallback(double progressPercentage)
+                {
+                    // return true to cancel, false to continue
+                    if (progressMonitor == null) return false;
+
+                    if (progressMonitor.IsCanceled) return true;
+
+                    progressMonitor.UpdateProgress(progress.ChangePercentComplete((int) Math.Round(progressPercentage)));
+                    return false;
+                }
+
+                s.GetScheduling(timeSegments, schedulingEntries, ProgressCallback);
+                if (timeSegments.Count == 0 || schedulingEntries.Count == 0)
+                {
+                    throw new Exception(Resources.BrukerTimsTofMethodExporter_ExportMethod_Scheduling_failure__no_targets__);
+                }
+
+                if (!string.IsNullOrEmpty(fileName) && (progressMonitor == null || !progressMonitor.IsCanceled))
+                    s.WriteScheduling();
+
+                if (getMetrics)
+                    _schedulingMetrics = new Metrics(s, _targets);
+            }
+        }
+
+        public static LibKey[] GetMissingIonMobility(SrmDocument document, ExportProperties exportProperties)
+        {
+            var exporter = exportProperties.InitExporter(new BrukerTimsTofMethodExporter(document));
+            exporter.RunLength = exportProperties.RunLength;
+            exporter.Ms1RepetitionTime = exportProperties.Ms1RepetitionTime;
+            exporter.InitExport(null, null);
+            return exporter.MissingIonMobility;
+        }
+
+        public static void GetScheduling(SrmDocument document, ExportProperties exportProperties, string templateName,
+            IProgressMonitor progressMonitor, out IPointList pointList)
+        {
+            var exporter = exportProperties.InitExporter(new BrukerTimsTofMethodExporter(document));
+            exporter.RunLength = exportProperties.RunLength;
+            exporter.Ms1RepetitionTime = exportProperties.Ms1RepetitionTime;
+            exporter.ExportMethod(null, templateName, progressMonitor, out var timeSegments, out var schedulingEntries, false);
+
+            var timeSegmentCounts = new Dictionary<uint, HashSet<uint>>();
+            foreach (var entry in schedulingEntries)
+            {
+                if (!timeSegmentCounts.ContainsKey(entry.time_segment_id))
+                    timeSegmentCounts[entry.time_segment_id] = new HashSet<uint>();
+                timeSegmentCounts[entry.time_segment_id].Add(entry.frame_id);
+            }
+
+            var points = new List<PointPair>();
+            for (uint i = 0; i < timeSegments.Count; i++)
+            {
+                var count = 0;
+                if (timeSegmentCounts.TryGetValue(i, out var countSet))
+                    count = countSet.Count;
+                points.Add(new PointPair(timeSegments[(int)i].time_in_seconds_begin / 60, count));
+                points.Add(new PointPair(timeSegments[(int)i].time_in_seconds_end / 60, count));
+            }
+
+            if (timeSegments.Count > 0)
+            {
+                points.Insert(0, new PointPair(points.First().X, 0));
+                points.Insert(0, new PointPair(points.First().X - 1, 0));
+
+                const double pointLimit = 1e9;
+                if (points.Last().X > pointLimit)
+                {
+                    var penultimate = points[points.Count - 2].X;
+                    if (penultimate < pointLimit)
+                    {
+                        points[points.Count - 1].X = penultimate + 1;
+                    }
+                }
+
+                points.Add(new PointPair(points.Last().X, 0));
+            }
+
+            pointList = new PointPairList(points);
+        }
+
+        public static Metrics GetSchedulingMetrics(SrmDocument document,
+            ExportProperties exportProperties, string templateName, IProgressMonitor progressMonitor)
+        {
+            var exporter = exportProperties.InitExporter(new BrukerTimsTofMethodExporter(document));
+            exporter.RunLength = exportProperties.RunLength;
+            exporter.Ms1RepetitionTime = exportProperties.Ms1RepetitionTime;
+            exporter.ExportMethod(null, templateName, progressMonitor, out _, out _, true);
+            return exporter._schedulingMetrics;
+        }
+
+        public class Metrics
+        {
+            private readonly Dictionary<SchedulingMetrics, PointPairList> _metrics;
+            public DataTable Table { get; }
+
+            public static string ColTarget => Resources.Metrics_ColTarget_Target;
+            public static string ColMeanSamplingTime = Resources.Metrics_ColMeanSamplingTime_Mean_sampling_time__seconds_;
+            public static string ColMaxSamplingTime = Resources.Metrics_ColMaxSamplingTime_Max_sampling_time__seconds_;
+            public static string ColMz = Resources.Metrics_ColMz_m_z;
+            public static string Col1K0LowerLimit = Resources.Metrics_Col1K0LowerLimit__1_K0_lower_limit;
+            public static string Col1K0UpperLimit = Resources.Metrics_Col1K0UpperLimit__1_K0_upper_limit;
+            public static string ColRtBegin = Resources.Metrics_ColRtBegin_RT_begin;
+            public static string ColRtEnd = Resources.Metrics_ColRtEnd_RT_end;
+
+            public Metrics(Scheduler s, IList<Tuple<InputTarget, string>> targets)
+            {
+                var concurrentFrames = s.GetSchedulingMetrics(SchedulingMetrics.CONCURRENT_FRAMES);
+                var maxSamplingTimes = s.GetSchedulingMetrics(SchedulingMetrics.MAX_SAMPLING_TIMES);
+                var meanSamplingTimes = s.GetSchedulingMetrics(SchedulingMetrics.MEAN_SAMPLING_TIMES);
+                var redundancyOfTargets = s.GetSchedulingMetrics(SchedulingMetrics.REDUNDANCY_OF_TARGETS);
+                var targetsPerFrame = s.GetSchedulingMetrics(SchedulingMetrics.TARGETS_PER_FRAME);
+
+                _metrics = new Dictionary<SchedulingMetrics, PointPairList>
+                {
+                    {SchedulingMetrics.CONCURRENT_FRAMES, new PointPairList(concurrentFrames.Select(pt => new PointPair(pt.x / 60, pt.y)).ToList())},
+                    {SchedulingMetrics.MAX_SAMPLING_TIMES, new PointPairList(
+                        maxSamplingTimes.OrderBy(pt => pt.y).Select((pt, i) => new PointPair(i + 1, pt.y)).ToList())},
+                    {SchedulingMetrics.MEAN_SAMPLING_TIMES, new PointPairList(
+                        meanSamplingTimes.OrderBy(pt => pt.y)
+                            .Select((pt, i) => new PointPair(i + 1, pt.y)).ToList())},
+                    {SchedulingMetrics.REDUNDANCY_OF_TARGETS, new PointPairList(redundancyOfTargets.Select(pt => new PointPair(pt.x / 60, pt.y)).ToList())},
+                    {SchedulingMetrics.TARGETS_PER_FRAME, new PointPairList(targetsPerFrame.Select(pt => new PointPair(pt.x / 60, pt.y)).ToList())}
+                };
+
+                Table = new DataTable();
+                Table.Columns.Add(ColTarget, typeof(string));
+                Table.Columns.Add(ColMz, typeof(double));
+                Table.Columns.Add(ColMeanSamplingTime, typeof(double));
+                Table.Columns.Add(ColMaxSamplingTime, typeof(double));
+                Table.Columns.Add(Col1K0LowerLimit, typeof(double));
+                Table.Columns.Add(Col1K0UpperLimit, typeof(double));
+                Table.Columns.Add(ColRtBegin, typeof(double));
+                Table.Columns.Add(ColRtEnd, typeof(double));
+                for (var i = 0; i < targets.Count; i++)
+                {
+                    var target = targets[i].Item1;
+                    var targetName = targets[i].Item2;
+
+                    var row = Table.NewRow();
+                    row[ColTarget] = targetName + Transition.GetChargeIndicator(target.charge);
+                    row[ColMz] = target.monoisotopic_mz;
+                    row[ColMeanSamplingTime] = meanSamplingTimes[i].y;
+                    row[ColMaxSamplingTime] = maxSamplingTimes[i].y;
+                    row[Col1K0LowerLimit] = target.one_over_k0_lower_limit;
+                    row[Col1K0UpperLimit] = target.one_over_k0_upper_limit;
+                    row[ColRtBegin] = target.time_in_seconds_begin / 60;
+                    row[ColRtEnd] = target.time_in_seconds_end / 60;
+                    Table.Rows.Add(row);
+                }
+            }
+
+            public PointPairList Get(SchedulingMetrics metricType) { return _metrics.ContainsKey(metricType) ? _metrics[metricType] : new PointPairList(); }
+        }
+    }
 
     public class ThermoQExactiveIsolationListExporter : ThermoMassListExporter
     {
@@ -2925,10 +3466,10 @@ namespace pwiz.Skyline.Model
 
         public string GetHeader(char fieldSeparator)
         {
-            var hdr = "Mass [m/z],Formula [M],Species,CS [z],Polarity,Start [min],End [min],NCE,";  // Not L10N
+            var hdr = @"Mass [m/z],Formula [M],Species,CS [z],Polarity,Start [min],End [min],NCE,";
             if (UseSlens)
-                hdr += "S-lens,";  // Not L10N
-            return (hdr+"Comment").Replace(',', fieldSeparator); // Not L10N
+                hdr += @"S-lens,";
+            return (hdr+@"Comment").Replace(',', fieldSeparator);
         }
 
         protected override void WriteTransition(TextWriter writer,
@@ -2958,7 +3499,7 @@ namespace pwiz.Skyline.Model
                 }
             }
 
-            string z = Math.Abs(nodeTranGroup.TransitionGroup.PrecursorCharge).ToString(CultureInfo);
+            string z = Math.Abs(nodeTranGroup.TransitionGroup.PrecursorAdduct.AdductCharge).ToString(CultureInfo);
             // Note that this is normalized CE (not absolute)
             var fullScan = Document.Settings.TransitionSettings.FullScan;
             bool wideWindowDia = false;
@@ -2973,14 +3514,14 @@ namespace pwiz.Skyline.Model
                 }
             }
             string collisionEnergy = (wideWindowDia ? WIDE_NCE : NARROW_NCE).ToString(CultureInfo); // Normalized CE, not a real voltage
-            string comment = string.Format("{0} ({1})", // Not L10N
+            string comment = string.Format(@"{0} ({1})",
                 GetCompound(nodePep, nodeTranGroup),
                 nodeTranGroup.TransitionGroup.LabelType).ToDsvField(FieldSeparator);
 
-            var polarity = (nodeTranGroup.PrecursorCharge > 0) ? "Positive" : "Negative"; // Not L10N
+            var polarity = (nodeTranGroup.PrecursorCharge > 0) ? @"Positive" : @"Negative";
             if (UseSlens)
             {
-                var slens = (nodeTranGroup.ExplicitValues.SLens ?? DEFAULT_SLENS).ToString(CultureInfo);  
+                var slens = (ExplicitTransitionValues.Get(nodeTran).SLens ?? DEFAULT_SLENS).ToString(CultureInfo);  
                 Write(writer, precursorMz, string.Empty, string.Empty, z, polarity, start, end, collisionEnergy, slens, comment);
             }
             else
@@ -2995,6 +3536,11 @@ namespace pwiz.Skyline.Model
         public const double NARROW_NCE = 27.0;
         public const double WIDE_NCE = 30.0;
 
+        public bool Tune3 { get; set; }
+        public bool Tune3Columns { get { return IsolationList && Tune3; } }
+
+        public bool WriteFaimsCv { get; set; }
+
         public ThermoFusionMassListExporter(SrmDocument document)
             : base(document)
         {
@@ -3008,10 +3554,14 @@ namespace pwiz.Skyline.Model
 
         public string GetHeader(char fieldSeparator)
         {
-            var hdr = "m/z,z,t start (min),t end (min),CID Collision Energy (%)";  // Not L10N
+            var hdr = !Tune3Columns
+                ? @"m/z,z,t start (min),t end (min),CID Collision Energy (%)"
+                : @"Compound,Formula,Adduct,m/z,z,t start (min),t stop (min),CID Collision Energy (%)";
             if (UseSlens)
-                hdr += ",S-lens";  // Not L10N
-            return hdr.Replace(',', fieldSeparator); // Not L10N
+                hdr += @",S-lens";
+            if (WriteFaimsCv)
+                hdr += @",FAIMS CV (V)";
+            return hdr.Replace(',', fieldSeparator);
         }
 
         protected override void WriteHeaders(TextWriter writer)
@@ -3046,7 +3596,7 @@ namespace pwiz.Skyline.Model
                 }
             }
 
-            string z = nodeTranGroup.TransitionGroup.PrecursorCharge.ToString(CultureInfo);
+            string z = nodeTranGroup.TransitionGroup.PrecursorCharge.ToString(CultureInfo);  // CONSIDER(bspratt): Is charge all that matters, or are we implying protonation?
             // Note that this is normalized CE (not absolute)
             var fullScan = Document.Settings.TransitionSettings.FullScan;
             bool wideWindowDia = false;
@@ -3061,18 +3611,30 @@ namespace pwiz.Skyline.Model
                 }
             }
             string collisionEnergy = (wideWindowDia ? WIDE_NCE : NARROW_NCE).ToString(CultureInfo);
+            var writeColumns = new List<string> {precursorMz, z, start, end, collisionEnergy};
+            if (Tune3Columns)
+            {
+                writeColumns.InsertRange(0, new []
+                {
+                    string.Format(@"{0} ({1})",
+                        nodePep.Peptide.IsCustomMolecule ? nodeTranGroup.CustomMolecule.InvariantName : Document.Settings.GetModifiedSequence(nodePep).Sequence,
+                        nodeTranGroup.TransitionGroup.LabelType),
+                    string.Empty,
+                    string.Empty
+                });
+            }
             if (UseSlens)
             {
-                var slens =
-                    (nodeTranGroup.ExplicitValues.SLens ?? DEFAULT_SLENS).ToString(
-                        CultureInfo);
-                Write(writer, precursorMz, z, start, end, collisionEnergy, slens);
+                var slens = (ExplicitTransitionValues.Get(nodeTran).SLens ?? DEFAULT_SLENS).ToString(CultureInfo);
+                writeColumns.Add(slens);
             }
-            else
+            if (WriteFaimsCv)
             {
-            Write(writer, precursorMz, z, start, end, collisionEnergy);
+                var cv = GetCompensationVoltage(nodePep, nodeTranGroup, nodeTran, step);
+                writeColumns.Add(cv.HasValue ? cv.Value.ToString(CultureInfo) : string.Empty);
+            }
+            Write(writer, writeColumns.ToArray());
         }
-    }
     }
 
     public class ThermoFusionIsolationListExporter : ThermoFusionMassListExporter
@@ -3081,6 +3643,7 @@ namespace pwiz.Skyline.Model
             : base(document)
         {
             IsolationList = true;
+            IsPrecursorLimited = true;
         }
 
         public void ExportMethod(string fileName, string templateName, IProgressMonitor progressMonitor)
@@ -3093,6 +3656,12 @@ namespace pwiz.Skyline.Model
 
     public class WatersMassListExporter : AbstractMassListExporter
     {
+        // Hack to workaround limitation of 32 transitions per function
+        protected readonly Dictionary<Tuple<string, int>, int> _compoundCounts = new Dictionary<Tuple<string, int>, int>();
+        protected const int MAX_COMPOUND_NAME = 32;
+
+        protected bool USE_COMPOUND_COUNT_WORKAROUND { get { return true; } }
+
         public WatersMassListExporter(SrmDocument document)
             : this(document, null)
         {
@@ -3119,7 +3688,7 @@ namespace pwiz.Skyline.Model
 
         public override bool HasHeaders { get { return true; } }
 
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         protected override void WriteHeaders(TextWriter writer)
         {
             writer.Write("protein.name");
@@ -3149,7 +3718,7 @@ namespace pwiz.Skyline.Model
             }
             writer.WriteLine();
         }
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         protected override void WriteTransition(TextWriter writer,
                                                 int fileNumber,
@@ -3160,22 +3729,41 @@ namespace pwiz.Skyline.Model
                                                 TransitionDocNode nodeTran,
                                                 int step)
         {
-            writer.WriteDsvField(nodePepGroup.Name.Replace(' ', '_'), FieldSeparator);  // Quanpedia can't handle spaces // Not L10N
+            writer.WriteDsvField(nodePepGroup.Name.Replace(' ', '_'), FieldSeparator);  // Quanpedia can't handle spaces
             writer.Write(FieldSeparator);
             // Write special ID to ensure 1-to-1 relationship between this ID and precursor m/z
             // Better to use one ID per peptide molecular structure, as Waters has a 512 ID limit
             // and this allows for 512 peptide charge states and not just 512 precursors.
 //            writer.Write(Document.Settings.GetModifiedSequence(nodePep.Peptide.Sequence,
 //                nodeTranGroup.TransitionGroup.LabelType, nodePep.ExplicitMods));
+
             var compound = GetCompound(nodePep, nodeTranGroup);
-            compound += '.'; // Not L10N
-            compound += nodeTranGroup.PrecursorCharge;
+            compound += '.';
+            compound += nodeTranGroup.PrecursorAdduct.AsFormulaOrInt();
+
+            if (USE_COMPOUND_COUNT_WORKAROUND)
+            {
+                var key = Tuple.Create(compound, step);
+                if (!_compoundCounts.ContainsKey(key))
+                {
+                    _compoundCounts[key] = 0;
+                }
+                else
+                {
+                    int compoundStep = ++_compoundCounts[key] / MAX_COMPOUND_NAME + 1;
+                    if (compoundStep > 1)
+                        compound += '.' + compoundStep.ToString(CultureInfo);
+                }
+            }
+
             if (step != 0)
             {
-                compound += '.'; // Not L10N           
+                compound += '.';
                 compound += step.ToString(CultureInfo);
             }
+
             writer.WriteDsvField(compound, FieldSeparator, FieldSeparatorReplacement);
+
             writer.Write(FieldSeparator);
             writer.Write(SequenceMassCalc.PersistentMZ(nodeTranGroup.PrecursorMz).ToString(CultureInfo));
             writer.Write(FieldSeparator);
@@ -3207,7 +3795,7 @@ namespace pwiz.Skyline.Model
             // Waters only excepts integers for CE and CV
             writer.Write((int)Math.Round(GetCollisionEnergy(nodePep, nodeTranGroup, nodeTran, step)));
             writer.Write(FieldSeparator);
-            writer.Write((int)Math.Round(nodeTranGroup.ExplicitValues.ConeVoltage ?? ConeVoltage));
+            writer.Write((int)Math.Round(ExplicitTransitionValues.Get(nodeTran).ConeVoltage ?? ConeVoltage));
             writer.Write(FieldSeparator);
 
             // Extra information not used by instrument
@@ -3230,11 +3818,11 @@ namespace pwiz.Skyline.Model
 
     public class WatersIsolationListExporter : AbstractMassListExporter
     {
-        public const string EXT_WATERS_ISOLATION_LIST = ".mrm"; // Not L10N
+        public const string EXT_WATERS_ISOLATION_LIST = ".mrm";
 
-        public const string RETENTION_TIME_FORMAT = "0.0"; // Not L10N
-        public const string MASS_FORMAT = "0.0000"; // Not L10N
-        public const string CE_FORMAT = "0.0"; // Not L10N
+        public const string RETENTION_TIME_FORMAT = "0.0";
+        public const string MASS_FORMAT = "0.0000";
+        public const string CE_FORMAT = "0.0";
         
         public bool ExportEdcMass { get; set; }
 
@@ -3255,6 +3843,7 @@ namespace pwiz.Skyline.Model
         {
             _instrumentType = instrumentType;
             IsolationList = true;
+            IsPrecursorLimited = true;
 
             /* From Waters:
              * 
@@ -3302,8 +3891,8 @@ namespace pwiz.Skyline.Model
         public static string GetHeader(char fieldSeparator)
         {
             return
-                ";Function channel,Retention Time Start,Retention Time End,Set Mass,Mass Fragments 1,2,3,4,5,6,Trap CE Start,Trap CE End," + // Not L10N
-                "Transfer CE Start,Transfer CE End,CV,EDCMass,DT Start,DT End,compound name".Replace(',', fieldSeparator); // Not L10N
+                @";Function channel,Retention Time Start,Retention Time End,Set Mass,Mass Fragments 1,2,3,4,5,6,Trap CE Start,Trap CE End," +
+                @"Transfer CE Start,Transfer CE End,CV,EDCMass,DT Start,DT End,compound name".Replace(',', fieldSeparator); 
         }
 
         protected override void WriteHeaders(TextWriter writer)
@@ -3379,7 +3968,7 @@ namespace pwiz.Skyline.Model
                 writer.Write(FieldSeparator);
             }
             // CV
-            writer.Write(nodeTranGroup.ExplicitValues.ConeVoltage ?? ConeVoltage);
+            writer.Write(ExplicitTransitionValues.Get(nodeTran).ConeVoltage ?? ConeVoltage);
             writer.Write(FieldSeparator);
             // EDCMass
             var edcMass = ExportEdcMass && transitions.Any()
@@ -3469,7 +4058,7 @@ namespace pwiz.Skyline.Model
 
     public class WatersMethodExporter : WatersMassListExporter
     {
-        public const string EXE_BUILD_WATERS_METHOD = @"Method\Waters\BuildWatersMethod"; // Not L10N
+        public const string EXE_BUILD_WATERS_METHOD = @"Method\Waters\BuildWatersMethod";
 
         public WatersMethodExporter(SrmDocument document)
             : base(document)
@@ -3488,16 +4077,16 @@ namespace pwiz.Skyline.Model
 
             var argv = new List<string>();
             if (Equals(MethodInstrumentType, ExportInstrumentType.WATERS_QUATTRO_PREMIER))
-                argv.Add("-q"); // Not L10N
-            argv.Add("-w"); // Not L10N
+                argv.Add(@"-q");
+            argv.Add(@"-w"); 
             argv.Add(RTWindow.ToString(CultureInfo.InvariantCulture));
             MethodExporter.ExportMethod(EXE_BUILD_WATERS_METHOD,
                 argv, fileName, templateName, MemoryOutput, progressMonitor);
         }
 
-        private const string PRIMARY_DEPENDENCY_LIBRARY = "QuantifyClassLibrary.dll"; // Not L10N
+        private const string PRIMARY_DEPENDENCY_LIBRARY = "QuantifyClassLibrary.dll";
 
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         private static readonly string[] DEPENDENCY_LIBRARIES = {   
                                                                     PRIMARY_DEPENDENCY_LIBRARY,
                                                                     "CompoundDatabaseClassLibrary.dll",
@@ -3509,7 +4098,7 @@ namespace pwiz.Skyline.Model
                                                                     "UtilityClassLibrary.dll",
                                                                     "WizardData.dll"
                                                                 };
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         private static void EnsureLibraries()
         {
@@ -3520,11 +4109,11 @@ namespace pwiz.Skyline.Model
             // ReSharper disable ConstantNullCoalescingCondition
             string buildSubdir = Path.GetDirectoryName(EXE_BUILD_WATERS_METHOD) ?? string.Empty;
             string exeDir = Path.Combine(Path.GetDirectoryName(skylinePath) ?? string.Empty, buildSubdir);
-            string dacServerPath = AdvApi.GetPathFromProgId("DACScanStats.DACScanStats"); // Not L10N
+            string dacServerPath = AdvApi.GetPathFromProgId(@"DACScanStats.DACScanStats"); 
             if (dacServerPath == null)
             {
                 dacServerPath = AdvApi.RegQueryKeyValue(AdvApi.HKEY_LOCAL_MACHINE,
-                                                        @"SOFTWARE\Wow6432Node\Micromass\MassLynx", "Root"); // Not L10N
+                                                        @"SOFTWARE\Wow6432Node\Micromass\MassLynx", @"Root"); 
                 if (dacServerPath == null)
                 {
                     // If all the necessary libraries exist, then continue even if MassLynx is gone.
@@ -3536,7 +4125,7 @@ namespace pwiz.Skyline.Model
                     return;
                 }
 
-                dacServerPath = Path.Combine(dacServerPath, "bin"); // Not L10N
+                dacServerPath = Path.Combine(dacServerPath, @"bin");
             }
 
             string massLynxDir = Path.GetDirectoryName(dacServerPath) ?? string.Empty;
@@ -3561,14 +4150,14 @@ namespace pwiz.Skyline.Model
 
     internal static class AdvApi
     {
-        [DllImport("advapi32.dll", CharSet = CharSet.Auto)] // Not L10N
+        [DllImport(@"advapi32.dll", CharSet = CharSet.Auto)]
         public static extern int RegOpenKeyEx(
           UIntPtr hKey,
           string subKey,
           int ulOptions,
           int samDesired,
           out UIntPtr hkResult);
-        [DllImport("advapi32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegQueryValueExW", SetLastError = true)] // Not L10N
+        [DllImport(@"advapi32.dll", CharSet = CharSet.Unicode, EntryPoint = @"RegQueryValueExW", SetLastError = true)]
         public static extern int RegQueryValueEx(
             UIntPtr hKey,
             string lpValueName,
@@ -3576,7 +4165,7 @@ namespace pwiz.Skyline.Model
             out uint lpType,
             StringBuilder lpData,
             ref uint lpcbData);
-        [DllImport("advapi32.dll", SetLastError = true)] // Not L10N
+        [DllImport(@"advapi32.dll", SetLastError = true)]
         public static extern int RegCloseKey(
             UIntPtr hKey);
 
@@ -3592,10 +4181,10 @@ namespace pwiz.Skyline.Model
 
         public static string GetPathFromProgId(string progId)
         {
-            String clsid = RegQueryKeyValue(HKEY_LOCAL_MACHINE, @"SOFTWARE\Classes\" + progId + @"\CLSID"); // Not L10N
+            String clsid = RegQueryKeyValue(HKEY_LOCAL_MACHINE, @"SOFTWARE\Classes\" + progId + @"\CLSID");
             if (clsid == null)
                 return null;
-            return RegQueryKeyValue(HKEY_LOCAL_MACHINE, @"SOFTWARE\Classes\CLSID\" + clsid + @"\InprocServer32"); // Not L10N
+            return RegQueryKeyValue(HKEY_LOCAL_MACHINE, @"SOFTWARE\Classes\CLSID\" + clsid + @"\InprocServer32"); 
         }
 
         public static string RegQueryKeyValue(UIntPtr hKey, string path)
@@ -3667,7 +4256,9 @@ namespace pwiz.Skyline.Model
                     stdinBuilder.Append(pair.Value);
                 }
 
-                argv.AddRange(new[] { "-s", "-m", "\"" + templateName + "\"" });  // Read from stdin, multi-file format // Not L10N
+                // Resharper disable LocalizableElement
+                argv.AddRange(new[] { "-s", "-m", "\"" + templateName + "\"" });  // Read from stdin, multi-file format
+                // Resharper restore LocalizableElement
 
                 string dirWork = Path.GetDirectoryName(fileName);
                 var psiExporter = new ProcessStartInfo(exeName)
@@ -3676,7 +4267,7 @@ namespace pwiz.Skyline.Model
                     UseShellExecute = false,
                     // Common directory includes the directory separator
                     WorkingDirectory = dirWork ?? string.Empty,
-                    Arguments = string.Join(" ", argv.ToArray()), // Not L10N
+                    Arguments = string.Join(@" ", argv.ToArray()), 
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     RedirectStandardInput = true
@@ -3692,7 +4283,7 @@ namespace pwiz.Skyline.Model
                 }
                 progressMonitor.UpdateProgress(status);
 
-                psiExporter.RunProcess(stdinBuilder.ToString(), "MESSAGE: ", progressMonitor, ref status); // Not L10N
+                psiExporter.RunProcess(stdinBuilder.ToString(), @"MESSAGE: ", progressMonitor, ref status); 
 
                 if (!status.IsError && !status.IsCanceled)
                 {
@@ -3728,7 +4319,7 @@ namespace pwiz.Skyline.Model
         {
         }
 
-        private enum ATTR // Not L10N
+        private enum ATTR 
         {
             file_path
         }

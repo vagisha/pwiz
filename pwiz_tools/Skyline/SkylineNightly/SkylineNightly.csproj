@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>SkylineNightly</RootNamespace>
     <AssemblyName>SkylineNightly</AssemblyName>
-    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
@@ -63,8 +63,8 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Ionic.Zip">
-      <HintPath>..\..\Shared\Lib\DotNetZip\Release\Ionic.Zip.dll</HintPath>
+    <Reference Include="DotNetZip">
+      <HintPath>..\..\Shared\Lib\DotNetZip\DotNetZip.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Win32.TaskScheduler">
       <HintPath>..\SkylineTester\Microsoft.Win32.TaskScheduler.dll</HintPath>
@@ -74,6 +74,7 @@
     <Reference Include="System.Net.Http">
       <SpecificVersion>False</SpecificVersion>
     </Reference>
+    <Reference Include="System.ServiceModel" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -84,6 +85,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="LogFileMonitor.cs" />
     <Compile Include="Nightly.cs" />
     <Compile Include="SkylineNightly.cs">
       <SubType>Form</SubType>

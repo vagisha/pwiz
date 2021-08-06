@@ -117,6 +117,9 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <metadata name="modeUIHandler.TrayLocation" type="System.Drawing.Point, System.Drawing, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+    <value>17, 17</value>
+  </metadata>
   <assembly alias="System.Windows.Forms" name="System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089" />
   <data name="btnOK.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Bottom, Right</value>
@@ -190,7 +193,7 @@
     <value>19</value>
   </data>
   <data name="btnAdvanced.Text" xml:space="preserve">
-    <value>詳細を隠す &gt;&gt;</value>
+    <value>詳細 &gt;&gt;</value>
   </data>
   <data name="&gt;&gt;btnAdvanced.Name" xml:space="preserve">
     <value>btnAdvanced</value>
@@ -444,30 +447,6 @@
   <data name="&gt;&gt;tbxConfidenceLevel.ZOrder" xml:space="preserve">
     <value>6</value>
   </data>
-  <data name="msStatsLogoForm1.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
-    <value>Top, Right</value>
-  </data>
-  <data name="msStatsLogoForm1.Location" type="System.Drawing.Point, System.Drawing">
-    <value>406, 203</value>
-  </data>
-  <data name="msStatsLogoForm1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>106, 106</value>
-  </data>
-  <data name="msStatsLogoForm1.TabIndex" type="System.Int32, mscorlib">
-    <value>45</value>
-  </data>
-  <data name="&gt;&gt;msStatsLogoForm1.Name" xml:space="preserve">
-    <value>msStatsLogoForm1</value>
-  </data>
-  <data name="&gt;&gt;msStatsLogoForm1.Type" xml:space="preserve">
-    <value>pwiz.Skyline.Controls.GroupComparison.MsStatsLogoForm, Skyline, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null</value>
-  </data>
-  <data name="&gt;&gt;msStatsLogoForm1.Parent" xml:space="preserve">
-    <value>panelMain</value>
-  </data>
-  <data name="&gt;&gt;msStatsLogoForm1.ZOrder" xml:space="preserve">
-    <value>7</value>
-  </data>
   <data name="lblConfidenceLevel.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
   </data>
@@ -496,7 +475,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;lblConfidenceLevel.ZOrder" xml:space="preserve">
-    <value>8</value>
+    <value>7</value>
   </data>
   <data name="lblControlValue.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -526,7 +505,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;lblControlValue.ZOrder" xml:space="preserve">
-    <value>9</value>
+    <value>8</value>
   </data>
   <data name="lblCompareAgainst.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -556,7 +535,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;lblCompareAgainst.ZOrder" xml:space="preserve">
-    <value>10</value>
+    <value>9</value>
   </data>
   <data name="comboCaseValue.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Left, Right</value>
@@ -580,7 +559,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;comboCaseValue.ZOrder" xml:space="preserve">
-    <value>11</value>
+    <value>10</value>
   </data>
   <data name="comboNormalizationMethod.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Left, Right</value>
@@ -592,13 +571,13 @@
     <value>中央値を均一化</value>
   </data>
   <data name="comboNormalizationMethod.Items2" xml:space="preserve">
-    <value>変位値</value>
+    <value>分位値</value>
   </data>
   <data name="comboNormalizationMethod.Items3" xml:space="preserve">
-    <value>グローバル標準に対し相対的</value>
+    <value>グローバル標準にする相対値</value>
   </data>
   <data name="comboNormalizationMethod.Items4" xml:space="preserve">
-    <value>内部標準に対し相対的</value>
+    <value>内標準に対する相対値</value>
   </data>
   <data name="comboNormalizationMethod.Location" type="System.Drawing.Point, System.Drawing">
     <value>12, 179</value>
@@ -619,7 +598,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;comboNormalizationMethod.ZOrder" xml:space="preserve">
-    <value>12</value>
+    <value>11</value>
   </data>
   <data name="label2.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -649,7 +628,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;label2.ZOrder" xml:space="preserve">
-    <value>13</value>
+    <value>12</value>
   </data>
   <data name="comboIdentityAnnotation.Anchor" type="System.Windows.Forms.AnchorStyles, System.Windows.Forms">
     <value>Top, Left, Right</value>
@@ -673,7 +652,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;comboIdentityAnnotation.ZOrder" xml:space="preserve">
-    <value>14</value>
+    <value>13</value>
   </data>
   <data name="lblNormalizationMethod.AutoSize" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -703,7 +682,7 @@
     <value>panelMain</value>
   </data>
   <data name="&gt;&gt;lblNormalizationMethod.ZOrder" xml:space="preserve">
-    <value>15</value>
+    <value>14</value>
   </data>
   <data name="panelMain.Dock" type="System.Windows.Forms.DockStyle, System.Windows.Forms">
     <value>Top</value>
@@ -766,7 +745,7 @@
     <value>0</value>
   </data>
   <data name="lblQValueCutoff.Text" xml:space="preserve">
-    <value>カットオフより大きな検知Q値を有するピークは欠けているものとして取り扱います。</value>
+    <value>カットオフより大きな検出のQ値を有するピークは欠けているものとして取り扱います。</value>
   </data>
   <data name="&gt;&gt;lblQValueCutoff.Name" xml:space="preserve">
     <value>lblQValueCutoff</value>
@@ -820,7 +799,7 @@
     <value>0</value>
   </data>
   <data name="lblSummaryMethod.Text" xml:space="preserve">
-    <value>概要メソッド：</value>
+    <value>要約手法：</value>
   </data>
   <data name="&gt;&gt;lblSummaryMethod.Name" xml:space="preserve">
     <value>lblSummaryMethod</value>
@@ -874,7 +853,7 @@
     <value>2</value>
   </data>
   <data name="cbxUseZeroForMissingPeaks.Text" xml:space="preserve">
-    <value>欠けているピークにゼロを使用する</value>
+    <value>欠損しているピークはゼロを使用する</value>
   </data>
   <data name="&gt;&gt;cbxUseZeroForMissingPeaks.Name" xml:space="preserve">
     <value>cbxUseZeroForMissingPeaks</value>
@@ -1058,6 +1037,12 @@
   </data>
   <data name="$this.Text" xml:space="preserve">
     <value>グループ比較を編集</value>
+  </data>
+  <data name="&gt;&gt;modeUIHandler.Name" xml:space="preserve">
+    <value>modeUIHandler</value>
+  </data>
+  <data name="&gt;&gt;modeUIHandler.Type" xml:space="preserve">
+    <value>pwiz.Skyline.Util.Helpers+ModeUIExtender, Skyline, Version=19.1.1.295, Culture=neutral, PublicKeyToken=null</value>
   </data>
   <data name="&gt;&gt;$this.Name" xml:space="preserve">
     <value>EditGroupComparisonDlg</value>

@@ -17,37 +17,50 @@
  * limitations under the License.
  */
 
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Attributes;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
+using pwiz.Skyline.Model.ElementLocators;
 using pwiz.Skyline.Model.Hibernate;
 using pwiz.Skyline.Model.Results;
+using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 using SkylineTool;
 
 namespace pwiz.Skyline.Model.Databinding.Entities
 {
+    [ProteomicDisplayName("PeptideResult")]
+    [InvariantDisplayName("MoleculeResult")]
     public class PeptideResult : Result
     {
         private readonly CachedValue<PeptideChromInfo> _chromInfo;
         private readonly CachedValue<QuantificationResult> _quantificationResult;
+        private readonly CachedValue<CalibrationCurveFitter> _calibrationCurveFitter;
+
         public PeptideResult(Peptide peptide, ResultFile file) : base(peptide, file)
         {
             _chromInfo = CachedValue.Create(DataSchema, () => ResultFile.FindChromInfo(peptide.DocNode.Results));
             _quantificationResult = CachedValue.Create(DataSchema, GetQuantification);
+            _calibrationCurveFitter = CachedValue.Create(DataSchema, GetCalibrationCurveFitter);
         }
 
         [HideWhen(AncestorOfType = typeof(Peptide))]
-        [Advanced]
+        [Hidden]
+        [InvariantDisplayName("Molecule", ExceptInUiMode = UiModes.PROTEOMIC)]
         public Peptide Peptide { get { return SkylineDocNode as Peptide; } }
 
         [Browsable(false)]
         public PeptideChromInfo ChromInfo { get { return _chromInfo.Value; } }
         [Format(Formats.PEAK_FOUND_RATIO, NullValue = TextUtil.EXCEL_NA)]
+        [InvariantDisplayName("MoleculePeakFoundRatio", ExceptInUiMode = UiModes.PROTEOMIC)]
         public double PeptidePeakFoundRatio { get { return ChromInfo.PeakCountRatio; } }
         [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
+        [InvariantDisplayName("MoleculeRetentionTime", ExceptInUiMode = UiModes.PROTEOMIC)]
         public double? PeptideRetentionTime { get { return ChromInfo.RetentionTime; } }
         
         [Format(Formats.RETENTION_TIME, NullValue = TextUtil.EXCEL_NA)]
@@ -58,7 +71,7 @@ namespace pwiz.Skyline.Model.Databinding.Entities
                 var peptidePrediction = SrmDocument.Settings.PeptideSettings.Prediction;
                 if (peptidePrediction.RetentionTime != null)
                 {
-                    string textId = SrmDocument.Settings.GetSourceTextId(Peptide.DocNode);
+                    var textId = SrmDocument.Settings.GetSourceTarget(Peptide.DocNode);
                     double? scoreCalc = peptidePrediction.RetentionTime.Calculator.ScoreSequence(textId);
                     if (scoreCalc.HasValue)
                     {
@@ -88,11 +101,69 @@ namespace pwiz.Skyline.Model.Databinding.Entities
         public bool BestReplicate { get { return ResultFile.Replicate.ReplicateIndex == Peptide.DocNode.BestResult; } }
         public override string ToString()
         {
-            return string.Format("RT: {0:0.##}", ChromInfo.RetentionTime);  // Not L10N
+            return string.Format(@"RT: {0:0.##}", ChromInfo.RetentionTime);
         }
 
+        [Format(Formats.PEAK_AREA_NORMALIZED)]
+        public double? ModifiedAreaProportion
+        {
+            get
+            {
+                var unmodifiedSequence = Peptide.DocNode.RawUnmodifiedTextId;
+                var matchingPeptides = Peptide.Protein.Peptides
+                    .Where(pep => unmodifiedSequence == pep.DocNode.RawUnmodifiedTextId);
+                return GetAreaProportion(matchingPeptides);
+            }
+        }
+
+        [Format(Formats.PEAK_AREA_NORMALIZED)]
+        public double? AttributeAreaProportion
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(Peptide.AttributeGroupId))
+                {
+                    return null;
+                }
+                var matchingPeptides = SrmDocument.MoleculeGroups.SelectMany(moleculeGroup =>
+                    moleculeGroup.Molecules.Where(molecule => molecule.AttributeGroupId == Peptide.AttributeGroupId)
+                        .Select(molecule => new Peptide(DataSchema, new IdentityPath(moleculeGroup.Id, molecule.Id))));
+                return GetAreaProportion(matchingPeptides);
+            }
+        }
+
+        private double? GetAreaProportion(IEnumerable<Peptide> peptides)
+        {
+            var normalizedArea = _quantificationResult.Value?.NormalizedArea;
+            if (!normalizedArea.HasValue)
+            {
+                return null;
+            }
+            var total = 0.0;
+            foreach (var peptide in peptides)
+            {
+                foreach (var peptideResult in peptide.Results.Values)
+                {
+                    if (peptideResult.ResultFile.Replicate.Name == ResultFile.Replicate.Name)
+                    {
+                        total += peptideResult._quantificationResult.Value?.NormalizedArea ?? 0.0;
+                    }
+                }
+            }
+
+            return normalizedArea.Value / total;
+        }
+
+        [HideWhen(AncestorOfType = typeof(Peptide))]
         public ResultFile ResultFile { get { return GetResultFile(); } }
 
+        [HideWhen(AncestorOfType = typeof(Peptide))]
+        public ProteinResult ProteinResult
+        {
+            get { return new ProteinResult(Peptide.Protein, ResultFile.Replicate); }
+        }
+
+        [Obsolete]
         [InvariantDisplayName("PeptideResultDocumentLocation")]
         public DocumentLocation DocumentLocation
         {
@@ -102,19 +173,19 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
         }
 
-        public void ChangeChromInfo(EditDescription editDescription, PeptideChromInfo newChromInfo)
+        public void ChangeChromInfo(EditDescription editDescription, Func<PeptideChromInfo, PeptideChromInfo> newChromInfo)
         {
-            var newDocNode = Peptide.DocNode.ChangeResults(GetResultFile().ChangeChromInfo(Peptide.DocNode.Results, newChromInfo));
-            Peptide.ChangeDocNode(editDescription, newDocNode);
+            Peptide.ChangeDocNode(editDescription, docNode=>docNode.ChangeResults(GetResultFile().ChangeChromInfo(docNode.Results, newChromInfo)));
         }
 
+        [Importable]
         public bool ExcludeFromCalibration
         {
             get { return ChromInfo.ExcludeFromCalibration; }
             set
             {
-                ChangeChromInfo(EditDescription.SetColumn("ExcludeFromCalibration", value), // Not L10N
-                    ChromInfo.ChangeExcludeFromCalibration(value));
+                ChangeChromInfo(EditColumnDescription(nameof(ExcludeFromCalibration), value),
+                    chromInfo => chromInfo.ChangeExcludeFromCalibration(value));
             }
         }
 
@@ -135,10 +206,90 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             }
         }
 
-        public QuantificationResult GetQuantification()
+        private QuantificationResult GetQuantification()
         {
-            CalibrationCurveFitter curveFitter = Peptide.GetCalibrationCurveFitter();
-            return curveFitter.GetQuantificationResult(ResultFile.Replicate.ReplicateIndex);
+            return _calibrationCurveFitter.Value.GetPeptideQuantificationResult(ResultFile.Replicate.ReplicateIndex);
+        }
+
+        public CalibrationCurveFitter GetCalibrationCurveFitter()
+        {
+            if (string.IsNullOrEmpty(ResultFile.Replicate.BatchName) && !Peptide.DocNode.HasPrecursorConcentrations)
+            {
+                return Peptide.GetCalibrationCurveFitter();
+            }
+
+            var calibrationCurveFitter =
+                new CalibrationCurveFitter(Peptide.GetPeptideQuantifier(), SrmDocument.Settings);
+            calibrationCurveFitter.SingleBatchReplicateIndex = ResultFile.Replicate.ReplicateIndex;
+            return calibrationCurveFitter;
+        }
+
+        public override ElementRef GetElementRef()
+        {
+            return MoleculeResultRef.PROTOTYPE.ChangeChromInfo(ResultFile.Replicate.ChromatogramSet, ChromInfo)
+                .ChangeParent(Peptide.GetElementRef());
+        }
+
+        [ChildDisplayName("Replicate{0}")]
+        public LinkValue<CalibrationCurve> ReplicateCalibrationCurve
+        {
+            get
+            {
+                var curveFitter = GetCalibrationCurveFitter();
+                return new LinkValue<CalibrationCurve>(curveFitter.GetCalibrationCurve(), (sender, args) =>
+                {
+                    if (null == DataSchema.SkylineWindow)
+                    {
+                        return;
+                    }
+                    DataSchema.SkylineWindow.SelectedResultsIndex = ResultFile.Replicate.ReplicateIndex;
+                    DataSchema.SkylineWindow.SelectedPath = Peptide.IdentityPath;
+                    var calibrationForm = DataSchema.SkylineWindow.ShowCalibrationForm();
+                    if (calibrationForm != null && !Settings.Default.CalibrationCurveOptions.SingleBatch)
+                    {
+                        if (!string.IsNullOrEmpty(ResultFile.Replicate.BatchName) ||
+                            Peptide.DocNode.HasPrecursorConcentrations)
+                        {
+                            Settings.Default.CalibrationCurveOptions.SingleBatch = true;
+                            calibrationForm.UpdateUI(false);
+                        }
+                    }
+                });
+            }
+        }
+
+        [ChildDisplayName("Batch{0}")]
+        public FiguresOfMerit BatchFiguresOfMerit
+        {
+            get
+            {
+                CalibrationCurveFitter calibrationCurveFitter = GetCalibrationCurveFitter();
+                var calibrationCurve = calibrationCurveFitter.GetCalibrationCurve();
+                return calibrationCurveFitter.GetFiguresOfMerit(calibrationCurve);
+            }
+        }
+
+        [InvariantDisplayName("ExplicitAnalyteConcentration")]
+        public double? AnalyteConcentration
+        {
+            get { return ChromInfo.AnalyteConcentration; }
+            set
+            {
+                ChangeChromInfo(EditColumnDescription(@"ExplicitAnalyteConcentration", value),
+                    chromInfo => chromInfo.ChangeAnalyteConcentration(value));
+            }
+        }
+
+        [ProteomicDisplayName("PeptideResultLocator")]
+        [InvariantDisplayName("MoleculeResultLocator")]
+        public string Locator
+        {
+            get { return GetLocator(); }
+        }
+
+        public override bool IsEmpty()
+        {
+            return !ChromInfo.RetentionTime.HasValue;
         }
     }
 }

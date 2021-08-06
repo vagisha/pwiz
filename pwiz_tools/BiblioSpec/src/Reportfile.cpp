@@ -23,8 +23,8 @@
 
 #include "Reportfile.h"
 #include <time.h>
+#include "pwiz/utility/misc/Std.hpp"
 
-using namespace std;
 
 namespace BiblioSpec {
 
@@ -88,7 +88,17 @@ void Reportfile::writeHeader()
     "bp-raw\t"
     "lbp-mz-raw\t"
     "num-peaks\t" 
-    "matched-ions";
+    "matched-ions\t"
+    //New additions to support/enhance small molecule blibs and report retention times
+    "query-rt\t"
+    "lib-rt\t"
+    "lib-molecule-name\t"
+    "lib-chemical-formula\t"
+    "lib-adduct\t"
+    "lib-inchikey\t"
+    "lib-otherkeys\t"
+    "query-ion-mobility\t"
+    "query-ion-mobility-type";
   /*
   //"TIC-proc\t"
   //"bp-proc\t"
@@ -161,7 +171,9 @@ string Reportfile::optionsHeaderString(const ops::variables_map& options_table){
 void Reportfile::writeMatches(const vector<Match>& results)
 {
 #ifdef _MSC_VER
-    _set_output_format(_TWO_DIGIT_EXPONENT);
+#ifdef _TWO_DIGIT_EXPONENT // VS2015 got rid of this function
+        _set_output_format(_TWO_DIGIT_EXPONENT);
+#endif        
 #endif
 
     if(! file_.is_open()){
@@ -222,6 +234,15 @@ void Reportfile::writeMatches(const vector<Match>& results)
         file_ << "\t" << refSpec->getNumRawPeaks();
         */
         file_ << "\t" << curMatch.getScore(MATCHED_IONS);
+        file_ << "\t" << querySpec->getRetentionTime();
+        file_ << "\t" << refSpec->getRetentionTime();
+        file_ << "\t" << refSpec->getMoleculeName();
+        file_ << "\t" << refSpec->getChemicalFormula();
+        file_ << "\t" << refSpec->getAdduct();
+        file_ << "\t" << refSpec->getInchiKey();
+        file_ << "\t" << refSpec->getotherKeys();
+        file_ << "\t" << querySpec->getIonMobility();
+        file_ << "\t" << querySpec->getIonMobilityType();
         file_ << endl;
         
     }// next match

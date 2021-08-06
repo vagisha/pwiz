@@ -17,10 +17,12 @@
  * limitations under the License.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Resources;
+using System.Threading;
 using pwiz.Common.Collections;
 
 namespace pwiz.Common.DataBinding
@@ -31,24 +33,22 @@ namespace pwiz.Common.DataBinding
     /// </summary>
     public class DataSchemaLocalizer
     {
-        public static readonly DataSchemaLocalizer INVARIANT = new DataSchemaLocalizer(CultureInfo.InvariantCulture);
-        public DataSchemaLocalizer(CultureInfo formatProvider, params ResourceManager[] columnCaptionResourceManagers)
+        public static readonly DataSchemaLocalizer INVARIANT = new DataSchemaLocalizer(CultureInfo.InvariantCulture, CultureInfo.InvariantCulture);
+        public DataSchemaLocalizer(CultureInfo formatProvider, CultureInfo language, params ResourceManager[] columnCaptionResourceManagers)
         {
             FormatProvider = formatProvider;
+            Language = language;
             ColumnCaptionResourceManagers = ImmutableList.ValueOf(columnCaptionResourceManagers);
         }
         public CultureInfo FormatProvider { get; private set; }
+        public CultureInfo Language { get; private set; }
         public IList<ResourceManager> ColumnCaptionResourceManagers { get; private set; }
 
         public string LookupColumnCaption(ColumnCaption caption)
         {
-            if (!caption.IsLocalizable)
-            {
-                return caption.InvariantCaption;
-            }
             foreach (var columnCaptionResourceManager in ColumnCaptionResourceManagers)
             {
-                string localizedCaption = columnCaptionResourceManager.GetString(caption.InvariantCaption);
+                string localizedCaption = columnCaptionResourceManager.GetString(caption.InvariantCaption, Language);
                 if (null != localizedCaption)
                 {
                     return localizedCaption;
@@ -59,12 +59,25 @@ namespace pwiz.Common.DataBinding
 
         public bool HasEntry(ColumnCaption caption)
         {
-            if (!caption.IsLocalizable)
-            {
-                return true;
-            }
             return ColumnCaptionResourceManagers
-                .Any(resourceManager => null != resourceManager.GetString(caption.InvariantCaption));
+                .Any(resourceManager => null != resourceManager.GetString(caption.InvariantCaption, Language));
+        }
+
+        public T CallWithCultureInfo<T>(Func<T> func)
+        {
+            var oldCulture = Thread.CurrentThread.CurrentCulture;
+            var oldUiCulture = Thread.CurrentThread.CurrentUICulture;
+            try
+            {
+                Thread.CurrentThread.CurrentCulture = FormatProvider;
+                Thread.CurrentThread.CurrentUICulture = Language;
+                return func();
+            }
+            finally
+            {
+                Thread.CurrentThread.CurrentUICulture = oldUiCulture;
+                Thread.CurrentThread.CurrentCulture = oldCulture;
+            }
         }
     }
 }

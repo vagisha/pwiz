@@ -24,7 +24,7 @@ using pwiz.Common.Collections;
 using pwiz.Common.DataAnalysis;
 using pwiz.Common.DataAnalysis.FoldChange;
 using pwiz.Common.DataAnalysis.Matrices;
-using pwiz.Skyline.Controls.GroupComparison;
+using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.AbsoluteQuantification;
 using pwiz.Skyline.Model.Hibernate;
 
@@ -39,6 +39,7 @@ namespace pwiz.Skyline.Model.GroupComparison
         {
             SrmDocument = document;
             ComparisonDef = comparisonDef;
+            var annotationCalculator = new AnnotationCalculator(document);
             _qrFactorizationCache = qrFactorizationCache;
             List<KeyValuePair<int, ReplicateDetails>> replicateIndexes = new List<KeyValuePair<int, ReplicateDetails>>();
             var controlGroupIdentifier = ComparisonDef.GetControlGroupIdentifier(SrmDocument.Settings);
@@ -50,7 +51,7 @@ namespace pwiz.Skyline.Model.GroupComparison
                     var chromatogramSet = chromatograms[i];
                     ReplicateDetails replicateDetails = new ReplicateDetails()
                     {
-                        GroupIdentifier = comparisonDef.GetGroupIdentifier(SrmDocument.Settings, chromatogramSet)
+                        GroupIdentifier = comparisonDef.GetGroupIdentifier(annotationCalculator, chromatogramSet)
                     };
                     if (Equals(controlGroupIdentifier, replicateDetails.GroupIdentifier))
                     {
@@ -155,6 +156,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             {
                 return null;
             }
+            runAbundances = runAbundances ?? new List<RunAbundance>();
             var foldChangeDataRows = detailRows
                 .Where(row=>!double.IsNaN(row.GetLog2Abundance()) && !double.IsInfinity(row.GetLog2Abundance()))
                 .Select(row => new FoldChangeCalculator.DataRow
@@ -175,19 +177,16 @@ namespace pwiz.Skyline.Model.GroupComparison
             {
                 int iRow = runQuantificationDataSet.Runs.IndexOf(run);
                 subjects.Add(runQuantificationDataSet.Subjects[iRow]);
-                if (null != runAbundances)
-                {
-                    var replicateIndex = runNumberToReplicateIndex[run];
-                    var replicateDetails = _replicateIndexes.First(kvp => kvp.Key == replicateIndex).Value;
+                var replicateIndex = runNumberToReplicateIndex[run];
+                var replicateDetails = _replicateIndexes.First(kvp => kvp.Key == replicateIndex).Value;
 
-                    runAbundances.Add(new RunAbundance
-                    {
-                        ReplicateIndex = replicateIndex,
-                        Control = replicateDetails.IsControl,
-                        BioReplicate = replicateDetails.BioReplicate,
-                        Log2Abundance = quantifiedRuns[run].EstimatedValue
-                    });
-                }
+                runAbundances.Add(new RunAbundance
+                {
+                    ReplicateIndex = replicateIndex,
+                    Control = replicateDetails.IsControl,
+                    BioReplicate = replicateDetails.BioReplicate,
+                    Log2Abundance = quantifiedRuns[run].EstimatedValue
+                });
             }
             var abundances = quantifiedRuns.Select(result => result.EstimatedValue).ToArray();
             var quantifiedDataSet = new FoldChangeDataSet(
@@ -202,7 +201,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             }
 
             var foldChangeResult = DesignMatrix.GetDesignMatrix(quantifiedDataSet, false).PerformLinearFit(_qrFactorizationCache).First();
-            return new GroupComparisonResult(selector, quantifiedRuns.Count, foldChangeResult);
+            return new GroupComparisonResult(selector, quantifiedRuns.Count, foldChangeResult, runAbundances);
         }
 
         private GroupComparisonResult CalculateFoldChangeWithSummarization(GroupComparisonSelector selector,
@@ -261,7 +260,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             //            var statsXValues = new Util.Statistics(summarizedRows.Select(row => row.Control ? 0.0 : 1));
             //            var slope = statsAbundances.Slope(statsXValues);
 
-            return new GroupComparisonResult(selector, replicateRows.Count, foldChangeResult);
+            return new GroupComparisonResult(selector, replicateRows.Count, foldChangeResult, replicateRows);
             
         }
 
@@ -436,7 +435,10 @@ namespace pwiz.Skyline.Model.GroupComparison
                         .ChangeNormalizationMethod(ComparisonDef.NormalizationMethod)
                         .ChangeMsLevel(selector.MsLevel);
                     var peptideQuantifier = new PeptideQuantifier(GetNormalizationData, selector.Protein, peptide,
-                        quantificationSettings);
+                        quantificationSettings)
+                    {
+                        QValueCutoff = ComparisonDef.QValueCutoff
+                    };
                     if (null != selector.LabelType)
                     {
                         peptideQuantifier.MeasuredLabelTypes = ImmutableList.Singleton(selector.LabelType);
@@ -530,7 +532,7 @@ namespace pwiz.Skyline.Model.GroupComparison
         {
             return string.Join(Environment.NewLine, Enumerable.Range(0, matrix.GetLength(0)).Select(iRow =>
             {
-                return string.Join(",", // Not L10N
+                return string.Join(@",",
                     Enumerable.Range(0, matrix.GetLength(1)).Select(iCol =>
                 {
                     var value = matrix[iRow, iCol];

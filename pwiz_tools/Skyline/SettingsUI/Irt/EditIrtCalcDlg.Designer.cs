@@ -61,13 +61,15 @@
             this.btnPeptides = new System.Windows.Forms.Button();
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.gridViewStandard = new pwiz.Skyline.Controls.DataGridViewEx();
-            this.columnStandardSequence = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.columnStandardSequence = new pwiz.Skyline.Controls.TargetColumn();
             this.columnStandardIrt = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.labelNumStandards = new System.Windows.Forms.Label();
             this.gridViewLibrary = new pwiz.Skyline.Controls.DataGridViewEx();
-            this.columnLibrarySequence = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.columnLibrarySequence = new pwiz.Skyline.Controls.TargetColumn();
             this.columnLibraryIrt = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.comboStandards = new System.Windows.Forms.ComboBox();
+            this.comboRegressionType = new System.Windows.Forms.ComboBox();
+            this.label5 = new System.Windows.Forms.Label();
             ((System.ComponentModel.ISupportInitialize)(this.bindingSourceLibrary)).BeginInit();
             ((System.ComponentModel.ISupportInitialize)(this.bindingSourceStandard)).BeginInit();
             this.contextMenuAdd.SuspendLayout();
@@ -247,7 +249,7 @@
             // 
             // columnStandardSequence
             // 
-            this.columnStandardSequence.DataPropertyName = "PeptideModSeq";
+            this.columnStandardSequence.DataPropertyName = "ModifiedTarget";
             dataGridViewCellStyle2.NullValue = null;
             this.columnStandardSequence.DefaultCellStyle = dataGridViewCellStyle2;
             resources.ApplyResources(this.columnStandardSequence, "columnStandardSequence");
@@ -299,7 +301,7 @@
             // 
             // columnLibrarySequence
             // 
-            this.columnLibrarySequence.DataPropertyName = "PeptideModSeq";
+            this.columnLibrarySequence.DataPropertyName = "ModifiedTarget";
             dataGridViewCellStyle7.NullValue = null;
             this.columnLibrarySequence.DefaultCellStyle = dataGridViewCellStyle7;
             resources.ApplyResources(this.columnLibrarySequence, "columnLibrarySequence");
@@ -323,12 +325,27 @@
             this.comboStandards.Name = "comboStandards";
             this.comboStandards.SelectedIndexChanged += new System.EventHandler(this.comboStandards_SelectedIndexChanged);
             // 
+            // comboRegressionType
+            // 
+            this.comboRegressionType.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboRegressionType.FormattingEnabled = true;
+            resources.ApplyResources(this.comboRegressionType, "comboRegressionType");
+            this.comboRegressionType.Name = "comboRegressionType";
+            this.comboRegressionType.SelectedIndexChanged += new System.EventHandler(this.comboRegressionType_SelectedIndexChanged);
+            // 
+            // label5
+            // 
+            resources.ApplyResources(this.label5, "label5");
+            this.label5.Name = "label5";
+            // 
             // EditIrtCalcDlg
             // 
             this.AcceptButton = this.btnOk;
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.CancelButton = this.btnCancel;
+            this.Controls.Add(this.label5);
+            this.Controls.Add(this.comboRegressionType);
             this.Controls.Add(this.comboStandards);
             this.Controls.Add(this.btnCreateDb);
             this.Controls.Add(this.labelNumPeptides);
@@ -346,6 +363,7 @@
             this.MinimizeBox = false;
             this.Name = "EditIrtCalcDlg";
             this.ShowInTaskbar = false;
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.EditIrtCalcDlg_FormClosing);
             this.Load += new System.EventHandler(this.OnLoad);
             ((System.ComponentModel.ISupportInitialize)(this.bindingSourceLibrary)).EndInit();
             ((System.ComponentModel.ISupportInitialize)(this.bindingSourceStandard)).EndInit();
@@ -370,28 +388,30 @@
         private System.Windows.Forms.TextBox textDatabase;
         private System.Windows.Forms.Button btnBrowseDb;
         private System.Windows.Forms.Label label3;
-        private pwiz.Skyline.Controls.DataGridViewEx gridViewStandard;
         private System.Windows.Forms.Button btnOk;
         private System.Windows.Forms.Button btnCancel;
         private System.Windows.Forms.Button btnCalibrate;
-        private pwiz.Skyline.Controls.DataGridViewEx gridViewLibrary;
+        private Controls.DataGridViewEx gridViewLibrary;
         private System.Windows.Forms.Button btnAddResults;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.Label labelNumPeptides;
         private System.Windows.Forms.Button btnCreateDb;
         private System.Windows.Forms.BindingSource bindingSourceStandard;
         private System.Windows.Forms.BindingSource bindingSourceLibrary;
-        private System.Windows.Forms.DataGridViewTextBoxColumn columnStandardSequence;
-        private System.Windows.Forms.DataGridViewTextBoxColumn columnStandardIrt;
         private System.Windows.Forms.ContextMenuStrip contextMenuAdd;
         private System.Windows.Forms.ToolStripMenuItem addResultsContextMenuItem;
         private System.Windows.Forms.ToolStripMenuItem addSpectralLibraryContextMenuItem;
         private System.Windows.Forms.ToolStripMenuItem addIRTDatabaseContextMenuItem;
         private System.Windows.Forms.Button btnPeptides;
-        private System.Windows.Forms.DataGridViewTextBoxColumn columnLibrarySequence;
-        private System.Windows.Forms.DataGridViewTextBoxColumn columnLibraryIrt;
         private System.Windows.Forms.SplitContainer splitContainer1;
         private System.Windows.Forms.ComboBox comboStandards;
         private System.Windows.Forms.Label labelNumStandards;
+        private Controls.DataGridViewEx gridViewStandard;
+        private Controls.TargetColumn columnStandardSequence;
+        private System.Windows.Forms.DataGridViewTextBoxColumn columnStandardIrt;
+        private Controls.TargetColumn columnLibrarySequence;
+        private System.Windows.Forms.DataGridViewTextBoxColumn columnLibraryIrt;
+        private System.Windows.Forms.ComboBox comboRegressionType;
+        private System.Windows.Forms.Label label5;
     }
 }

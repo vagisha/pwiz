@@ -20,6 +20,7 @@
 //
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Windows.Forms;
 using System.Diagnostics;
@@ -28,6 +29,7 @@ using System.IO;
 using System.IO.Pipes;
 using System.ComponentModel;
 using System.Security.Permissions;
+using System.Runtime.InteropServices;
 //using EDAL;
 //using BDal.CxT.Lc;
 
@@ -35,20 +37,25 @@ namespace seems
 {
 	static class Program
 	{
-		static seemsForm MainForm;
-        static System.Threading.Mutex ipcMutex;
-        static BackgroundWorker ipcWorker;
+	    [DllImport("kernel32.dll")]
+	    static extern bool AttachConsole(int dwProcessId);
+	    private const int ATTACH_PARENT_PROCESS = -1;
 
-	    public const bool SimAsSpectra = false; // Read SIM scans as spectra.
-	    public const bool SrmAsSpectra = false; // Read SRM scans as spectra.
+        static seemsForm MainForm;
+
+	    public static bool TestMode { get; private set; }
 
 		/// <summary>
 		/// The main entry point for the application.
 		/// </summary>
 		[STAThread]
 		[SecurityPermission(SecurityAction.Demand, Flags = SecurityPermissionFlag.ControlAppDomain)]
-		public static void Main( string[] args )
+		public static int Main( string[] args )
 		{
+		    // redirect console output to parent process;
+		    // must be before any calls to Console.WriteLine()
+		    AttachConsole(ATTACH_PARENT_PROCESS);
+
             /*MSAnalysisClass a = new MSAnalysisClass();
             a.Open( @"C:\test\100 fmol BSA\0_B4\1\1SRef" );
             MSSpectrumCollection c = a.MSSpectrumCollection;
@@ -66,34 +73,8 @@ namespace seems
             foreach( ISpectrumSourceDeclaration ssd in ssdList )
                 scList.Add( a.GetSpectrumCollection( ssd.SpectrumCollectionId ) );*/
 
-            // create machine-global mutex (to allow only one SeeMS instance)
-            bool success;
-            ipcMutex = new Mutex( true, "seems unique instance", out success );
-            if( !success )
-            {
-                // send args to the existing instance
-                using( NamedPipeClientStream pipeClient =
-                    new NamedPipeClientStream( ".", "seems pipe", PipeDirection.Out ) )
-                {
-                    pipeClient.Connect();
-                    using( StreamWriter sw = new StreamWriter( pipeClient ) )
-                    {
-                        sw.WriteLine( args.Length );
-                        foreach( string arg in args )
-                            sw.WriteLine( arg );
-                        sw.Flush();
-                    }
-                    //pipeClient.WaitForPipeDrain();
-                }
-                return;
-            }
-
-            ipcWorker = new BackgroundWorker();
-            ipcWorker.DoWork += new DoWorkEventHandler( bgWorker_DoWork );
-            ipcWorker.RunWorkerAsync();
-
-			// Add the event handler for handling UI thread exceptions to the event.
-			Application.ThreadException += new ThreadExceptionEventHandler( UIThread_UnhandledException );
+            // Add the event handler for handling UI thread exceptions to the event.
+            Application.ThreadException += UIThread_UnhandledException;
 
 			// Set the unhandled exception mode to force all Windows Forms errors to go through
 			// our handler.
@@ -102,82 +83,62 @@ namespace seems
 			Application.SetCompatibleTextRenderingDefault( false );
 
 			// Add the event handler for handling non-UI thread exceptions to the event. 
-			AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler( CurrentDomain_UnhandledException );
+			AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
+
+
+            var singleInstanceHandler = new SingleInstanceHandler(Application.ExecutablePath) { Timeout = 200 };
+            singleInstanceHandler.Launching += (sender, e) =>
+            {
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+
+                var singleInstanceArgs = e.Args.ToArray();
+
+                MainForm = new seemsForm();
+                MainForm.ParseArgs(singleInstanceArgs);
+                if (!MainForm.IsDisposed)
+                    Application.Run(MainForm);
+                e.ExitCode = Environment.ExitCode;
+            };
 
             try
             {
-                MainForm = new seemsForm();
-                MainForm.ParseArgs(args);
-                if (!MainForm.IsDisposed)
-                    Application.Run(MainForm);
+                TestMode = args.Contains("--test");
+                return singleInstanceHandler.Connect(args);
             }
             catch (Exception e)
             {
-                string message = e.ToString();
-                if (e.InnerException != null)
-                    message += "\n\nAdditional information: " + e.InnerException.ToString();
-                MessageBox.Show(message,
-                                "Unhandled Exception",
-                                MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1,
-                                0, false);
+                HandleException("Error connecting to single instance", e);
+                return 1;
             }
 		}
 
-        static void bgWorker_DoWork( object sender, DoWorkEventArgs e )
-        {
-            while( true )
-            {
-                using( NamedPipeServerStream pipeServer =
-                        new NamedPipeServerStream( "seems pipe", PipeDirection.In ) )
-                {
-                    pipeServer.WaitForConnection();
+	    public static void HandleException(string title, Exception e)
+	    {
+	        string message = e?.ToString() ?? "Unknown exception.";
+            if (e?.InnerException != null)
+	            message += "\n\nAdditional information: " + e.InnerException;
 
-                    // Read args from client instance.
-                    using( StreamReader sr = new StreamReader( pipeServer ) )
-                    {
-                        int length = Convert.ToInt32( sr.ReadLine() );
-                        string[] args = new string[length];
-                        for( int i = 0; i < length; ++i )
-                            args[i] = sr.ReadLine();
-                        MainForm.ParseArgs( args );
-                    }
-
-                    //pipeServer.Disconnect();
-                }
+	        if (!TestMode)
+	            MessageBox.Show(message,
+	                title,
+	                MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1,
+	                0, false);
+	        else
+	        {
+	            Console.Error.WriteLine(message);
+	            Process.GetCurrentProcess().Kill();
             }
-        }
+	    }
 
 		private static void UIThread_UnhandledException( object sender, ThreadExceptionEventArgs e )
 		{
-			/*Process newSeems = new Process();
-			newSeems.StartInfo.FileName = Application.ExecutablePath;
-			if( MainForm.CurrentFilepath.Length > 0 )
-				newSeems.StartInfo.Arguments = "\"" + MainForm.CurrentFilepath + "\" " + MainForm.CurrentScanIndex;
-			newSeems.Start();
-			Process.GetCurrentProcess().Kill();*/
-
-			string message = e.Exception.ToString();
-			if( e.Exception.InnerException != null )
-                message += "\n\nAdditional information: " + e.Exception.InnerException.ToString();
-			MessageBox.Show( message,
-							"Unhandled Exception",
-							MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1,
-							0, false );
+            HandleException("Unhandled Exception", e.Exception);
 		}
 
 		private static void CurrentDomain_UnhandledException( object sender, UnhandledExceptionEventArgs e )
 		{
-			/*Process newSeems = new Process();
-			newSeems.StartInfo.FileName = Application.ExecutablePath;
-			if( MainForm.CurrentGraphForm.CurrentSourceFilepath.Length > 0 )
-				newSeems.StartInfo.Arguments = "\"" + MainForm.CurrentGraphForm.CurrentSourceFilepath + "\" " + MainForm.CurrentGraphForm.CurrentGraphItemIndex;
-			newSeems.Start();
-			Process.GetCurrentProcess().Kill();*/
-
-			MessageBox.Show( (e.ExceptionObject is Exception ? (e.ExceptionObject as Exception).Message : "Unknown error."),
-							"Unhandled Exception",
-							MessageBoxButtons.OK, MessageBoxIcon.Error, MessageBoxDefaultButton.Button1,
-							0, false );
-		}
+		    HandleException("Unhandled Exception", e.ExceptionObject as Exception);
+        }
 	}
 }

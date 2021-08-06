@@ -23,12 +23,15 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using pwiz.Common.Chemistry;
 using pwiz.Common.Controls;
 using pwiz.Common.SystemUtil;
 using pwiz.ProteomeDatabase.API;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
+using pwiz.Skyline.Model.Crosslinking;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
 using pwiz.Skyline.Model.Lib;
@@ -44,6 +47,7 @@ namespace pwiz.Skyline.EditUI
     {
         private readonly StatementCompletionTextBox _statementCompletionEditBox;
         private bool _noErrors;
+        private readonly AuditLogEntryCreatorList _entryCreators;
 
         public PasteDlg(IDocumentUIContainer documentUiContainer)
         {
@@ -52,6 +56,7 @@ namespace pwiz.Skyline.EditUI
             Icon = Resources.Skyline;
 
             DocumentUiContainer = documentUiContainer;
+            _entryCreators = new AuditLogEntryCreatorList();
 
             _statementCompletionEditBox = new StatementCompletionTextBox(DocumentUiContainer)
                                               {
@@ -176,10 +181,11 @@ namespace pwiz.Skyline.EditUI
                 return;
             }
             tbxError.BackColor = Color.Red;
+            tbxError.ForeColor = Color.White;
             tbxError.Text = pasteError.Message;
             // Useful for debugging if this hangs in a test - it appears in the timeout report  
             // ReSharper disable LocalizableElement
-            Text = Description + " (" + pasteError.Message + ")";  // Not L10N
+            Text = Description + " (" + pasteError.Message + ")";
             // ReSharper restore LocalizableElement
         }
 
@@ -189,6 +195,7 @@ namespace pwiz.Skyline.EditUI
             panelError.Visible = true;
             tbxError.Text = Resources.PasteDlg_ShowNoErrors_No_errors;
             tbxError.BackColor = Color.LightGreen;
+            tbxError.ForeColor = Color.Black;
             Text = Description;  // Clear any error info
         }
 
@@ -217,15 +224,16 @@ namespace pwiz.Skyline.EditUI
 
         private SrmDocument GetNewDocument(SrmDocument document, bool validating, ref IdentityPath selectedPath)
         {
-            int emptyPeptideGroups;
-            return GetNewDocument(document, validating, ref selectedPath, out emptyPeptideGroups);
+            List<PeptideGroupDocNode> newPeptideGroups;
+            return GetNewDocument(document, validating, ref selectedPath, out newPeptideGroups);
         }
 
-        private SrmDocument GetNewDocument(SrmDocument document, bool validating, ref IdentityPath selectedPath, out int emptyPeptideGroups)
+        private SrmDocument GetNewDocument(SrmDocument document, bool validating, ref IdentityPath selectedPath, out List<PeptideGroupDocNode> newPeptideGroups)
         {
             var fastaHelper = new ImportFastaHelper(tbxFasta, tbxError, panelError, toolTip1);
-            if ((document = fastaHelper.AddFasta(document, ref selectedPath, out emptyPeptideGroups)) == null)
+            if ((document = fastaHelper.AddFasta(document, null, ref selectedPath, out newPeptideGroups, out var error)) == null)
             {
+                fastaHelper.ShowFastaError(error);
                 tabControl1.SelectedTab = tabPageFasta;  // To show fasta errors
                 return null;
             }
@@ -247,9 +255,10 @@ namespace pwiz.Skyline.EditUI
         private void SetCurrentCellForPasteError(DataGridView gridView, PasteError pasteError, int? columnIndex = null)
         {
             ShowError(pasteError);
-            if (gridView.Rows[pasteError.Line].Cells[columnIndex ?? pasteError.Column].Visible)
+            var errColumn = columnIndex ?? pasteError.Column;
+            if (errColumn >= 0 && gridView.Rows[pasteError.Line].Cells[errColumn].Visible)
             {
-                gridView.CurrentCell = gridView.Rows[pasteError.Line].Cells[columnIndex ?? pasteError.Column];
+                gridView.CurrentCell = gridView.Rows[pasteError.Line].Cells[errColumn];
             }
             else
             {
@@ -385,7 +394,7 @@ namespace pwiz.Skyline.EditUI
                 {
                     // Attempt to create node for error checking.
                     nodePepNew = fastaSequence.CreateFullPeptideDocNode(document.Settings,
-                                                                        FastaSequence.StripModifications(pepModSequence));
+                                                                        new Target(FastaSequence.StripModifications(pepModSequence)));
                     if (nodePepNew == null)
                     {
                         ShowPeptideError(new PasteError
@@ -457,17 +466,34 @@ namespace pwiz.Skyline.EditUI
                     });
                     return null;
                 }
-                if (!FastaSequence.IsExSequence(peptideSequence))
+
+                CrosslinkLibraryKey crosslinkLibraryKey =
+                    CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(peptideSequence, 0);
+                if (crosslinkLibraryKey == null)
+                {
+                    if (!FastaSequence.IsExSequence(peptideSequence))
+                    {
+                        ShowPeptideError(new PasteError
+                        {
+                            Column = colPeptideSequence.Index,
+                            Line = i,
+                            Message = Resources.PasteDlg_ListPeptideSequences_This_peptide_sequence_contains_invalid_characters
+                        });
+                        return null;
+                    }
+                    peptideSequence = FastaSequence.NormalizeNTerminalMod(peptideSequence);
+                }
+                else if (!crosslinkLibraryKey.IsSupportedBySkyline())
                 {
                     ShowPeptideError(new PasteError
                     {
                         Column = colPeptideSequence.Index,
                         Line = i,
-                        Message = Resources.PasteDlg_ListPeptideSequences_This_peptide_sequence_contains_invalid_characters
+                        Message = Resources.PasteDlg_ListPeptideSequences_The_structure_of_this_crosslinked_peptide_is_not_supported_by_Skyline
                     });
                     return null;
                 }
-                peptideSequence = FastaSequence.NormalizeNTerminalMod(peptideSequence);
+
                 listSequences.Add(peptideSequence);
             }
             return listSequences;
@@ -699,19 +725,16 @@ namespace pwiz.Skyline.EditUI
                 IEnumerable<PeptideGroupDocNode> peptideGroupDocNodes;
                 try
                 {
-                    List<TransitionImportErrorInfo> errorList;
-                    List<MeasuredRetentionTime> irtPeptides;
-                    List<SpectrumMzInfo> librarySpectra;
+                    List<TransitionImportErrorInfo> errorList = new List<TransitionImportErrorInfo>();
+                    List<MeasuredRetentionTime> irtPeptides = new List<MeasuredRetentionTime>();
+                    List<SpectrumMzInfo> librarySpectra = new List<SpectrumMzInfo>();
                     var inputs = new MassListInputs(sbTransitionList.ToString(), LocalizationHelper.CurrentCulture, TRANSITION_LIST_SEPARATOR);
                     var importer = new MassListImporter(document, inputs);
-                    // TODO: support long-wait broker
-                    peptideGroupDocNodes = importer.Import(null,
-                        inputs.InputFilename,
-                        TRANSITION_LIST_COL_INDICES,
-                        dictNameSeq,
-                        out irtPeptides,
-                        out librarySpectra,
-                        out errorList);
+                    // TODO: support long-wait broker        
+                    if (importer.PreImport(null, TRANSITION_LIST_COL_INDICES, false))
+                        peptideGroupDocNodes = importer.DoImport(null, dictNameSeq, irtPeptides, librarySpectra, errorList);
+                    else
+                        peptideGroupDocNodes = new PeptideGroupDocNode[0];
                     if (errorList.Any())
                     {
                         var firstError = errorList[0];
@@ -853,15 +876,27 @@ namespace pwiz.Skyline.EditUI
 
         private void btnTransitionListHelp_Click(object sender, EventArgs e)
         {
-            var helpText = Resources.PasteDlg_btnTransitionListHelp_Click_ +
-                SmallMoleculeTransitionListColumnHeaders.KnownHeaders().Aggregate((s1, s2) => s1 + ", " + s2) + // Not L10N
-                "\r\n\r\n" + // Not L10N
-                Resources.PasteDlg_btnTransitionListHelp_Click_2_ +
-                "\r\n\r\n" + // Not L10N
-                Resources.FormulaBox_FormulaHelpText_Formulas_are_written_in_standard_chemical_notation__e_g___C2H6O____Heavy_isotopes_are_indicated_by_a_prime__e_g__C__for_C13__or_double_prime_for_less_abundant_stable_iostopes__e_g__O__for_O17__O__for_O18__ +
-                "\r\n\r\n" + // Not L10N
-                IonInfo.AdductTips;
-            MessageBox.Show(this, helpText, Resources.PasteDlg_btnTransitionListHelp_Click_Transition_List_Help);
+            // ReSharper disable LocalizableElement
+            var helpText = Resources.PasteDlg_btnTransitionListHelp_Click_;
+            if (btnCustomMoleculeColumns.Visible)
+            {
+                helpText = TextUtil.LineSeparate(Resources.PasteDlg_btnTransitionListHelp_Click_SmallMol_,
+                    string.Join(", ", SmallMoleculeTransitionListColumnHeaders.KnownHeaders),
+                    string.Format(Resources.PasteDlg_btnTransitionListHelp_Click_Supported_values_for__0__are___1_, SmallMoleculeTransitionListColumnHeaders.imUnits, string.Join(", ", Enum.GetNames(typeof(eIonMobilityUnits))))+
+                    string.Empty,
+                    Resources.PasteDlg_btnTransitionListHelp_Click_2_,
+                    string.Empty,
+                    Resources.FormulaBox_FormulaHelpText_Formulas_are_written_in_standard_chemical_notation__e_g___C2H6O____Heavy_isotopes_are_indicated_by_a_prime__e_g__C__for_C13__or_double_prime_for_less_abundant_stable_iostopes__e_g__O__for_O17__O__for_O18__ +
+                    string.Empty,
+                    Adduct.Tips);
+            }
+
+            // CONSIDER(bspratt) use DocumentationViewer instead, this is quite a lot of text
+            helpText = TextUtil.LineSeparate(Resources.PasteDlg_btnTransitionListHelp_Click_Transition_List_Help,
+                string.Empty,
+                helpText);
+            // ReSharper restore LocalizableElement
+            MessageDlg.Show(this, helpText);
         }
 
         private void btnCancel_Click(object sender, EventArgs e)
@@ -888,8 +923,19 @@ namespace pwiz.Skyline.EditUI
                 btnCustomMoleculeColumns.Visible = radioMolecule.Visible = radioPeptide.Visible = (value == PasteFormat.transition_list);
                 if (value == PasteFormat.transition_list)
                 {
-                    radioPeptide.Checked = Settings.Default.TransitionListInsertPeptides;
-                    IsMolecule = btnCustomMoleculeColumns.Enabled = !radioPeptide.Checked;
+                    if (ModeUI == SrmDocument.DOCUMENT_TYPE.proteomic)
+                    {
+                        radioPeptide.Checked = true;
+                    }
+                    else if (ModeUI == SrmDocument.DOCUMENT_TYPE.small_molecules)
+                    {
+                        radioPeptide.Checked = false;
+                    }
+                    else
+                    {
+                        radioPeptide.Checked = Settings.Default.TransitionListInsertPeptides;
+                    }
+                    IsMolecule = !radioPeptide.Checked;
                     UpdateMoleculeType();
                 }
                 for (int i = tabControl1.Controls.Count - 1; i >= 0; i--)
@@ -1168,7 +1214,7 @@ namespace pwiz.Skyline.EditUI
             {
                 // Sometimes the protein name in the background proteome will have an extra "|" on the end.
                 // In that case, update the name of the protein to match the one in the database.
-                fastaSequence = backgroundProteome.GetFastaSequence(proteinName + "|"); // Not L10N
+                fastaSequence = backgroundProteome.GetFastaSequence(proteinName + @"|");
                 if (fastaSequence != null)
                 {
                     row.Cells[colPeptideProtein.Index].Value = fastaSequence.Name;
@@ -1193,13 +1239,14 @@ namespace pwiz.Skyline.EditUI
             bool error = false;
             IdentityPath newSelectedPath = SelectedPath;
             bool? keepEmptyProteins = null;
+            List<PeptideGroupDocNode> newPeptideGroups = null;
             Program.MainWindow.ModifyDocument(
                 Description,
                 document =>
                 {
-                    newSelectedPath = SelectedPath;
-                    int emptyPeptideGroups;
-                    var newDocument = GetNewDocument(document, false, ref newSelectedPath, out emptyPeptideGroups);
+                    newSelectedPath = SelectedPath;                 
+                    var newDocument = GetNewDocument(document, false, ref newSelectedPath, out newPeptideGroups);
+
                     if (newDocument == null)
                     {
                         error = true;
@@ -1207,7 +1254,8 @@ namespace pwiz.Skyline.EditUI
                     }
                     if (!keepEmptyProteins.HasValue)
                     {
-                        keepEmptyProteins = ImportFastaHelper.AskWhetherToKeepEmptyProteins(this, emptyPeptideGroups);
+                        keepEmptyProteins = ImportFastaHelper.AskWhetherToKeepEmptyProteins(this,
+                            newPeptideGroups.Count(pepGroup => pepGroup.PeptideCount == 0), _entryCreators);
                         if (!keepEmptyProteins.HasValue)
                         {
                             // Cancelled
@@ -1215,11 +1263,74 @@ namespace pwiz.Skyline.EditUI
                             return document;
                         }
                     }
+
                     if (!keepEmptyProteins.Value)
                     {
-                        newDocument = ImportPeptideSearch.RemoveEmptyProteins(newDocument);
+                        newDocument = ImportPeptideSearch.RemoveProteinsByPeptideCount(newDocument, 1);
                     }
                     return newDocument;
+                }, docPair =>
+                {
+                    if (error)
+                        return null;
+
+                    MessageType singular;
+                    MessageType plural;
+                    
+                    string extraInfo = null;
+                    DataGridViewEx grid = null;
+
+                    IEnumerable<string> added = null;
+                    DataGridViewColumn col = null;
+                    var count = 0;
+
+                    switch (PasteFormat)
+                    {
+                        case PasteFormat.fasta:
+                        {
+                            singular = MessageType.inserted_proteins_fasta; 
+                            plural = MessageType.inserted_proteins_fasta;
+                            extraInfo = tbxFasta.Text;
+                            added = newPeptideGroups.Select(group => group.AuditLogText);
+                            count = newPeptideGroups.Count;
+                            break;
+                        }
+                        case PasteFormat.protein_list:
+                            singular = MessageType.inserted_protein;
+                            plural = MessageType.inserted_proteins;
+                            grid = gridViewProteins;
+                            col = colProteinName;
+                            break;
+                        case PasteFormat.peptide_list:
+                            singular = MessageType.inserted_peptide;
+                            plural = MessageType.inserted_peptides;
+                            grid = gridViewPeptides;
+                            col = colPeptideSequence;
+                            break;
+                        case PasteFormat.transition_list:
+                            singular = MessageType.inserted_transition;
+                            plural = MessageType.inserted_transitions;
+                            grid = gridViewTransitionList;
+                            col = colTransitionPeptide;
+                            break;
+                        default:
+                            return null;
+                    }
+
+                    if (grid != null)
+                    {
+                        extraInfo = grid.GetCopyText();
+
+                        if (col != null)
+                        {
+                            added = grid.Rows.OfType<DataGridViewRow>().Select(row => row.Cells[col.Index].Value as string);
+                            count = grid.RowCount - 1;
+                        }        
+                    }
+
+                    return AuditLogEntry.CreateCountChangeEntry(singular, plural, docPair.NewDocumentType, added, count)
+                        .ChangeExtraInfo(extraInfo)
+                        .Merge(docPair, _entryCreators, false);
                 });
             if (error)
             {
@@ -1227,6 +1338,11 @@ namespace pwiz.Skyline.EditUI
             }
             SelectedPath = newSelectedPath;
             DialogResult = DialogResult.OK;
+        }
+
+        public override void CancelDialog()
+        {
+            DialogResult = DialogResult.Cancel;
         }
 
         private void tbxFasta_TextChanged(object sender, EventArgs e)
@@ -1354,7 +1470,7 @@ namespace pwiz.Skyline.EditUI
                 return;
             using (var filterPeptidesDlg =
                 new FilterMatchedPeptidesDlg(numMultipleMatches, numUnmatched, numFiltered,
-                                             dataGridView.RowCount - prevRowCount == 1))
+                                             dataGridView.RowCount - prevRowCount == 1, false))
             {
                 var result = filterPeptidesDlg.ShowDialog(this);
                 // If the user is keeping all peptide matches, we don't need to redo the paste.
@@ -1368,8 +1484,11 @@ namespace pwiz.Skyline.EditUI
                     RemoveLastRows(dataGridView, dataGridView.RowCount - prevRowCount);
                 // Redo the paste with the new filter settings.
                 if (result != DialogResult.Cancel && !keepAllPeptides)
+                {
                     Paste(dataGridView, text, enumerateProteins, !enumerateProteins, out numUnmatched,
-                          out numMultipleMatches, out numFiltered);
+                        out numMultipleMatches, out numFiltered);
+                    _entryCreators.Add(filterPeptidesDlg.FormSettings.EntryCreator);
+                }
             }
         }
 
@@ -1440,12 +1559,12 @@ namespace pwiz.Skyline.EditUI
                 while ((line = reader.ReadLine()) != null)
                 {
                     // Avoid trimming off tabs, which will shift columns
-                    line = line.Trim('\r', '\n', TextUtil.SEPARATOR_SPACE); // Not L10N
+                    line = line.Trim('\r', '\n', TextUtil.SEPARATOR_SPACE);
                     if (string.IsNullOrEmpty(line))
                     {
                         continue;
                     }
-                    yield return line.Split(new[] { separator });
+                    yield return line.ParseDsvFields(separator); // Properly handles quoted commas etc
                 }
             }
         }
@@ -1588,63 +1707,6 @@ namespace pwiz.Skyline.EditUI
             UpdateMoleculeType();
         }
 
-        // Custom molecule transition list internal column names, for saving to settings
-        public static class SmallMoleculeTransitionListColumnHeaders
-        {
-            public const string moleculeGroup = "MoleculeGroup"; // Not L10N
-            public const string namePrecursor = "PrecursorName"; // Not L10N
-            public const string nameProduct = "ProductName"; // Not L10N
-            public const string formulaPrecursor = "PrecursorFormula"; // Not L10N
-            public const string formulaProduct = "ProductFormula"; // Not L10N
-            public const string mzPrecursor = "PrecursorMz"; // Not L10N
-            public const string mzProduct = "ProductMz"; // Not L10N
-            public const string chargePrecursor = "PrecursorCharge"; // Not L10N
-            public const string chargeProduct = "ProductCharge"; // Not L10N
-            public const string rtPrecursor = "PrecursorRT"; // Not L10N
-            public const string rtWindowPrecursor = "PrecursorRTWindow"; // Not L10N
-            public const string cePrecursor = "PrecursorCE"; // Not L10N
-            public const string dtPrecursor = "PrecursorDT"; // Not L10N
-            public const string dtHighEnergyOffset = "HighEnergyDTOffset"; // Not L10N
-            public const string ccsPrecursor = "PrecursorCCS"; // Not L10N
-            public const string slens = "SLens"; // Not L10N
-            public const string coneVoltage = "ConeVoltage"; // Not L10N
-            public const string compensationVoltage = "CompensationVoltage"; // Not L10N
-            public const string declusteringPotential = "DeclusteringPotential"; // Not L10N
-            public const string note = "Note"; // Not L10N
-            public const string labelType = "LabelType"; // Not L10N
-            public const string adductPrecursor = "PrecursorAdduct"; // Not L10N
-            public const string adductProduct = "ProductAdduct"; // Not L10N
-
-            public static List<string> KnownHeaders()
-            {
-                return new List<string>(new[]
-                {
-                    moleculeGroup,
-                    namePrecursor,
-                    nameProduct,
-                    formulaPrecursor,
-                    formulaProduct,
-                    mzPrecursor,
-                    mzProduct,
-                    chargePrecursor,
-                    chargeProduct,
-                    adductPrecursor,
-                    adductProduct,
-                    rtPrecursor,
-                    rtWindowPrecursor,
-                    cePrecursor,
-                    dtPrecursor,
-                    dtHighEnergyOffset,
-                    ccsPrecursor,
-                    slens,
-                    coneVoltage,
-                    compensationVoltage,
-                    declusteringPotential,
-                    note,
-                    labelType,
-                });
-            }
-        }
         private void UpdateMoleculeType()
         {
             bool isPeptide = radioPeptide.Checked;
@@ -1691,40 +1753,54 @@ namespace pwiz.Skyline.EditUI
                         
             if (isPeptide)
             {
-                gridViewTransitionList.Columns.Add("Peptide", Resources.PasteDlg_UpdateMoleculeType_Peptide); // Not L10N
-                gridViewTransitionList.Columns.Add("Precursor", Resources.PasteDlg_UpdateMoleculeType_Precursor_m_z);  // Not L10N
-                gridViewTransitionList.Columns.Add("Product", Resources.PasteDlg_UpdateMoleculeType_Product_m_z); // Not L10N
-                gridViewTransitionList.Columns.Add("Protein", Resources.PasteDlg_UpdateMoleculeType_Protein_name); // Not L10N
-                gridViewTransitionList.Columns.Add("Description", Resources.PasteDlg_UpdateMoleculeType_Protein_description); // Not L10N
+                gridViewTransitionList.Columns.Add(@"Peptide", Resources.PasteDlg_UpdateMoleculeType_Peptide);
+                gridViewTransitionList.Columns.Add(@"Precursor", Resources.PasteDlg_UpdateMoleculeType_Precursor_m_z);
+                gridViewTransitionList.Columns.Add(@"Product", Resources.PasteDlg_UpdateMoleculeType_Product_m_z);
+                gridViewTransitionList.Columns.Add(@"Protein", Resources.PasteDlg_UpdateMoleculeType_Protein_name);
+                gridViewTransitionList.Columns.Add(@"Description", Resources.PasteDlg_UpdateMoleculeType_Protein_description);
             }
             else
             {
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.moleculeGroup, Resources.PasteDlg_UpdateMoleculeType_Molecule_List_Name);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.namePrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Name);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.formulaPrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Ion_Formula);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.adductPrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Adduct);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.mzPrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_m_z);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.chargePrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Charge);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.nameProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Name);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.formulaProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Ion_Formula);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.adductProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Adduct);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.mzProduct, Resources.PasteDlg_UpdateMoleculeType_Product_m_z);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.chargeProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Charge);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.labelType, Resources.PasteDlg_UpdateMoleculeType_Label_Type);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.rtPrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Retention_Time);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.rtWindowPrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Retention_Time_Window);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.cePrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Collision_Energy);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.note, Resources.PasteDlg_UpdateMoleculeType_Note);
-                var defaultColumns = new List<string>();
-                for (var col = 0; col < gridViewTransitionList.Columns.Count; col++)  // As the default, get the list without relatively exotic items like drift time, SLens, ConeVoltage etc settings
-                    defaultColumns.Add(gridViewTransitionList.Columns[col].Name);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.slens, Resources.PasteDlg_UpdateMoleculeType_S_Lens);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.coneVoltage, Resources.PasteDlg_UpdateMoleculeType_Cone_Voltage);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.dtPrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Drift_Time__msec_);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.dtHighEnergyOffset, Resources.PasteDlg_UpdateMoleculeType_Explicit_Drift_Time_High_Energy_Offset__msec_);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.ccsPrecursor, Resources.PasteDlg_UpdateMoleculeType_Collisional_Cross_Section__sq_A_);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.compensationVoltage, Resources.PasteDlg_UpdateMoleculeType_Explicit_Compensation_Voltage);
-                gridViewTransitionList.Columns.Add(SmallMoleculeTransitionListColumnHeaders.declusteringPotential, Resources.PasteDlg_UpdateMoleculeType_Explicit_Declustering_Potential);
+                var defaultColumns = new List<string>(); // List of headers which will initially appear if no settings found
+                void AddColumn(string name, string headerLocalized, bool isDefaultColumn = false)
+                {
+                    gridViewTransitionList.Columns.Add(name, headerLocalized);
+                    if (isDefaultColumn)
+                        defaultColumns.Add(name);
+                }
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.moleculeGroup, Resources.PasteDlg_UpdateMoleculeType_Molecule_List_Name, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.namePrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Name, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.formulaPrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Formula, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.adductPrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Adduct, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.mzPrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_m_z, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.chargePrecursor, Resources.PasteDlg_UpdateMoleculeType_Precursor_Charge, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.nameProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Name);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.formulaProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Formula, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.neutralLossProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Neutral_Loss);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.adductProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Adduct);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.mzProduct, Resources.PasteDlg_UpdateMoleculeType_Product_m_z, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.chargeProduct, Resources.PasteDlg_UpdateMoleculeType_Product_Charge, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.labelType, Resources.PasteDlg_UpdateMoleculeType_Label_Type);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.rtPrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Retention_Time, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.rtWindowPrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Retention_Time_Window);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.cePrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Collision_Energy, true);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.note, Resources.PasteDlg_UpdateMoleculeType_Note);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.idInChiKey, SmallMoleculeTransitionListColumnHeaders.idInChiKey); // No need to localize
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.idCAS, SmallMoleculeTransitionListColumnHeaders.idCAS); // No need to localize
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.idHMDB, SmallMoleculeTransitionListColumnHeaders.idHMDB); // No need to localize
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.idInChi, SmallMoleculeTransitionListColumnHeaders.idInChi); // No need to localize
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.idSMILES, SmallMoleculeTransitionListColumnHeaders.idSMILES); // No need to localize
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.idKEGG, SmallMoleculeTransitionListColumnHeaders.idKEGG); // No need to localize
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.slens, Resources.PasteDlg_UpdateMoleculeType_S_Lens);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.coneVoltage, Resources.PasteDlg_UpdateMoleculeType_Cone_Voltage);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.dtPrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Drift_Time__msec_);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.dtHighEnergyOffset, Resources.PasteDlg_UpdateMoleculeType_Explicit_Drift_Time_High_Energy_Offset__msec_);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.imPrecursor, Resources.PasteDlg_UpdateMoleculeType_Explicit_Ion_Mobility);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.imUnits, Resources.PasteDlg_UpdateMoleculeType_Explicit_Ion_Mobility_Units);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.imHighEnergyOffset, Resources.PasteDlg_UpdateMoleculeType_Explicit_Ion_Mobility_High_Energy_Offset);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.ccsPrecursor, Resources.PasteDlg_UpdateMoleculeType_Collisional_Cross_Section__sq_A_);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.compensationVoltage, Resources.PasteDlg_UpdateMoleculeType_Explicit_Compensation_Voltage);
+                AddColumn(SmallMoleculeTransitionListColumnHeaders.declusteringPotential, Resources.PasteDlg_UpdateMoleculeType_Explicit_Declustering_Potential);
 
                 // Now set order and visibility based on settings, if any
                 SetSmallMoleculeColumns(Settings.Default.CustomMoleculeTransitionInsertColumnsList.Any()
@@ -1834,6 +1910,32 @@ namespace pwiz.Skyline.EditUI
                 _pasteDlg.ShowTransitionError(error);
             }
         }
+
+        private void PasteDlg_KeyDown(object sender, KeyEventArgs e)
+        {
+            // This keyboard handling is necessary to get Escape and Enter keys to work correctly in this form
+            // They need to generally work, but not when grid controls are in edit mode and not Enter when the
+            // FASTA text box has the focus. Especially to make grid editing work as expected, it seems to be
+            // necessary to not have an Accept or Cancel button on the form.
+            switch (e.KeyCode)
+            {
+                case Keys.Escape:
+                    // Somehow a grid in edit mode doesn't end up here, if there is no Cancel button on the form
+                    CancelDialog();
+                    e.Handled = true;
+                    break;
+
+                case Keys.Enter:
+                    // Allow the FASTA text box to have enter keys
+                    if (!tbxFasta.Focused)
+                    {
+                        // Otherwise, OK the dialog
+                        OkDialog();
+                        e.Handled = true;
+                    }
+                    break;
+            }
+        }
     }
 
     public enum PasteFormat
@@ -1843,14 +1945,6 @@ namespace pwiz.Skyline.EditUI
         protein_list,
         peptide_list,
         transition_list,
-    }
-
-    public class PasteError
-    {
-        public String Message { get; set; }
-        public int Line { get; set; }
-        public int Column { get; set; }
-        public int Length { get; set; }
     }
 
     public class ImportFastaHelper
@@ -1877,23 +1971,24 @@ namespace pwiz.Skyline.EditUI
         private readonly ToolTip _helpTip;
         private ToolTip HelpTip { get { return _helpTip; } }
 
-        public SrmDocument AddFasta(SrmDocument document, ref IdentityPath selectedPath, out int emptyPeptideGroups)
+        public SrmDocument AddFasta(SrmDocument document, IProgressMonitor monitor, ref IdentityPath selectedPath, out List<PeptideGroupDocNode> newPeptideGroups, out PasteError error)
         {
-            emptyPeptideGroups = 0;
+            newPeptideGroups = new List<PeptideGroupDocNode>();
             var text = TbxFasta.Text;
             if (text.Length == 0)
             {
+                error = null;
                 return document;
             }
-            if (!text.StartsWith(">")) // Not L10N
+            if (!text.StartsWith(@">"))
             {
-                ShowFastaError(new PasteError
+                error = new PasteError
                 {
                     Message = Resources.ImportFastaHelper_AddFasta_This_must_start_with____,
                     Column = 0,
                     Length = 1,
                     Line = 0,
-                });
+                };
                 return null;
             }
             string[] lines = text.Split('\n');
@@ -1902,20 +1997,20 @@ namespace pwiz.Skyline.EditUI
             for (int i = 0; i < lines.Length; i++)
             {
                 string line = lines[i];
-                if (line.StartsWith(">")) // Not L10N
+                if (line.StartsWith(@">"))
                 {
                     if (line.Trim().Length == 1)
                     {
-                        ShowFastaError(new PasteError
+                        error = new PasteError
                         {
                             Message = Resources.ImportFastaHelper_AddFasta_There_is_no_name_for_this_protein,
                             Column = 0,
                             Line = i,
                             Length = 1
-                        });
+                        };
                         return null;
                     }
-                    if (!CheckSequence(aa, lastNameLine, lines))
+                    if ((error = CheckSequence(aa, lastNameLine, lines)) != null)
                         return null;
                     lastNameLine = i;
                     aa = 0;
@@ -1927,22 +2022,22 @@ namespace pwiz.Skyline.EditUI
                     char c = line[column];
                     if (AminoAcid.IsExAA(c))
                         aa++;
-                    else if (!Char.IsWhiteSpace(c) && c != '*')
+                    else if (!char.IsWhiteSpace(c) && c != '*')
                     {
-                        ShowFastaError(new PasteError
+                        error = new PasteError
                         {
                             Message =
-                                String.Format(Resources.ImportFastaHelper_AddFasta___0___is_not_a_capital_letter_that_corresponds_to_an_amino_acid_, c),
+                                string.Format(Resources.ImportFastaHelper_AddFasta___0___is_not_a_capital_letter_that_corresponds_to_an_amino_acid_, c),
                             Column = column,
                             Line = i,
                             Length = 1,
-                        });
+                        };
                         return null;
                     }
                 }
             }
 
-            if (!CheckSequence(aa, lastNameLine, lines))
+            if ((error = CheckSequence(aa, lastNameLine, lines)) != null)
                 return null;
 
             var importer = new FastaImporter(document, false);
@@ -1951,24 +2046,22 @@ namespace pwiz.Skyline.EditUI
                 var reader = new StringReader(TbxFasta.Text);
                 IdentityPath to = selectedPath;
                 IdentityPath firstAdded, nextAdd;
-                // TODO: support long-wait broker
-                document = document.AddPeptideGroups(importer.Import(reader, null, -1), false,
-                    to, out firstAdded, out nextAdd);
-                emptyPeptideGroups = importer.EmptyPeptideGroupCount;
+                newPeptideGroups = importer.Import(reader, monitor, -1).ToList();
+                document = document.AddPeptideGroups(newPeptideGroups, false, to, out firstAdded, out nextAdd);
                 selectedPath = firstAdded;
             }
             catch (Exception exception)
             {
-                ShowFastaError(new PasteError
+                error = new PasteError
                 {
-                    Message = Resources.ImportFastaHelper_AddFasta_An_unexpected_error_occurred__ + exception.Message + " (" + exception.GetType() + ")" // Not L10N
-                });
+                    Message = Resources.ImportFastaHelper_AddFasta_An_unexpected_error_occurred__ + exception.Message + @" (" + exception.GetType() + @")"
+                };
                 return null;
             }
             return document;
         }
 
-        private void ShowFastaError(PasteError pasteError)
+        public void ShowFastaError(PasteError pasteError)
         {
             PanelError.Visible = true;
             if (pasteError == null)
@@ -1977,19 +2070,32 @@ namespace pwiz.Skyline.EditUI
                 TbxError.Visible = false;
                 return;
             }
-            TbxError.BackColor = Color.Red;
-            TbxError.ForeColor = Color.White;
-            TbxError.Text = pasteError.Message;
-            TbxError.Visible = true;
-            if (HelpTip != null)
-            {
-                // In case message is long, make it possible to see in a tip
-                HelpTip.SetToolTip(TbxError, pasteError.Message);
-            }
+
+            ShowFastaError(pasteError.Message);
 
             TbxFasta.SelectionStart = Math.Max(0, TbxFasta.GetFirstCharIndexFromLine(pasteError.Line) + pasteError.Column);
             TbxFasta.SelectionLength = Math.Min(pasteError.Length, TbxFasta.Text.Length - TbxFasta.SelectionStart);
             TbxFasta.Focus();
+        }
+
+        public void ShowFastaError(string errorMsg)
+        {
+            PanelError.Visible = true;
+            if (string.IsNullOrEmpty(errorMsg))
+            {
+                TbxError.Text = string.Empty;
+                TbxError.Visible = false;
+                return;
+            }
+            TbxError.BackColor = Color.Red;
+            TbxError.ForeColor = Color.White;
+            TbxError.Text = errorMsg;
+            TbxError.Visible = true;
+            if (HelpTip != null)
+            {
+                // In case message is long, make it possible to see in a tip
+                HelpTip.SetToolTip(TbxError, errorMsg);
+            }
         }
 
         public void ClearFastaError()
@@ -1999,34 +2105,31 @@ namespace pwiz.Skyline.EditUI
             PanelError.Visible = false;
         }
 
-        private bool CheckSequence(int aa, int lastNameLine, string[] lines)
+        private static PasteError CheckSequence(int aa, int lastNameLine, string[] lines)
         {
             if (aa == 0 && lastNameLine >= 0)
             {
-                ShowFastaError(new PasteError
+                return new PasteError
                 {
                     Message = Resources.ImportFastaHelper_CheckSequence_There_is_no_sequence_for_this_protein,
                     Column = 0,
                     Line = lastNameLine,
                     Length = lines[lastNameLine].Length
-                });
-                return false;
+                };
             }
-            return true;
+            return null;
         }
 
-        public static SrmDocument HandleEmptyPeptideGroups(IWin32Window parent, int emptyPeptideGroups, SrmDocument docCurrent)
+        public static SrmDocument HandleEmptyPeptideGroups(IWin32Window parent, int emptyPeptideGroups, SrmDocument docCurrent, AuditLogEntryCreatorList entryCreatorList = null)
         {
-            switch (AskWhetherToKeepEmptyProteins(parent, emptyPeptideGroups))
+            switch (AskWhetherToKeepEmptyProteins(parent, emptyPeptideGroups, entryCreatorList))
             {
-                case null:
-                    return null;
                 case true:
                     return docCurrent;
                 case false:
-                    return ImportPeptideSearch.RemoveEmptyProteins(docCurrent);
+                    return ImportPeptideSearch.RemoveProteinsByPeptideCount(docCurrent, 1);
                 default:
-                    throw new InvalidOperationException();
+                    return null;
             }
         }
 
@@ -2037,11 +2140,11 @@ namespace pwiz.Skyline.EditUI
         /// null if the user cancels, true/false for whether the user says whether they want to keep empty proteins.
         /// Also returns true if there were so many empty peptide groups that they have already been removed.
         /// </returns>
-        public static bool? AskWhetherToKeepEmptyProteins(IWin32Window parent, int numberOfEmptyPeptideGroups)
+        public static bool? AskWhetherToKeepEmptyProteins(IWin32Window parent, int numberOfEmptyPeptideGroups, AuditLogEntryCreatorList entryCreatorList = null)
         {
             if (numberOfEmptyPeptideGroups > FastaImporter.MaxEmptyPeptideGroupCount)
             {
-                MessageDlg.Show(parent, String.Format(Resources.SkylineWindow_ImportFasta_This_operation_discarded__0__proteins_with_no_peptides_matching_the_current_filter_settings_, numberOfEmptyPeptideGroups));
+                MessageDlg.Show(parent, string.Format(Resources.SkylineWindow_ImportFasta_This_operation_discarded__0__proteins_with_no_peptides_matching_the_current_filter_settings_, numberOfEmptyPeptideGroups));
                 return true;
             }
             else if (numberOfEmptyPeptideGroups > 0)
@@ -2050,6 +2153,8 @@ namespace pwiz.Skyline.EditUI
                 {
                     if (dlg.ShowDialog(parent) == DialogResult.Cancel)
                         return null;
+                    if(entryCreatorList != null)
+                        entryCreatorList.Add(dlg.FormSettings.EntryCreator);
                     // Remove all empty proteins, if requested by the user.
                     return dlg.IsKeepEmptyProteins;
                 }

@@ -78,6 +78,9 @@ namespace seems
         private CVID nativeIdFormat = CVID.CVID_Unknown;
         public CVID NativeIdFormat { get { return nativeIdFormat; } }
 
+        private bool hasMergedSpectra = false;
+        private bool hasNativeIdSpectra = false;
+
 		private void initializeGridView( CVID nativeIdFormat )
 		{
             // force handle creation
@@ -93,7 +96,7 @@ namespace seems
                 {
                     string[] nameValuePair = nameValuePairs[i].Split( "=".ToCharArray() );
                     DataGridViewColumn nameColumn = new DataGridViewAutoFilter.DataGridViewAutoFilterTextBoxColumn();
-                    nameColumn.Name = nameValuePair[0];
+                    nameColumn.Name = nameValuePair[0] + "NativeIdColumn";
                     nameColumn.HeaderText = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase( nameValuePair[0] );
                     nameColumn.DataPropertyName = nameValuePair[0];
                     gridView.Columns.Insert( 1 + i, nameColumn );
@@ -112,6 +115,8 @@ namespace seems
             gridView.Columns["BasePeakMz"].ToolTipText = new CVTermInfo( CVID.MS_base_peak_m_z ).def;
             gridView.Columns["BasePeakIntensity"].ToolTipText = new CVTermInfo( CVID.MS_base_peak_intensity ).def;
             gridView.Columns["TotalIonCurrent"].ToolTipText = new CVTermInfo( CVID.MS_total_ion_current ).def;
+
+	        gridView.Columns["ScanTime"].HeaderText += Properties.Settings.Default.TimeInMinutes ? " (min)" : " (sec)";
 
             gridView.DataBindingComplete += new DataGridViewBindingCompleteEventHandler( gridView_DataBindingComplete );
         }
@@ -146,7 +151,9 @@ namespace seems
             row.MsLevel = !param.empty() ? (int) param.value : 0;
 
             param = scan != null ? scan.cvParam( CVID.MS_scan_start_time ) : new CVParam();
-            row.ScanTime = !param.empty() ? (double) param.value : 0;
+            row.ScanTime = !param.empty() ? param.timeInSeconds() : 0;
+            if (Properties.Settings.Default.TimeInMinutes)
+                row.ScanTime /= 60;
 
             param = s.cvParam( CVID.MS_base_peak_m_z );
             row.BasePeakMz = !param.empty() ? (double) param.value : 0;
@@ -224,8 +231,16 @@ namespace seems
 
             row.IonMobility = scan != null ? (double) scan.cvParam(CVID.MS_ion_mobility_drift_time).value : 0;
             if (row.IonMobility == 0 && scan != null)
-                row.IonMobility = scan != null ? (double) scan.cvParam(CVID.MS_inverse_reduced_ion_mobility).value : 0;
-
+            {
+                row.IonMobility = (double) scan.cvParam(CVID.MS_inverse_reduced_ion_mobility).value;
+                if (row.IonMobility == 0)
+                {
+                    // Early version of drift time info, before official CV params
+                    var userparam = scan.userParam("drift time");
+                    if (!userparam.empty())
+                        row.IonMobility = userparam.timeInSeconds() * 1000.0;
+                }
+            }
             row.SpotId = s.spotID;
             row.SpectrumType = s.cvParamChild( CVID.MS_spectrum_type ).name;
             row.DataPoints = s.defaultArrayLength;
@@ -253,9 +268,33 @@ namespace seems
             SpectrumDataSet.SpectrumTableRow row = spectrumDataSet.SpectrumTable.NewSpectrumTableRow();
             row.Id = spectrum.Id;
 
-            if( nativeIdFormat != CVID.CVID_Unknown )
+            if (spectrum.Id.StartsWith("merged="))
             {
-                gridView.Columns["Id"].Visible = false;
+                if (!hasMergedSpectra)
+                {
+                    hasMergedSpectra = true;
+                    gridView.Columns["Id"].Visible = true;
+                }
+
+                if (!hasNativeIdSpectra)
+                {
+                    foreach (DataGridViewColumn column in gridView.Columns)
+                        if (column.Name.EndsWith("NativeIdColumn"))
+                            column.Visible = false;
+                }
+            }
+            else if( nativeIdFormat != CVID.CVID_Unknown )
+            {
+                if (!hasMergedSpectra)
+                    gridView.Columns["Id"].Visible = false;
+
+                if (!hasNativeIdSpectra)
+                {
+                    hasNativeIdSpectra = true;
+                    foreach (DataGridViewColumn column in gridView.Columns)
+                        if (column.Name.EndsWith("NativeIdColumn"))
+                            column.Visible = true;
+                }
 
                 // guard against case where input is mzXML which
                 // is identified as, say, Agilent-derived, but 

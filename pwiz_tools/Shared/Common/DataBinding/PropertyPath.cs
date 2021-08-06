@@ -60,7 +60,7 @@ namespace pwiz.Common.DataBinding
         {
             if (string.IsNullOrEmpty(name))
             {
-                throw new ArgumentException("Name cannot be blank"); // Not L10N
+                throw new ArgumentException(@"Name cannot be blank");
             }
             return new PropertyPath(this, name, true);
         }
@@ -72,7 +72,7 @@ namespace pwiz.Common.DataBinding
         {
             if (null == key)
             {
-                throw new ArgumentNullException("key"); // Not L10N
+                throw new ArgumentNullException(nameof(key));
             }
             return new PropertyPath(this, key, false);
         }
@@ -83,6 +83,14 @@ namespace pwiz.Common.DataBinding
         public PropertyPath LookupAllItems()
         {
             return new PropertyPath(this, null, false);
+        }
+
+        /// <summary>
+        /// Returns a property path corresponding to the Values collection of an IDictionary
+        /// </summary>
+        public PropertyPath DictionaryValues()
+        {
+            return LookupAllItems().Property(@"Value");
         }
         public PropertyPath Concat(PropertyPath propertyPath)
         {
@@ -170,17 +178,17 @@ namespace pwiz.Common.DataBinding
             }
             if (IsUnboundLookup)
             {
-                return Parent + "!*"; // Not L10N
+                return Parent + @"!*";
             }
             if (IsLookup)
             {
-                return Parent + "!" + EscapeIfNeeded(Name); // Not L10N
+                return Parent + @"!" + EscapeIfNeeded(Name);
             }
             if (Parent.IsRoot)
             {
                 return EscapeIfNeeded(Name);
             }
-            return Parent + "." + EscapeIfNeeded(Name); // Not L10N
+            return Parent + @"." + EscapeIfNeeded(Name);
         }
         public static PropertyPath Parse(string path)
         {
@@ -300,7 +308,7 @@ namespace pwiz.Common.DataBinding
                         lookup = true;
                         break;
                     default:
-                        throw new ParseException(path, lastIndex, Resources.PropertyPath_Parse_Invalid_character+ " " + ch); // Not L10N
+                        throw new ParseException(path, lastIndex, Resources.PropertyPath_Parse_Invalid_character+ @" " + ch);
                 }
                 lastIndex++;
             }
@@ -350,7 +358,7 @@ namespace pwiz.Common.DataBinding
         {
             if (text == null)
             {
-                return "*"; // Not L10N
+                return @"*";
             }
             var result = new StringBuilder(text.Length + 5);
             result.Append('\"');
@@ -358,14 +366,18 @@ namespace pwiz.Common.DataBinding
             {
                 if (ch == '\"')
                 {
-                    result.Append("\"\""); // Not L10N
+                    // ReSharper disable LocalizableElement
+                    result.Append("\"\"");
+                    // ReSharper restore LocalizableElement
                 }
                 else
                 {
                     result.Append(ch);
                 }
             }
-            result.Append("\""); // Not L10N
+            // ReSharper disable LocalizableElement
+            result.Append("\"");
+            // ReSharper restore LocalizableElement
             return result.ToString();
         }
         public static string EscapeIfNeeded(string text)
@@ -386,12 +398,5 @@ namespace pwiz.Common.DataBinding
             public int Location { get; private set; }
             public string ErrorMessage { get; private set; }
         }
-    }
-
-    public enum LookupType
-    {
-        Unbound,
-        Property,
-        Index,
     }
 }

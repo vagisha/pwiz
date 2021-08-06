@@ -22,7 +22,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using pwiz.Skyline.Model.Crosslinking;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -44,7 +46,7 @@ namespace pwiz.Skyline.Model
 
         public List<string> UnmatchedSequences { get; private set; }
 
-        private static readonly SequenceMassCalc CALC_DEFAULT = new SequenceMassCalc(MassType.Monoisotopic);
+        private static readonly SequenceMassCalc CALC_DEFAULT = new SequenceMassCalc(MassType.MonoisotopicMassH);
         public static double GetDefaultModMass(char aa, StaticMod mod)
         {
             return CALC_DEFAULT.GetModMass(aa, mod);
@@ -385,7 +387,7 @@ namespace pwiz.Skyline.Model
                         }
                         if (key.Mass != null)
                         {
-                            var keyStr = GetMatchString(key, mod.StructuralMod, true); // Not L10N
+                            var keyStr = GetMatchString(key, mod.StructuralMod, true);
                             if (!keyStrings.Contains(keyStr))
                                 keyStrings.Add(keyStr);
                         }
@@ -402,7 +404,7 @@ namespace pwiz.Skyline.Model
                         }
                         if (key.Mass != null)
                         {
-                            var keyStr = GetMatchString(key, mod.HeavyMod, false); // Not L10N
+                            var keyStr = GetMatchString(key, mod.HeavyMod, false);
                             if (!keyStrings.Contains(keyStr))
                                 keyStrings.Add(keyStr);
                         }
@@ -426,9 +428,9 @@ namespace pwiz.Skyline.Model
 
         private static string GetMatchString(AAModKey key, StaticMod staticMod, bool structural)
         {
-            string formatString = structural ? "{0}[{1}{2}]" : "{0}{{{1}{2}}}"; // Not L10N
+            string formatString = structural ? @"{0}[{1}{2}]" : @"{0}{{{1}{2}}}";
             var modMass = Math.Round(GetDefaultModMass(key.AA, staticMod), key.RoundedTo);
-            return string.Format(formatString, key.AA, (modMass > 0 ? "+" : string.Empty), modMass); // Not L10N
+            return string.Format(formatString, key.AA, (modMass > 0 ? @"+" : string.Empty), modMass);
         }
 
         public string UninterpretedMods
@@ -436,15 +438,184 @@ namespace pwiz.Skyline.Model
             get
             {
 
-                return string.Format(TextUtil.LineSeparate(Resources.AbstractModificationMatcher_UninterpretedMods_The_following_modifications_could_not_be_interpreted,
+                return TextUtil.LineSeparate(Resources.AbstractModificationMatcher_UninterpretedMods_The_following_modifications_could_not_be_interpreted,
                                      string.Empty,
-                                     TextUtil.SpaceSeparate(UnmatchedSequences.OrderBy(s => s))));
+                                     TextUtil.SpaceSeparate(UnmatchedSequences.OrderBy(s => s)));
             }
         }
 
-        public PeptideDocNode CreateDocNodeFromSettings(string seq, Peptide peptide, SrmSettingsDiff diff,
-             out TransitionGroupDocNode nodeGroupMatched)
+        public abstract PeptideDocNode GetModifiedNode(string sequence);
+
+        public PeptideDocNode CreateDocNodeFromSettings(LibKey key, Peptide peptide, SrmSettingsDiff diff, out TransitionGroupDocNode nodeGroupMatched)
         {
+            if (key.LibraryKey is CrosslinkLibraryKey)
+            {
+                return CreateCrosslinkDocNode(peptide, (CrosslinkLibraryKey) key.LibraryKey, diff,
+                    out nodeGroupMatched);
+            }
+            if (!key.Target.IsProteomic)
+            {
+                // Scan the spectral lib entry for top N ranked (for now, that's just by intensity with high mz as tie breaker) fragments, 
+                // add those as mass-only fragments, or with more detail if peak annotations are present.
+                foreach (var nodePep in peptide.CreateDocNodes(Settings, new MaxModFilter(0)))
+                {
+                    SpectrumHeaderInfo libInfo;
+                    if (nodePep != null && Settings.PeptideSettings.Libraries.TryGetLibInfo(key, out libInfo))
+                    {
+                        var isotopeLabelType = key.Adduct.HasIsotopeLabels ? IsotopeLabelType.heavy : IsotopeLabelType.light;
+                        var group = new TransitionGroup(peptide, key.Adduct, isotopeLabelType);
+                        nodeGroupMatched = new TransitionGroupDocNode(group, Annotations.EMPTY, Settings, null, libInfo, ExplicitTransitionGroupValues.EMPTY, null, null, false);
+                        SpectrumPeaksInfo spectrum;
+                        if (Settings.PeptideSettings.Libraries.TryLoadSpectrum(key, out spectrum))
+                        {
+                            // Add fragment and precursor transitions as needed
+                            var transitionDocNodes =
+                                Settings.TransitionSettings.Filter.SmallMoleculeIonTypes.Contains(IonType.precursor)
+                                    ? nodeGroupMatched.GetPrecursorChoices(Settings, null, true) // Gives list of precursors
+                                    : new List<DocNode>();
+
+                            if (Settings.TransitionSettings.Filter.SmallMoleculeIonTypes.Contains(IonType.custom))
+                            {
+                                GetSmallMoleculeFragments(key, nodeGroupMatched, spectrum, transitionDocNodes);
+                            }
+                            nodeGroupMatched = (TransitionGroupDocNode)nodeGroupMatched.ChangeChildren(transitionDocNodes);
+                            return (PeptideDocNode)nodePep.ChangeChildren(new List<DocNode>() { nodeGroupMatched });
+                        }
+                    }
+                }
+                nodeGroupMatched = null;
+                return null;
+            }
+            return CreateDocNodeFromSettings(key.Target, peptide, diff, out nodeGroupMatched);
+        }
+
+        private void GetSmallMoleculeFragments(LibKey key, TransitionGroupDocNode nodeGroupMatched, SpectrumPeaksInfo spectrum,
+            IList<DocNode> transitionDocNodes)
+        {
+            // We usually don't know actual charge of fragments in the library, so just note + or - if
+            // there are no peak annotations containing that info
+            var fragmentCharge = key.Adduct.AdductCharge < 0 ? Adduct.M_MINUS : Adduct.M_PLUS;
+            // Get list of possible transitions based on library spectrum
+            var transitionsUnranked = new List<DocNode>();
+            foreach (var peak in spectrum.Peaks)
+            {
+                try
+                {
+                    transitionsUnranked.Add(TransitionFromPeakAndAnnotations(key, nodeGroupMatched, fragmentCharge, peak, null));
+                }
+                catch (InvalidDataException)
+                {
+                    // Some kind of garbage in peaklist, e.g fragment mass is absurdly small or large - ignore
+                    // TODO(bspratt) - address Brendan's comment from pull request:
+                    // "This call should be paying attention to settings and the minimum value that causes the exception reported to initiate this fix.For peptide fragment
+                    // annotation, we definitely consider the settings, and since we do not rank fragments outside the instrument range. This code also strikes me as odd that you wouldn't just create the precursor
+                    // and then use a precursor.ChangeSettings(Settings, diff ?? SrmSettingsDiff.ALL) to materialize all of the transitions based on the settings. That way you only write the code once to materialize
+                    // transitions based on settings."
+                    // In particular not ranking things outside the machine range makes sense.
+                } 
+            }
+            var nodeGroupUnranked = (TransitionGroupDocNode) nodeGroupMatched.ChangeChildren(transitionsUnranked);
+            // Filter again, retain only those with rank info,  or at least an interesting name
+            SpectrumHeaderInfo groupLibInfo = null;
+            var transitionRanks = new Dictionary<double, LibraryRankedSpectrumInfo.RankedMI>();
+            nodeGroupUnranked.GetLibraryInfo(Settings, ExplicitMods.EMPTY, true, ref groupLibInfo, transitionRanks);
+            foreach (var ranked in transitionRanks)
+            {
+                transitionDocNodes.Add(TransitionFromPeakAndAnnotations(key, nodeGroupMatched, fragmentCharge, ranked.Value.MI, ranked.Value.Rank));
+            }
+            // And add any unranked that have names to display
+            foreach (var unrankedT in nodeGroupUnranked.Transitions)
+            {
+                var unranked = unrankedT;
+                if (!string.IsNullOrEmpty(unranked.Transition.CustomIon.Name) &&
+                    !transitionDocNodes.Any(t => t is TransitionDocNode && unranked.Transition.Equivalent(((TransitionDocNode) t).Transition)))
+                {
+                    transitionDocNodes.Add(unranked);
+                }
+            }
+        }
+
+        private TransitionDocNode TransitionFromPeakAndAnnotations(LibKey key, TransitionGroupDocNode nodeGroup,
+            Adduct fragmentCharge, SpectrumPeaksInfo.MI peak, int? rank)
+        {
+            var spectrumPeakAnnotationIon = peak.AnnotationsAggregateDescriptionIon;
+            var charge = spectrumPeakAnnotationIon.Adduct.IsEmpty ? fragmentCharge : spectrumPeakAnnotationIon.Adduct;
+            var monoisotopicMass = charge.MassFromMz(peak.Mz, MassType.Monoisotopic);
+            var averageMass = charge.MassFromMz(peak.Mz, MassType.Average);
+            // Caution here - library peak (observed) mz may not exactly match (theoretical) mz of the annotation
+
+            // In the case of multiple annotations, produce single transition for display in library explorer
+            var annotations = peak.GetAnnotationsEnumerator().ToArray();
+            var molecule = spectrumPeakAnnotationIon.Adduct.IsEmpty
+                ? new CustomMolecule(monoisotopicMass, averageMass)
+                : spectrumPeakAnnotationIon;
+            var note = (annotations.Length > 1) ? TextUtil.LineSeparate(annotations.Select(a => a.ToString())) : null;
+            var noteIfAnnotationMzDisagrees = NoteIfAnnotationMzDisagrees(key, peak);
+            if (noteIfAnnotationMzDisagrees != null)
+            {
+                if (note == null)
+                {
+                    note = noteIfAnnotationMzDisagrees;
+                }
+                else
+                {
+                    note = TextUtil.LineSeparate(note, noteIfAnnotationMzDisagrees);
+                }
+            }
+            var transition = new Transition(nodeGroup.TransitionGroup,
+                charge, 0, molecule);
+            return new TransitionDocNode(transition, Annotations.EMPTY.ChangeNote(note), null, monoisotopicMass,
+                rank.HasValue ?
+                    new TransitionDocNode.TransitionQuantInfo(null,
+                        new TransitionLibInfo(rank.Value, peak.Intensity), true) :
+                    TransitionDocNode.TransitionQuantInfo.DEFAULT, ExplicitTransitionValues.EMPTY, null);
+        }
+
+        private string NoteIfAnnotationMzDisagrees(LibKey key, SpectrumPeaksInfo.MI peak)
+        {
+            foreach (var peakAnnotation in peak.GetAnnotationsEnumerator())
+            {
+                var charge = peakAnnotation.Ion.Adduct;
+                var monoisotopicMass = charge.MassFromMz(peak.Mz, MassType.Monoisotopic);
+                var averageMass = charge.MassFromMz(peak.Mz, MassType.Average);
+
+                if (!(peakAnnotation.Ion.MonoisotopicMass.Equals(monoisotopicMass,
+                          Settings.TransitionSettings.Instrument.MzMatchTolerance) ||
+                      peakAnnotation.Ion.AverageMass.Equals(averageMass,
+                          Settings.TransitionSettings.Instrument.MzMatchTolerance)))
+                {
+
+                    return string.Format(
+                        @"annotated observed ({0}) and theoretical ({1}) masses differ for peak {2} of library entry {3} by more than the current instrument mz match tolerance of {4}",
+                        peak.Mz, peakAnnotation.Ion.MonoisotopicMassMz, peakAnnotation,
+                        key,
+                        Settings.TransitionSettings.Instrument.MzMatchTolerance);
+                }
+            }
+            return null;
+        }
+
+        protected bool HasMods(string sequence)
+        {
+            return FastaSequence.RGX_ALL.IsMatch(sequence);
+        }
+
+        public PeptideDocNode CreateDocNodeFromSettings(Target target, Peptide peptide, SrmSettingsDiff diff,
+                out TransitionGroupDocNode nodeGroupMatched)
+        {
+            if (!target.IsProteomic)
+            {
+                nodeGroupMatched = null; 
+                return null;
+            }
+
+            var crosslinkLibraryKey = CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(target.Sequence, 0);
+
+            if (null != crosslinkLibraryKey)
+            {
+                return CreateCrosslinkDocNode(peptide, crosslinkLibraryKey, diff, out nodeGroupMatched);
+            }
+            var seq = target.Sequence;
             seq = Transition.StripChargeIndicators(seq, TransitionGroup.MIN_PRECURSOR_CHARGE, TransitionGroup.MAX_PRECURSOR_CHARGE);
             if (peptide == null)
             {
@@ -467,13 +638,230 @@ namespace pwiz.Skyline.Model
             var filterMaxMod = new MaxModFilter(Math.Min(seqModCount,
                 Settings.PeptideSettings.Modifications.MaxVariableMods));
             var filterMod = new VariableModLocationFilter(seq);
+            var newTarget = new Target(seq);
             foreach (var nodePep in peptide.CreateDocNodes(Settings, filterMaxMod, filterMod))
             {
-                var nodePepMod = CreateDocNodeFromSettings(seq, nodePep, diff, out nodeGroupMatched);
+                var nodePepMod = CreateDocNodeFromSettings(newTarget, nodePep, diff, out nodeGroupMatched);
                 if (nodePepMod != null)
                     return nodePepMod;
             }
             nodeGroupMatched = null;
+            return null;
+        }
+
+        public PeptideDocNode CreateCrosslinkDocNode(Peptide peptide, CrosslinkLibraryKey crosslinkLibraryKey,
+            SrmSettingsDiff diff,
+            out TransitionGroupDocNode nodeGroupMatched)
+        {
+            if (!crosslinkLibraryKey.IsSupportedBySkyline())
+            {
+                nodeGroupMatched = null;
+                return null;
+            }
+            nodeGroupMatched = null;
+            var mainPeptide = MakePeptideDocNode(crosslinkLibraryKey.PeptideLibraryKeys[0]);
+            if (mainPeptide == null)
+            {
+                return null;
+            }
+
+            var crosslinkStructure = MakeCrosslinkStructure(mainPeptide.Peptide.Sequence, crosslinkLibraryKey);
+            if (crosslinkStructure == null)
+            {
+                return null;
+            }
+
+            var staticMods = new List<ExplicitMod>();
+            if (null != mainPeptide.ExplicitMods)
+            {
+                staticMods.AddRange(mainPeptide.ExplicitMods.StaticModifications);
+            }
+
+            var newMods = new ExplicitMods(mainPeptide.Peptide, staticMods,
+                mainPeptide.ExplicitMods?.GetHeavyModifications()).ChangeCrosslinkStructure(crosslinkStructure);
+            var crosslinkedPeptide = mainPeptide.ChangeExplicitMods(newMods).ChangeSettings(Settings, diff ?? SrmSettingsDiff.ALL);
+            if (!crosslinkLibraryKey.Adduct.IsEmpty)
+            {
+                nodeGroupMatched = new TransitionGroupDocNode(
+                    new TransitionGroup(mainPeptide.Peptide, crosslinkLibraryKey.Adduct, IsotopeLabelType.light),
+                    Annotations.EMPTY,
+                    Settings, newMods, null, ExplicitTransitionGroupValues.EMPTY, null, null, true);
+                crosslinkedPeptide = (PeptideDocNode)crosslinkedPeptide.ChangeChildren(new DocNode[] { nodeGroupMatched });
+            }
+
+            return crosslinkedPeptide;
+        }
+
+        public CrosslinkStructure MakeCrosslinkStructure(string mainSequence, CrosslinkLibraryKey crosslinkLibraryKey)
+        {
+            var linkedPeptides = new List<Peptide>();
+            var linkedExplicitMods = new List<ExplicitMods>();
+            for (int i = 1; i < crosslinkLibraryKey.PeptideLibraryKeys.Count; i++)
+            {
+                var peptideDocNode = MakePeptideDocNode(crosslinkLibraryKey.PeptideLibraryKeys[i]);
+                if (peptideDocNode == null)
+                {
+                    return null;
+                }
+                linkedPeptides.Add(peptideDocNode.Peptide);
+                linkedExplicitMods.Add(peptideDocNode.ExplicitMods ?? new ExplicitMods(peptideDocNode.Peptide, null, null));
+            }
+
+            var peptideSequences = new List<string> {mainSequence};
+            peptideSequences.AddRange(linkedPeptides.Select(pep=>pep.Sequence));
+            var crosslinks = new List<Crosslink>();
+            foreach (var crosslink in crosslinkLibraryKey.Crosslinks)
+            {
+                var sites = crosslink.CrosslinkSites.ToList();
+                if (sites.Count != 2)
+                {
+                    return null;
+                }
+
+                var crosslinker = FindCrosslinkMod(crosslink.Name, peptideSequences[sites[0].PeptideIndex],
+                    sites[0].AaIndex, peptideSequences[sites[1].PeptideIndex], sites[1].AaIndex);
+                if (crosslinker == null)
+                {
+                    return null;
+                }
+                crosslinks.Add(new Crosslink(crosslinker, sites));
+            }
+            return new CrosslinkStructure(linkedPeptides, linkedExplicitMods, crosslinks);
+        }
+
+        private StaticMod FindCrosslinkMod(string crosslinkName, string sequence1, int indexAa1, String sequence2,
+            int indexAa2)
+        {
+            IEnumerable<StaticMod> allMods = Settings.PeptideSettings.Modifications.StaticModifications;
+            if (null != DefSetStatic)
+            {
+                allMods = allMods.Concat(DefSetStatic);
+            }
+            var massModification = MassModification.Parse(crosslinkName);
+            foreach (var mod in allMods.Where(mod=>null != mod.CrosslinkerSettings))
+            {
+                if (crosslinkName == mod.Name)
+                {
+                    return mod;
+                }
+
+                if (!mod.MonoisotopicMass.HasValue || massModification == null)
+                {
+                    continue;
+                }
+
+                if (!massModification.Matches(MassModification.FromMass(mod.MonoisotopicMass.Value)))
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(mod.AAs))
+                {
+                    if (!mod.AAs.Contains(sequence1[indexAa1]) || !mod.AAs.Contains(sequence2[indexAa2]))
+                    {
+                        continue;
+                    }
+                }
+
+                return mod;
+            }
+
+            return null;
+        }
+
+        protected virtual PeptideDocNode MakePeptideDocNode(PeptideLibraryKey peptideLibraryKey)
+        {
+            var peptide = new Peptide(peptideLibraryKey.UnmodifiedSequence);
+            var explicitModList = new List<ExplicitMod>();
+            foreach (var mod in peptideLibraryKey.GetModifications())
+            {
+                var aaModKey = new AAModKey()
+                {
+                    AA = peptide.Sequence[mod.Key],
+                    AppearsToBeSpecificMod = true
+                };
+                MassModification massModification = MassModification.Parse(mod.Value);
+                if (massModification != null)
+                {
+                    aaModKey.Mass = massModification.Mass;
+                }
+                else
+                {
+                    aaModKey.Name = mod.Value;
+                }
+
+                if (mod.Key == 0)
+                {
+                    aaModKey.Terminus = ModTerminus.N;
+                }
+                else if (mod.Key == peptide.Sequence.Length - 1)
+                {
+                    aaModKey.Terminus = ModTerminus.C;
+                }
+
+                var staticMod = FindModification(aaModKey);
+                if (staticMod == null)
+                {
+                    return null;
+                }
+                explicitModList.Add(new ExplicitMod(mod.Key, staticMod));
+            }
+            return new PeptideDocNode(peptide, new ExplicitMods(peptide, explicitModList, null));
+        }
+
+        private StaticMod FindModification(AAModKey aaModKey)
+        {
+            if (Matches != null)
+            {
+                var match = GetMatch(aaModKey);
+                if (match != null)
+                {
+                    return match.Value.StructuralMod;
+                }
+            }
+
+            MassModification massModification = aaModKey.Mass.HasValue
+                ? MassModification.FromMass(aaModKey.Mass.Value)
+                : null;
+
+            foreach (var staticMod in Settings.PeptideSettings.Modifications.StaticModifications)
+            {
+                if (massModification != null)
+                {
+                    if (!staticMod.MonoisotopicMass.HasValue)
+                    {
+                        continue;
+                    }
+
+                    if (!massModification.Matches(MassModification.FromMass(staticMod.MonoisotopicMass.Value)))
+                    {
+                        continue;
+                    }
+                }
+                else if (staticMod.Name != aaModKey.Name)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(staticMod.AAs))
+                {
+                    if (!staticMod.AAs.Contains(aaModKey.AA))
+                    {
+                        continue;
+                    }
+                }
+
+                if (staticMod.Terminus.HasValue)
+                {
+                    if (staticMod.Terminus != aaModKey.Terminus)
+                    {
+                        continue;
+                    }
+                }
+
+                return staticMod;
+            }
+
             return null;
         }
 
@@ -507,7 +895,7 @@ namespace pwiz.Skyline.Model
 
                 public override string ToString()
                 {
-                    string formatMass = "{0:F0" + Precision + "}";   // Not L10N
+                    string formatMass = @"{0:F0" + Precision + @"}";
                     return string.Format(formatMass, Mass);
                 }
             }
@@ -535,7 +923,7 @@ namespace pwiz.Skyline.Model
                             // Otherwise try determine an acceptable mass and precision
                             else
                             {
-                                int dotIndex = modText.IndexOf(".", StringComparison.Ordinal);    // Not L10N
+                                int dotIndex = modText.IndexOf(@".", StringComparison.Ordinal);
                                 if (dotIndex == -1)
                                     dotIndex = modText.Length - 1;  // Just before the close index for zero precision
                                 double mass;
@@ -559,15 +947,15 @@ namespace pwiz.Skyline.Model
                 }
             }
 
-            private const string HEAVY_LABEL_CLOSE = "}";   // Not L10N
+            private const string HEAVY_LABEL_CLOSE = "}";
 
             private string GetCloseChar(char c)
             {
                 switch (c)
                 {
-                    case '{': return HEAVY_LABEL_CLOSE;  // Not L10N: Heavy label
-                    case '(': return ")";  // Not L10N: Unimod modification
-                    case '[': return "]";  // Not L10N: Custome mod - delta mass or name
+                    case '{': return HEAVY_LABEL_CLOSE;  // Heavy label
+                    case '(': return @")";  // Unimod modification
+                    case '[': return @"]";  // Custome mod - delta mass or name
                 }
                 return null;
             }
@@ -589,7 +977,7 @@ namespace pwiz.Skyline.Model
                 int closeIndex = -1;
                 while (closeChar != null)
                 {
-                    closeIndex = seq.IndexOf(closeChar, startIndex, StringComparison.Ordinal);  // Not L10N
+                    closeIndex = seq.IndexOf(closeChar, startIndex, StringComparison.Ordinal);
                     if (closeIndex == -1)
                         closeIndex = seq.Length;
                     if (closeChar != HEAVY_LABEL_CLOSE)
@@ -627,7 +1015,7 @@ namespace pwiz.Skyline.Model
             }
         }
 
-        private PeptideDocNode CreateDocNodeFromSettings(string seq, PeptideDocNode nodePep, SrmSettingsDiff diff,
+        private PeptideDocNode CreateDocNodeFromSettings(Target seq, PeptideDocNode nodePep, SrmSettingsDiff diff,
             out TransitionGroupDocNode nodeGroupMatched)
         {
             PeptideDocNode nodePepMod = nodePep.ChangeSettings(Settings, diff ?? SrmSettingsDiff.ALL, false);
@@ -641,7 +1029,7 @@ namespace pwiz.Skyline.Model
             return null;
         }
 
-        protected abstract bool IsMatch(string seq, PeptideDocNode nodePep, out TransitionGroupDocNode nodeGroup);
+        protected abstract bool IsMatch(Target seq, PeptideDocNode nodePep, out TransitionGroupDocNode nodeGroup);
 
         public PeptideDocNode CreateDocNodeFromMatches(PeptideDocNode nodePep, IEnumerable<AAModInfo> infos)
         {
@@ -691,11 +1079,11 @@ namespace pwiz.Skyline.Model
                 Settings.PeptideSettings.Modifications.StaticModifications,
                 DefSetStatic,
                 Settings.PeptideSettings.Modifications.GetHeavyModifications(),
-                DefSetHeavy);
+                DefSetHeavy).ChangeCrosslinkStructure(nodePep.CrosslinkStructure);
             // If no light modifications are present, this code assumes the user wants the 
             // default global light modifications.  Unless not stringPaste, in which case the target
             // static mods must also be empty
-            if (listLightMods.Count == 0 && (stringPaste || targetImplicitMods.StaticModifications.Count == 0))
+            if (listLightMods.Count(m => m.Modification.HasMod) == 0 && (stringPaste || targetImplicitMods.StaticModifications.Count == 0))
                 listLightMods = null;
             else if (stringPaste && ArrayUtil.EqualsDeep(listLightMods.ToArray(), targetImplicitMods.StaticModifications))
                 listLightMods = null;
@@ -753,8 +1141,13 @@ namespace pwiz.Skyline.Model
             public bool AppearsToBeSpecificMod { get { return ModKey.AppearsToBeSpecificMod; } }
             public bool IsMassMatch(StaticMod mod, double mass)
             {
-                return Equals(Math.Round(GetDefaultModMass(AA, mod), RoundedTo), mass)
-                    && IsModMatch(mod);
+                var mod1 = new MassModification(GetDefaultModMass(AA, mod), RoundedTo);
+                var mod2 = new MassModification(mass, RoundedTo);
+                if (!mod1.Matches(mod2))
+                {
+                    return false;
+                }
+                return IsModMatch(mod);
             }
             public bool IsModMatch(StaticMod mod)
             {
@@ -785,8 +1178,8 @@ namespace pwiz.Skyline.Model
             }
             public override string ToString()
             {
-                return string.Format(CultureInfo.InvariantCulture, UserIndicatedHeavy ? "{0}{{{1}{2}}}" : "{0}[{1}{2}]",    // Not L10N
-                    AA, Mass > 0 ? "+" : string.Empty, Mass); // Not L10N
+                return string.Format(CultureInfo.InvariantCulture, UserIndicatedHeavy ? @"{0}{{{1}{2}}}" : @"{0}[{1}{2}]",
+                    AA, Mass > 0 ? @"+" : string.Empty, Mass);
             }
         }
 

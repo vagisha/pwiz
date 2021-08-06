@@ -18,7 +18,11 @@
  */
 
 using System;
-using pwiz.Skyline.Model.Databinding.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using pwiz.Common.DataBinding.Attributes;
+using pwiz.Skyline.Model.ElementLocators;
+using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Model.Databinding.Entities
 {
@@ -34,14 +38,43 @@ namespace pwiz.Skyline.Model.Databinding.Entities
             throw new InvalidOperationException();
         }
 
-        private Proteins _proteins;
-        public Proteins Proteins { get { return _proteins = _proteins ?? new Proteins(DataSchema); } }
-        private ReplicateList _replicates;
-        public ReplicateList Replicates { get { return _replicates = _replicates ?? new ReplicateList(DataSchema); } }
+        [InvariantDisplayName("MoleculeLists", ExceptInUiMode = UiModes.PROTEOMIC)]
+        public IList<Protein> Proteins
+        {
+            get
+            {
+                return DocNode.MoleculeGroups
+                    .Select(peptideGroup => new Protein(DataSchema,
+                        new IdentityPath(IdentityPath.ROOT, peptideGroup.Id))).ToArray();
+            }
+        }
+
+        public IList<Replicate> Replicates 
+        {
+            get
+            {
+                if (!DocNode.Settings.HasResults)
+                {
+                    return new Replicate[0];
+                }
+                return Enumerable.Range(0, DocNode.Settings.MeasuredResults.Chromatograms.Count)
+                    .Select(replicateIndex => new Replicate(DataSchema, replicateIndex)).ToArray();
+            } 
+        }
 
         public override string GetDeleteConfirmation(int nodeCount)
         {
             return GetGenericDeleteConfirmation(nodeCount);
+        }
+
+        protected override NodeRef NodeRefPrototype
+        {
+            get { return DocumentRef.PROTOTYPE; }
+        }
+
+        protected override Type SkylineDocNodeType
+        {
+            get { return typeof(SkylineDocument); }
         }
     }
 }

@@ -49,7 +49,6 @@ namespace pwiz.Skyline.EditUI
                 textMinIntensity.Text = Settings.Default.ChromatogramMinIntensity.ToString(LocalizationHelper.CurrentCulture);
             if (Settings.Default.ChromatogramMaxIntensity != 0)
                 textMaxIntensity.Text = Settings.Default.ChromatogramMaxIntensity.ToString(LocalizationHelper.CurrentCulture);
-            cbShowOverlappingLabels.Checked = Settings.Default.AllowLabelOverlap;
             cbShowMultiplePeptides.Checked = Settings.Default.AllowMultiplePeptideSelection;
         }
 
@@ -91,7 +90,6 @@ namespace pwiz.Skyline.EditUI
             Settings.Default.ChromatogramMaxIntensity = maxIntensity;
             if (maxIntensity != 0)
                 Settings.Default.LockYChrom = true;
-            Settings.Default.AllowLabelOverlap = cbShowOverlappingLabels.Checked;
             Settings.Default.AllowMultiplePeptideSelection = cbShowMultiplePeptides.Checked;
             DialogResult = DialogResult.OK;
         }
@@ -120,6 +118,18 @@ namespace pwiz.Skyline.EditUI
         {
             get { return textSizeComboBox.SelectedItem as GraphFontSize; }
             set { textSizeComboBox.SelectedItem = value; }
+        }
+
+        public bool IsPeakWidthRelative
+        {
+            get { return cbRelative.Checked; }
+            set { cbRelative.Checked = value; }
+        }
+
+        public double TimeRange
+        {
+            get { return double.Parse(textTimeRange.Text); }
+            set { textTimeRange.Text = value.ToString(CultureInfo.CurrentCulture); }
         }
 
         #endregion

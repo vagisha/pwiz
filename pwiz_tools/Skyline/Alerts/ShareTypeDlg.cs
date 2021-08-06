@@ -17,10 +17,11 @@
  * limitations under the License.
  */
 using System;
-using System.Drawing;
-using System.Linq;
+using System.Collections.Generic;
 using System.Windows.Forms;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.Serialization;
+using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Alerts
@@ -31,46 +32,75 @@ namespace pwiz.Skyline.Alerts
     /// </summary>
     public partial class ShareTypeDlg : FormEx
     {
-        public ShareTypeDlg(SrmDocument document)
+        private List<SkylineVersion> _skylineVersionOptions;
+        public ShareTypeDlg(SrmDocument document, DocumentFormat? savedFileFormat)
         {
             InitializeComponent();
-            if (document.Settings.HasBackgroundProteome)
+            _skylineVersionOptions = new List<SkylineVersion>();
+            if (savedFileFormat.HasValue)
             {
-                groupBoxShareType.Visible = lblBackgroundProteome.Visible = true;
+                _skylineVersionOptions.Add(null);
+                comboSkylineVersion.Items.Add(string.Format(Resources.ShareTypeDlg_ShareTypeDlg_Current_saved_file___0__, savedFileFormat.Value.GetDescription()));
             }
-            if (document.Settings.HasRTCalcPersisted)
+
+            foreach (var skylineVersion in SkylineVersion.SupportedForSharing())
             {
-                groupBoxShareType.Visible = lblRetentionTimeCalculator.Visible = true;
+                _skylineVersionOptions.Add(skylineVersion);
+                comboSkylineVersion.Items.Add(skylineVersion.ToString());
             }
-            if (document.Settings.HasLibraries)
-            {
-                groupBoxShareType.Visible = lblLibraries.Visible = true;
-            }
-            comboSkylineVersion.Items.AddRange(SkylineVersion.SupportedForSharing().Cast<object>().ToArray());
             comboSkylineVersion.SelectedIndex = 0;
-            radioMinimal.Checked = true;
-            ClientSize = new Size(ClientSize.Width, panelFileFormat.Bottom + panelButtonBar.Height + 15);
+            radioComplete.Checked = true;
         }
 
-        public ShareType ShareType { get; set; }
-
-        protected override void CreateHandle()
-        {
-            base.CreateHandle();
-
-            Text = Program.Name;
-        }
+        public ShareType ShareType { get; private set; }
 
         public void OkDialog()
         {
             DialogResult = DialogResult.OK;
-            ShareType = new ShareType(radioComplete.Checked, (SkylineVersion)comboSkylineVersion.SelectedItem);
+            ShareType = new ShareType(radioComplete.Checked, _skylineVersionOptions[comboSkylineVersion.SelectedIndex]);
             Close();
         }
 
         private void btnShare_Click(object sender, EventArgs e)
         {
             OkDialog();
+        }
+
+        public SkylineVersion SelectedSkylineVersion
+        {
+            get
+            {
+                return _skylineVersionOptions[comboSkylineVersion.SelectedIndex];
+            }
+            set
+            {
+                int index = _skylineVersionOptions.IndexOf(value);
+                if (index < 0)
+                {
+                    throw new ArgumentException();
+                }
+
+                comboSkylineVersion.SelectedIndex = index;
+            }
+        }
+
+        public bool ShareTypeComplete
+        {
+            get
+            {
+                return radioComplete.Checked;
+            }
+            set
+            {
+                if (value)
+                {
+                    radioComplete.Checked = true;
+                }
+                else
+                {
+                    radioMinimal.Checked = true;
+                }
+            }
         }
     }
 }

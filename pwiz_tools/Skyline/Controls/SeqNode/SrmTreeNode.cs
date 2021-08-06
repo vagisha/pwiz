@@ -23,9 +23,12 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using System.Drawing.Imaging;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.GroupComparison;
+using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -43,7 +46,7 @@ namespace pwiz.Skyline.Controls.SeqNode
 
     public class EmptyNode : TreeNodeMS
     {
-        public const string TEXT_EMPTY = "                 "; // Not L10N
+        public const string TEXT_EMPTY = "                 ";
 
         public EmptyNode(): base(TEXT_EMPTY)
         {
@@ -266,6 +269,13 @@ namespace pwiz.Skyline.Controls.SeqNode
             get { return !Model.Annotations.IsEmpty; }
         }
 
+        protected static string FormatAdductTip(Adduct adduct)
+        {
+            return adduct.IsProteomic
+                ? string.Format(adduct.AdductCharge.ToString(LocalizationHelper.CurrentCulture))
+                : string.Format(@"{0} ({1})", adduct.AdductCharge.ToString(LocalizationHelper.CurrentCulture), adduct.AdductFormula);
+        }
+
         public virtual Size RenderTip(Graphics g, Size sizeMax, bool draw)
         {
             var table = new TableDesc();
@@ -305,7 +315,7 @@ namespace pwiz.Skyline.Controls.SeqNode
                     }
                     // If the last row was multi-line, add a spacer line.
                     if (lastMultiLine)
-                        table.AddDetailRow(" ", " ", rt); // Not L10N
+                        table.AddDetailRow(@" ", @" ", rt);
                     lastMultiLine = table.AddDetailRowLineWrap(g, annotationName, annotationValue, rt);
                 }
                 SizeF size = table.CalcDimensions(g);
@@ -423,11 +433,10 @@ namespace pwiz.Skyline.Controls.SeqNode
         public void ShowPickList(Point location, bool okOnDeactivate)
         {
             Exception exception = null;
-
             try
             {
                 PopupPickList popup = new PopupPickList(this, ChildHeading, okOnDeactivate) { Location = location };
-                popup.Show();
+                popup.Show(FormEx.GetParentForm(TreeView));
                 popup.Focus();
             }
             // Catch exceptions that may be caused trying to read results information from SKYD file
@@ -655,6 +664,9 @@ namespace pwiz.Skyline.Controls.SeqNode
             }
             else if (!materialize)
             {
+                // Avoid updating a lot of nodes just because a parent tree node was opened
+                if (docNodes.Count > 1000)
+                    treeNodes.Clear();
                 if (treeNodes.Count == 0)
                     treeNodes.Add(new DummyNode());
                 if (treeNodes[0] is DummyNode)
@@ -742,6 +754,8 @@ namespace pwiz.Skyline.Controls.SeqNode
             while (i < treeNodes.Count && treeNodes[i] is TNode);
 
 
+            int firstInsertPosition = i;
+            List<TreeNode> nodesToInsert = new List<TreeNode>(docNodes.Count - firstInsertPosition);
             // Enumerate remaining DocNodes adding to the tree either corresponding
             // TreeNodes from the map, or creating new TreeNodes as necessary.
             for (; i < docNodes.Count; i++)
@@ -751,20 +765,43 @@ namespace pwiz.Skyline.Controls.SeqNode
                 if (!remaining.TryGetValue(nodeDoc.Id.GlobalIndex, out nodeTree))
                 {
                     nodeTree = create(tree, nodeDoc);
-                    treeNodes.Insert(i, nodeTree);
+                    nodesToInsert.Add(nodeTree);
                 }
                 else
                 {
-                    // Insert first, or node icons may not update correctly for a tree node with no tree
-                    treeNodes.Insert(i, nodeTree);
-                    if (!ReferenceEquals(nodeTree.Model, nodeDoc)) 
-                        nodeTree.Model = nodeDoc;
+                    nodesToInsert.Add(nodeTree);
                 }
+                if (tree.ShowReplicate == ReplicateDisplay.best)
+                    nodeTree.Model = nodeDoc;
+            }
+
+            if (firstInsertPosition == treeNodes.Count)
+            {
+                treeNodes.AddRange(nodesToInsert.ToArray());
+            }
+            else
+            {
+                for (int insertNodeIndex = 0; insertNodeIndex < nodesToInsert.Count; insertNodeIndex++)
+                {
+                    treeNodes.Insert(insertNodeIndex + firstInsertPosition, nodesToInsert[insertNodeIndex]);
+                }
+            }
+
+            // If necessary, update the model for these new tree nodes. This needs to be done after 
+            // the nodes have been added to the tree, because otherwise the icons may not update correctly.
+            for (int insertNodeIndex = 0; insertNodeIndex < nodesToInsert.Count; insertNodeIndex++)
+            {
+                var nodeTree = (TNode) treeNodes[insertNodeIndex + firstInsertPosition];
+                var docNode = docNodes[insertNodeIndex + firstInsertPosition];
                 // Best replicate display, requires that the node have correct
                 // parenting, before the text and icons can be set correctly.
                 // So, force a model change to update those values.
-                if (tree.ShowReplicate == ReplicateDisplay.best)
-                    nodeTree.Model = nodeDoc;
+                if (tree.ShowReplicate == ReplicateDisplay.best 
+                    || docNode is TransitionGroupDocNode
+                    || !ReferenceEquals(docNode, nodeTree.Model))
+                {
+                    nodeTree.Model = docNode;
+                }
             }
 
             if (selChanged)
@@ -988,8 +1025,10 @@ namespace pwiz.Skyline.Controls.SeqNode
 
     public class NodeTip : CustomTip
     {
-        public static string FontFace { get { return "Arial"; } } // Not L10N
+        public static string FontFace { get { return @"Arial"; } }
         public static float FontSize { get { return 8f; } }
+
+        public static int TipDelayMs { get { return 500; } }
 
         private ITipProvider _tipProvider;
         private readonly ITipDisplayer _tipDisplayer;
@@ -1001,7 +1040,7 @@ namespace pwiz.Skyline.Controls.SeqNode
 
         public NodeTip(ITipDisplayer tipDisplayer)
         {
-            _timer = new Timer { Interval = 500 };
+            _timer = new Timer { Interval = TipDelayMs };
             _timer.Tick += Timer_Tick;
             _tipDisplayer = tipDisplayer;
         }
@@ -1094,7 +1133,7 @@ namespace pwiz.Skyline.Controls.SeqNode
                 }
             }
 
-            ShowAnimate(X, Y, animate);
+            ShowAnimate(X, Y, animate); // Not really animated anymore, because of GDI handle leak on Windows 10
         }
     }
 
@@ -1153,7 +1192,7 @@ namespace pwiz.Skyline.Controls.SeqNode
         }
 
         private const string X80 =
-        "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"; // Not L10N
+        @"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
         /// <summary>
         /// Adds a text column a with potential line wrap.
@@ -1188,7 +1227,7 @@ namespace pwiz.Skyline.Controls.SeqNode
             AddDetailRow(firstRow ? name : string.Empty, line, rt);
             // The text is multi-line if either it required wrapping to multiple rows,
             // or it contains new-line characters.
-            return !firstRow || value.Contains('\n'); // Not L10N
+            return !firstRow || value.Contains('\n');
         }
 
         public SizeF CalcDimensions(Graphics g)
@@ -1301,16 +1340,15 @@ namespace pwiz.Skyline.Controls.SeqNode
 
     public class DisplaySettings
     {
-        public const int RATIO_INDEX_GLOBAL_STANDARDS = -2;
-
         internal readonly bool _showBestReplicate;
         internal readonly int _resultsIndex;
 
-        public DisplaySettings(PeptideDocNode nodePep, bool showBestReplicate, int resultsIndex, int ratioIndex)
+        public DisplaySettings(NormalizedValueCalculator normalizedValueCalculator, PeptideDocNode nodePep, bool showBestReplicate, int resultsIndex, NormalizeOption normalizeOption)
         {
+            NormalizedValueCalculator = normalizedValueCalculator;
             _showBestReplicate = showBestReplicate;
             _resultsIndex = resultsIndex;
-            RatioIndex = ratioIndex;
+            NormalizeOption = normalizeOption;
             NodePep = nodePep;
         }
          
@@ -1318,13 +1356,13 @@ namespace pwiz.Skyline.Controls.SeqNode
         {
             _showBestReplicate = settings._showBestReplicate;
             _resultsIndex = settings._resultsIndex;
-            RatioIndex = settings.RatioIndex;
+            NormalizeOption = settings.NormalizeOption;
             NodePep = nodePep;
         }
 
         public PeptideDocNode NodePep { get; private set; }
 
-        public int Index
+        public int ResultsIndex
         {
             get
             {
@@ -1332,6 +1370,16 @@ namespace pwiz.Skyline.Controls.SeqNode
             }
         }
 
-        public int RatioIndex { get; private set; }
+        public NormalizeOption NormalizeOption { get; private set; }
+
+        public NormalizationMethod NormalizationMethod
+        {
+            get
+            {
+                return NormalizedValueCalculator.NormalizationMethodForMolecule(NodePep, NormalizeOption);
+            }
+        }
+
+        public NormalizedValueCalculator NormalizedValueCalculator { get; private set; }
     }
 }

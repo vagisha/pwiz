@@ -27,7 +27,7 @@ using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.EditUI;
-using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Properties;
 using pwiz.SkylineTestUtil;
 
@@ -63,15 +63,15 @@ namespace pwiz.SkylineTestFunctional
             metadata = nodeProt.ProteinMetadata;
 
             // Examine the various View | Targets | By* modes
-            foreach (ProteinDisplayMode mode in Enum.GetValues(typeof(ProteinDisplayMode)))
+            foreach (ProteinMetadataManager.ProteinDisplayMode mode in Enum.GetValues(typeof(ProteinMetadataManager.ProteinDisplayMode)))
             {
-                ProteinDisplayMode arg = mode;
-                RunUI(() => SkylineWindow.UpdateTargetsDisplayMode(arg)); // This should alter the text displayed by the node in the sequence tree view
+                ProteinMetadataManager.ProteinDisplayMode arg = mode;
+                RunUI(() => SkylineWindow.ViewMenu.UpdateTargetsDisplayMode(arg)); // This should alter the text displayed by the node in the sequence tree view
                 WaitForConditionUI(() =>
                 {
                     var displayText = SkylineWindow.SequenceTree.GetSequenceNodes().First().Text;
-                    if (arg != ProteinDisplayMode.ByName &&
-                        Equals(displayText, GetDisplayText(ProteinDisplayMode.ByName, metadata)))
+                    if (arg != ProteinMetadataManager.ProteinDisplayMode.ByName &&
+                        Equals(displayText, GetDisplayText(ProteinMetadataManager.ProteinDisplayMode.ByName, metadata)))
                         return false;
                     return Equals(displayText, GetDisplayText(arg, metadata));
                 });
@@ -79,26 +79,26 @@ namespace pwiz.SkylineTestFunctional
             
             // Examine the various Edit | Refine | Sort Proteins | By* modes
             Assert.AreEqual("YIL075C", nodeProt.Name); // unsorted
-            foreach (ProteinDisplayMode mode in Enum.GetValues(typeof (ProteinDisplayMode)))
+            foreach (ProteinMetadataManager.ProteinDisplayMode mode in Enum.GetValues(typeof (ProteinMetadataManager.ProteinDisplayMode)))
             {
                 string expectedTopName = null;
                 switch (mode)
                 {
-                    case ProteinDisplayMode.ByName:
+                    case ProteinMetadataManager.ProteinDisplayMode.ByName:
                         expectedTopName = "YAL003W";
-                        RunUI(() => SkylineWindow.sortProteinsByNameToolStripMenuItem_Click(null, null));
+                        RunUI(() => SkylineWindow.RefineMenu.sortProteinsByNameToolStripMenuItem_Click(null, null));
                         break;
-                    case ProteinDisplayMode.ByAccession:
-                        expectedTopName = TestSmallMolecules ? "ZZZTESTINGNONPROTEOMICMOLECULEGROUP" : "YFL038C";
-                        RunUI(() => SkylineWindow.sortProteinsByAccessionToolStripMenuItem_Click(null, null));
+                    case ProteinMetadataManager.ProteinDisplayMode.ByAccession:
+                        expectedTopName = "YFL038C";
+                        RunUI(() => SkylineWindow.RefineMenu.sortProteinsByAccessionToolStripMenuItem_Click(null, null));
                         break;
-                    case ProteinDisplayMode.ByPreferredName:
-                        RunUI(() => SkylineWindow.sortProteinsByPreferredNameToolStripMenuItem_Click(null, null));
-                        expectedTopName = TestSmallMolecules ? "ZZZTESTINGNONPROTEOMICMOLECULEGROUP" : "YAL016W";
+                    case ProteinMetadataManager.ProteinDisplayMode.ByPreferredName:
+                        RunUI(() => SkylineWindow.RefineMenu.sortProteinsByPreferredNameToolStripMenuItem_Click(null, null));
+                        expectedTopName = "YAL016W";
                         break;
-                    case ProteinDisplayMode.ByGene:
-                        RunUI(() => SkylineWindow.sortProteinsByGeneToolStripMenuItem_Click(null, null));
-                        expectedTopName = TestSmallMolecules ? "ZZZTESTINGNONPROTEOMICMOLECULEGROUP" : "YGL234W";
+                    case ProteinMetadataManager.ProteinDisplayMode.ByGene:
+                        RunUI(() => SkylineWindow.RefineMenu.sortProteinsByGeneToolStripMenuItem_Click(null, null));
+                        expectedTopName = "YGL234W";
                         break;
                 }
                 var actualTopName = WaitForDocumentLoaded().MoleculeGroups.First().Name.ToUpperInvariant();
@@ -191,7 +191,7 @@ namespace pwiz.SkylineTestFunctional
                 sequenceTree.CommitEditBox(false);
             });
             doc = WaitForDocumentChange(doc);
-            var nodeText = SkylineWindow.SequenceTree.GetSequenceNodes().Last(n => !SrmDocument.IsSpecialNonProteomicTestDocNode(n.DocNode)).Text;
+            var nodeText = SkylineWindow.SequenceTree.GetSequenceNodes().Last().Text;
             var failsafe = String.Format(Resources.PeptideGroupTreeNode_ProteinModalDisplayText__name___0__, badname);  // As in PeptideGroupTreeNode.cs
             Assert.AreEqual(failsafe, nodeText);
 
@@ -285,18 +285,18 @@ namespace pwiz.SkylineTestFunctional
 
         }
 
-        private static string GetDisplayText(ProteinDisplayMode arg, ProteinMetadata proteinMetadata)
+        private static string GetDisplayText(ProteinMetadataManager.ProteinDisplayMode arg, ProteinMetadata proteinMetadata)
         {
             string val;
             switch (arg)
             {
-                case ProteinDisplayMode.ByAccession:
+                case ProteinMetadataManager.ProteinDisplayMode.ByAccession:
                     val = proteinMetadata.Accession;
                     break;
-                case ProteinDisplayMode.ByGene:
+                case ProteinMetadataManager.ProteinDisplayMode.ByGene:
                     val = proteinMetadata.Gene;
                     break;
-                case ProteinDisplayMode.ByPreferredName:
+                case ProteinMetadataManager.ProteinDisplayMode.ByPreferredName:
                     val = proteinMetadata.PreferredName;
                     break;
                 default:
@@ -304,7 +304,7 @@ namespace pwiz.SkylineTestFunctional
                     break;
             }
             Assert.IsFalse(String.IsNullOrEmpty(val));
-            if (arg != ProteinDisplayMode.ByName)
+            if (arg != ProteinMetadataManager.ProteinDisplayMode.ByName)
                 Assert.AreNotEqual(val, proteinMetadata.Name);
             return val;
         }

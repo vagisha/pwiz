@@ -44,7 +44,9 @@ class MascotSpecReader : public SpecFileReader {
     MascotSpecReader(const char* filename,
                      ms_mascotresfile* ms_file, 
                      ms_mascotresults* ms_results = NULL,
-                     const std::vector<std::string>& rawfiles = std::vector<std::string>()){
+                     const std::vector<std::string>& rawfiles = std::vector<std::string>(),
+                     boost::shared_ptr<TempFileDeleter> tmpFileDeleter = boost::shared_ptr<TempFileDeleter>())
+        : disableRtConversion_(false), needsRtConversion_(false), tmpFileDeleter_(tmpFileDeleter) {
         setFile(ms_file, ms_results);
         filename_ = filename;
         numRawFiles_ = rawfiles.size();
@@ -128,20 +130,34 @@ class MascotSpecReader : public SpecFileReader {
 
         ms_inputquery spec(*ms_file_, specId);
         // retention time is optional in .dat files
-        string rtStr = spec.getRetentionTimes();
-        if (rtStr.empty()) {
-            for (size_t i = 0; i < numRawFiles_; i++)
-                if (!(rtStr = spec.getRetentionTimes(i)).empty())
-                    break;
+        double rt = -1;
+        try {
+            rt = boost::lexical_cast<double>(spec.getRetentionTimes());
+        } catch (...) {
+            rt = -1;
         }
-        try{
-            returnData.retentionTime = boost::lexical_cast<double>(rtStr) / 60;
+
+        if (rt < 0) {
+            for (size_t i = 0; i < numRawFiles_; i++) {
+                try {
+                    rt = boost::lexical_cast<double>(spec.getRetentionTimes(i));
+                    break;
+                } catch (...) {
+                    rt = -1;
+                }
+            }
+        }
+
+        if (rt >= 0) {
+            returnData.retentionTime = rt / 60;
             disableRtConversion_ = true;
+            needsRtConversion_ = false;
             // seconds to minutes
-        } catch (...){
+        } else {
             // if it wasn't there, try the title string
             returnData.retentionTime = getRetentionTimeFromTitle(spec.getStringTitle(true));
         }
+        getIonMobilityFromTitle(returnData, spec.getStringTitle(true)); // For Bruker TIMS
         returnData.numPeaks = spec.getNumberOfPeaks(1);// first ion series
 
         if( getPeaks ){
@@ -192,6 +208,7 @@ class MascotSpecReader : public SpecFileReader {
     size_t numRawFiles_;
     bool disableRtConversion_; // rt units known
     bool needsRtConversion_; // rt units unknown and we've seen a retention time >750
+    boost::shared_ptr<TempFileDeleter> tmpFileDeleter_; // deletes temporary file when needed for Unicode filepath
 
     // TODO: This code is now duplicated in SpectrumList_MGF.cpp
     /**
@@ -239,6 +256,62 @@ class MascotSpecReader : public SpecFileReader {
         }
 
         return time;
+    }
+
+    /**
+     * Get ion mobility as encoded for Bruker TIMS
+     */
+    void getIonMobilityFromTitle(SpecData& returnData, const string& title) // For Bruker TIMS
+    {
+        // Pick out the Mobility value from something like
+        // title= Cmpd X, +MSn(383.4828600), 61.20 min MS: 151978/ |MSMS:151979/|count(pasefframemsmsinfo.precursor)=10|Id=2813793|AverageMz=383.672206171834|MonoisotopicMz=383.482886705023|Charge=3|Intensity=1217|ScanNumber=829.680327868853|Mobility=0.701142751474809
+        const char* tag = "Mobility=";
+        const char* delimiter = "|";
+        size_t start = title.find(tag, 0);
+        if (start == string::npos)
+        {
+            // Try the "TITLE=Cmpd 1, +MS2(948.5056), 63.0eV, 52.60-52.61min, 1/K0=1.409 #26317-26323" variant        
+            tag = "1/K0=";
+            delimiter = " ";
+            start = title.find(tag, 0);
+        }
+        size_t end;
+        if (start != string::npos)
+        {
+            int tagLen = strlen(tag);
+            start += tagLen;
+            end = title.find(delimiter, start);
+            if (end == string::npos)
+                end = title.length();
+        }
+        else // Try the "TITLE=1 Features, +MS2(479.538163, 2+), 0.8123 1/k0," variant
+        {
+            end = title.find(" 1/k0", 0);
+            if (end != string::npos)
+            {
+                start = title.find_last_of(' ',end - 1);
+                if (start != string::npos)
+                {
+                    start++;
+                }
+            }
+        }
+        if (start != string::npos)
+        {
+            string imStr = title.substr(start, end - start);
+            try
+            {
+                returnData.ionMobility = boost::lexical_cast<double>(imStr);
+                returnData.ionMobilityType = IONMOBILITY_INVERSEREDUCED_VSECPERCM2;
+                return;
+            }
+            catch (...)
+            {
+            }
+            returnData.ionMobility = 0;
+            returnData.ionMobilityType = IONMOBILITY_NONE;
+            throw BlibException(false, "Failure reading TIMS ion mobility value \"%s\"", imStr.c_str());
+        }
     }
 
     /**

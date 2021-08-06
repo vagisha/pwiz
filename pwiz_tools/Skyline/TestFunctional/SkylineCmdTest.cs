@@ -16,57 +16,139 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline;
+using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
+using pwiz.Skyline.Util.Extensions;
 using pwiz.SkylineTestUtil;
 
 namespace pwiz.SkylineTestFunctional
 {
+    /// <summary>
+    /// Test the SkylineCmd.exe command-line executable by running it in a separate process.
+    /// No idea why this was originally written as a functional test, but I changed it to a unit test
+    /// when I fixed its handle leaking problem using ShellExecute = false. -brendan
+    /// </summary>
     [TestClass]
-    public class SkylineCmdTest : AbstractFunctionalTest
+    public class SkylineCmdTest : AbstractUnitTest
     {
         [TestMethod]
         public void TestSkylineCmd()
         {
             TestFilesZip = @"TestFunctional/SkylineCmdTest.zip";
-            RunFunctionalTest();
-        }
+            TestFilesDir = new TestFilesDir(TestContext, TestFilesZip);
 
-        protected override void DoTest()
-        {
             // failure to start
             {
                 var process = Process.Start(GetProcessStartInfo("--invalidargument"));
-                Assert.IsNotNull(process);
-                Assert.IsTrue(process.WaitForExit(10000));
-                Assert.AreEqual(Program.EXIT_CODE_FAILURE_TO_START, process.ExitCode);
+                WaitForExit(process, Program.EXIT_CODE_FAILURE_TO_START);
             }
             // ran with errors
             {
                 var process = Process.Start(GetProcessStartInfo("\"--in=" + TestFilesDir.GetTestPath("invalidpath.sky") + "\""));
-                Assert.IsNotNull(process);
-                Assert.IsTrue(process.WaitForExit(10000));
-                Assert.AreEqual(Program.EXIT_CODE_RAN_WITH_ERRORS, process.ExitCode);
+                WaitForExit(process, Program.EXIT_CODE_RAN_WITH_ERRORS);
             }
             // success
+            string validFile = TestFilesDir.GetTestPath("SkylineCmdTest.sky");
+            string logFile = TestFilesDir.GetTestPath("success.log");
             {
-                var process = Process.Start(GetProcessStartInfo("\"--in=" + TestFilesDir.GetTestPath("SkylineCmdTest.sky") + "\""));
-                Assert.IsNotNull(process);
-                Assert.IsTrue(process.WaitForExit(10000));
-                Assert.AreEqual(Program.EXIT_CODE_SUCCESS, process.ExitCode);
+                var process = Process.Start(GetProcessStartInfo("\"--in=" + validFile + "\" --log-file=\"" + logFile + "\""));
+                WaitForExit(process, Program.EXIT_CODE_SUCCESS);
+                Assert.IsTrue(File.Exists(logFile), string.Format("Missing log file {0}", logFile));
+                string logText = File.ReadAllText(logFile, Encoding.UTF8);
+                AssertEx.Contains(logText, Resources.CommandLine_OpenSkyFile_Opening_file___,
+                    string.Format(Resources.CommandLine_OpenSkyFile_File__0__opened_, Path.GetFileName(validFile)));
             }
+            // success with redirected std-out/std-err
+            {
+                string output = RunWithOutput("\"--in=" + validFile + "\"");
+                AssertEx.Contains(output, Resources.CommandLine_OpenSkyFile_Opening_file___,
+                    string.Format(Resources.CommandLine_OpenSkyFile_File__0__opened_, Path.GetFileName(validFile)));
+            }
+            // usage
+            {
+                try
+                {
+                    string output = RunWithOutput("--help=ascii");
+                    Assert.IsTrue(Helpers.CountLinesInString(output) > 100);
+                    AssertEx.Contains(output, "SkylineCmd");
+                }
+                catch (IOException e)
+                {
+                    Assert.Fail(TextUtil.LineSeparate("Expected successful run of SkylineCmd.exe with --help:",
+                        e.Message));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Tests running SkylineCmd.exe when it is not in the same folder as Skyline.exe, in which
+        /// case it fails.
+        /// </summary>
+        [TestMethod]
+        public void TestSkylineCmdInEmptyDirectory()
+        {
+            var tempPath = TestContext.GetTestPath("SkylineCmdTempDirectory" + Guid.NewGuid());
+            Directory.CreateDirectory(tempPath);
+            var destFileName = Path.Combine(tempPath, "SkylineCmd.exe");
+            File.Copy(FindSkylineCmdExe(), destFileName);
+            var processStartInfo = GetProcessStartInfo(string.Empty);
+            processStartInfo.FileName = destFileName;
+            var processRunner = new ProcessRunner { OutputEncoding = Encoding.UTF8 };
+            IProgressStatus status = new ProgressStatus(string.Empty);
+            string output = null;
+            try
+            {
+                processRunner.Run(processStartInfo, null, null, ref status, null);
+                Assert.Fail("IOException should have been thrown");
+            }
+            catch (IOException ioException)
+            {
+                output = ioException.Message;
+            }
+            // Make sure the error message says it tries loading "Skyline.exe" and "Skyline-daily.exe" from the
+            // same directory as SkylineCmd.exe
+            StringAssert.Contains(output, "Skyline.exe");
+            StringAssert.Contains(output, "Skyline-daily.exe");
+            StringAssert.Contains(output, tempPath);
+        }
+
+
+        private string RunWithOutput(string args)
+        {
+            var writer = new StringWriter();
+            var processRunner = new ProcessRunner { OutputEncoding = Encoding.UTF8 };
+            IProgressStatus status = new ProgressStatus(string.Empty);
+            processRunner.Run(GetProcessStartInfo(args), null, null, ref status, writer);
+            return writer.ToString();
+        }
+
+        private const int EXIT_WAIT_TIME = 20 * 1000;   // 20 seconds
+
+        private static void WaitForExit(Process process, int exitCode)
+        {
+            Assert.IsNotNull(process);
+            Assert.IsTrue(process.WaitForExit(EXIT_WAIT_TIME), string.Format("SkylineCmd not exited in {0} seconds", EXIT_WAIT_TIME/1000));
+            Assert.AreEqual(exitCode, process.ExitCode);
         }
 
         private ProcessStartInfo GetProcessStartInfo(string arguments)
         {
-            var processStartInfo = new ProcessStartInfo(FindSkylineCmdExe(), arguments);
-            if (Program.SkylineOffscreen)
+            return new ProcessStartInfo(FindSkylineCmdExe())
             {
-                processStartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-            }
-            return processStartInfo;
+                // Make SkylineCmd run in the current culture, which forces the output to UTF-8 encoding
+                Arguments = "--culture=" + CultureInfo.CurrentCulture.Name + " " + arguments,
+                CreateNoWindow = true,
+                UseShellExecute = false
+            };
         }
 
         private static string FindSkylineCmdExe()

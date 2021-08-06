@@ -19,6 +19,7 @@
 using System;
 using System.Globalization;
 using System.Xml;
+using pwiz.Common.SystemUtil;
 
 namespace pwiz.Common.DataBinding
 {
@@ -59,8 +60,10 @@ namespace pwiz.Common.DataBinding
             FilterOperation = filterOperation;
             InvariantOperandText = invariantOperandText;
         }
+        [TrackChildren(ignoreName: true)]
         public IFilterOperation FilterOperation { get; private set; }
-        private string InvariantOperandText { get; set; }
+        [Track]
+        public string InvariantOperandText { get; private set; }
 
         public object GetOperandValue(ColumnDescriptor columnDescriptor)
         {
@@ -83,8 +86,16 @@ namespace pwiz.Common.DataBinding
 
         public string GetOperandDisplayText(DataSchema dataSchema, Type propertyType)
         {
-            object operand = GetOperandValue(dataSchema, propertyType);
-            return (string) Convert.ChangeType(operand, typeof (string), dataSchema.DataSchemaLocalizer.FormatProvider);
+            try
+            {
+                object operand = GetOperandValue(dataSchema, propertyType);
+                return (string) Convert.ChangeType(operand, typeof(string),
+                    dataSchema.DataSchemaLocalizer.FormatProvider);
+            }
+            catch (Exception)
+            {
+                return InvariantOperandText;
+            }
         }
 
         private static object ParseOperandValue(CultureInfo cultureInfo, Type type, string operandValue)
@@ -166,7 +177,7 @@ namespace pwiz.Common.DataBinding
         #endregion
 
         #region XML Serialization
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         public void WriteXml(XmlWriter writer)
         {
             writer.WriteAttributeString("opname", FilterOperation.OpName);
@@ -182,7 +193,7 @@ namespace pwiz.Common.DataBinding
             string operand = reader.GetAttribute("operand");
             return new FilterPredicate(FilterOperations.GetOperation(opName), operand);
         }
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
         #endregion
     }
 }

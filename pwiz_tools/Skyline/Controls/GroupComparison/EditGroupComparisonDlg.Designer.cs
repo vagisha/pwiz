@@ -42,7 +42,6 @@
             this.lblPercent = new System.Windows.Forms.Label();
             this.comboControlValue = new System.Windows.Forms.ComboBox();
             this.tbxConfidenceLevel = new System.Windows.Forms.TextBox();
-            this.msStatsLogoForm1 = new pwiz.Skyline.Controls.GroupComparison.MsStatsLogoForm();
             this.lblConfidenceLevel = new System.Windows.Forms.Label();
             this.lblControlValue = new System.Windows.Forms.Label();
             this.lblCompareAgainst = new System.Windows.Forms.Label();
@@ -95,7 +94,6 @@
             this.panelMain.Controls.Add(this.lblPercent);
             this.panelMain.Controls.Add(this.comboControlValue);
             this.panelMain.Controls.Add(this.tbxConfidenceLevel);
-            this.panelMain.Controls.Add(this.msStatsLogoForm1);
             this.panelMain.Controls.Add(this.lblConfidenceLevel);
             this.panelMain.Controls.Add(this.lblControlValue);
             this.panelMain.Controls.Add(this.lblCompareAgainst);
@@ -175,11 +173,6 @@
             resources.ApplyResources(this.tbxConfidenceLevel, "tbxConfidenceLevel");
             this.tbxConfidenceLevel.Name = "tbxConfidenceLevel";
             this.tbxConfidenceLevel.TextChanged += new System.EventHandler(this.tbxConfidenceLevel_TextChanged);
-            // 
-            // msStatsLogoForm1
-            // 
-            resources.ApplyResources(this.msStatsLogoForm1, "msStatsLogoForm1");
-            this.msStatsLogoForm1.Name = "msStatsLogoForm1";
             // 
             // lblConfidenceLevel
             // 
@@ -373,7 +366,6 @@
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
         private System.Windows.Forms.RadioButton radioScopePeptide;
         private System.Windows.Forms.RadioButton radioScopeProtein;
-        private MsStatsLogoForm msStatsLogoForm1;
         private System.Windows.Forms.CheckBox cbxUseZeroForMissingPeaks;
         private System.Windows.Forms.Panel panelName;
         private System.Windows.Forms.Panel panelMain;

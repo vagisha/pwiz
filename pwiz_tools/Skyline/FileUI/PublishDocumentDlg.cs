@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Shannon Joyner <saj9191 .at. gmail.com>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -112,7 +112,7 @@ namespace pwiz.Skyline.FileUI
         {
             if (PanoramaPublishClient == null)
                 PanoramaPublishClient = new WebPanoramaPublishClient();
-            var listErrorServers = new List<Server>();
+            var listErrorServers = new List<Tuple<Server, string>>();
             foreach (var server in _panoramaServers)
             {
                 JToken folders = null;
@@ -120,9 +120,26 @@ namespace pwiz.Skyline.FileUI
                 {
                     folders = PanoramaPublishClient.GetInfoForFolders(server, null);
                 }
-                catch (WebException)
+                catch (Exception ex)
                 {
-                    listErrorServers.Add(server);
+                    if (ex is WebException || ex is PanoramaServerException)
+                    {
+                        var error = ex.Message;
+                        if (Resources
+                            .EditServerDlg_OkDialog_The_username_and_password_could_not_be_authenticated_with_the_panorama_server
+                            .Equals(error))
+                        {
+                            error = TextUtil.LineSeparate(error, Resources
+                                .PublishDocumentDlg_PublishDocumentDlgLoad_Go_to_Tools___Options___Panorama_tab_to_update_the_username_and_password_);
+
+                        }
+
+                        listErrorServers.Add(new Tuple<Server, string>(server, error));
+                    }
+                    else
+                    {
+                        throw;
+                    }
                 }
                 listServerFolders.Add(new KeyValuePair<Server, JToken>(server, folders));
 
@@ -135,9 +152,9 @@ namespace pwiz.Skyline.FileUI
             }
         }
 
-        private string ServersToString(IEnumerable<Server> servers)
+        private string ServersToString(IEnumerable<Tuple<Server, string>> servers)
         {
-            return TextUtil.LineSeparate(servers.Select(s => s.URI.ToString()));
+            return TextUtil.LineSeparate(servers.Select(t => TextUtil.LineSeparate(t.Item1.URI.ToString(), t.Item2)));
         }
 
         private TreeViewStateRestorer ServerTreeStateRestorer { get; set; }
@@ -162,10 +179,10 @@ namespace pwiz.Skyline.FileUI
 
         public static void AddChildContainers(Server server, TreeNode node, JToken folder)
         {
-            JEnumerable<JToken> subFolders = folder["children"].Children(); // Not L10N
+            JEnumerable<JToken> subFolders = folder[@"children"].Children();
             foreach (var subFolder in subFolders)
             {
-                string folderName = (string)subFolder["name"]; // Not L10N
+                string folderName = (string)subFolder[@"name"];
 
                 TreeNode folderNode = new TreeNode(folderName);
                 AddChildContainers(server, folderNode, subFolder);
@@ -190,15 +207,15 @@ namespace pwiz.Skyline.FileUI
                 }
                 else
                 {
-                    JToken moduleProperties = subFolder["moduleProperties"]; // Not L10N
+                    JToken moduleProperties = subFolder[@"moduleProperties"];
                     if (moduleProperties == null)
                         folderNode.ImageIndex = folderNode.SelectedImageIndex = (int) ImageId.labkey;
                     else
                     {
-                        string effectiveValue = (string) moduleProperties[0]["effectiveValue"]; // Not L10N
+                        string effectiveValue = (string) moduleProperties[0][@"effectiveValue"];
                         folderNode.ImageIndex =
                             folderNode.SelectedImageIndex =
-                            (effectiveValue.Equals("Library") || effectiveValue.Equals("LibraryProtein")) // Not L10N
+                            (effectiveValue.Equals(@"Library") || effectiveValue.Equals(@"LibraryProtein"))
                                 ? (int)ImageId.chrom_lib
                                 : (int)ImageId.labkey;
                     }
@@ -261,13 +278,15 @@ namespace pwiz.Skyline.FileUI
         private string GetFolderPath(TreeNode folderNode)
         {
             string nodePath = folderNode.FullPath;
-            string[] folderPathSegments = nodePath.Split(new[] {"\\"}, StringSplitOptions.RemoveEmptyEntries); // Not L10N
+            // ReSharper disable LocalizableElement
+            string[] folderPathSegments = nodePath.Split(new[] {"\\"}, StringSplitOptions.RemoveEmptyEntries);
+            // ReSharper restore LocalizableElement
 
             string folderPath = string.Empty;
             // First segment is server name. 
             for (int i = 1; i < folderPathSegments.Length; i++)
             {
-                folderPath += folderPathSegments[i] + "/"; // Not L10N
+                folderPath += folderPathSegments[i] + @"/";
             }
             return folderPath;
         }
@@ -284,7 +303,7 @@ namespace pwiz.Skyline.FileUI
                                              Resources.PublishDocumentDlg_btnBrowse_Click_Skyline_Shared_Documents,
                                              SrmDocumentSharing.EXT),
                                      FileName = tbFilePath.Text,
-                                     Title = Resources.PublishDocumentDlg_btnBrowse_Click_Publish_Document
+                                     Title = Resources.PublishDocumentDlg_btnBrowse_Click_Upload_Document
                                  })
             {
                 if (dlg.ShowDialog(Parent) == DialogResult.OK)

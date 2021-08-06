@@ -53,12 +53,12 @@ namespace SkylineTester
             if (MainWindow.ShowFormNames.Checked)
                 args.Append(" showformnames=on");
 
-            MainWindow.AddTestRunner(args.ToString());
-            MainWindow.RunCommands();
-
             _updateTimer = new Timer { Interval = 1000 };
             _updateTimer.Tick += (s, a) => UpdateForms();
             _updateTimer.Start();
+
+            MainWindow.AddTestRunner(args.ToString());
+            MainWindow.RunCommands();
 
             return true;
         }
@@ -150,7 +150,7 @@ namespace SkylineTester
             ((DataGridViewLinkColumn) MainWindow.FormsGrid.Columns[1]).LinkBehavior = LinkBehavior.NeverUnderline;
 
             var skylinePath = Path.Combine(MainWindow.ExeDir, "Skyline.exe");
-            var skylineDailyPath = Path.Combine(MainWindow.ExeDir, "Skyline-daily.exe");
+            var skylineDailyPath = Path.Combine(MainWindow.ExeDir, "Skyline-daily.exe"); // Keep -daily
             skylinePath = File.Exists(skylinePath) ? skylinePath : skylineDailyPath;
             var assembly = Assembly.LoadFrom(skylinePath);
             var types = assembly.GetTypes().ToList();

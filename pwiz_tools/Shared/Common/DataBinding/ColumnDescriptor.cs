@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using pwiz.Common.DataBinding.Attributes;
 
 namespace pwiz.Common.DataBinding
 {
@@ -29,9 +30,14 @@ namespace pwiz.Common.DataBinding
     /// <seealso cref="DataBinding.PropertyPath"/>
     public abstract class ColumnDescriptor
     {
+        public static ColumnDescriptor RootColumn(DataSchema dataSchema, Type propertyType, string uiMode)
+        {
+            return new Root(dataSchema, propertyType, dataSchema.NormalizeUiMode(uiMode));
+        }
+
         public static ColumnDescriptor RootColumn(DataSchema dataSchema, Type propertyType)
         {
-            return new Root(dataSchema, propertyType);
+            return RootColumn(dataSchema, propertyType, dataSchema.DefaultUiMode);
         }
 
         protected ColumnDescriptor(DataSchema dataSchema)
@@ -51,6 +57,12 @@ namespace pwiz.Common.DataBinding
         public virtual ICollectionInfo CollectionInfo { get { return null; } }
         public virtual PropertyDescriptor ReflectedPropertyDescriptor { get { return null; } }
         public String Description { get { return DataSchema.GetColumnDescription(this); } }
+
+        public virtual string UiMode
+        {
+            get { return Parent?.UiMode ?? string.Empty; }
+        }
+
         public abstract Type PropertyType { get;  }
         public Type WrappedPropertyType
         {
@@ -90,7 +102,7 @@ namespace pwiz.Common.DataBinding
         {
             get
             {
-                return DataSchema.IsAdvanced(this);
+                return DataSchema.IsHidden(this);
             }
         }
         public virtual void SetValue(RowItem rowItem, PivotKey pivotKey, object value)
@@ -99,7 +111,7 @@ namespace pwiz.Common.DataBinding
 
         public string GetColumnCaption(ColumnCaptionType columnCaptionType)
         {
-            return DataSchema.GetColumnCaption(DataSchema.GetColumnCaption(this), columnCaptionType);
+            return DataSchema.GetColumnCaption(this).GetCaption(DataSchema.GetDataSchemaLocalizer(columnCaptionType));
         }
 
         public ColumnDescriptor CollectionAncestor()
@@ -153,6 +165,11 @@ namespace pwiz.Common.DataBinding
             return new Attribute[0];
         }
 
+        public virtual bool IsExpensive
+        {
+            get { return Parent != null && Parent.IsExpensive; }
+        }
+
         #region Equality Members
         protected bool Equals(ColumnDescriptor other)
         {
@@ -184,10 +201,12 @@ namespace pwiz.Common.DataBinding
         private class Root : ColumnDescriptor
         {
             private readonly Type _propertyType;
-            public Root(DataSchema dataSchema, Type propertyType) : base(dataSchema)
+            private string _uiMode;
+            public Root(DataSchema dataSchema, Type propertyType, string uiMode) : base(dataSchema)
             {
                 PropertyPath = PropertyPath.Root;
                 _propertyType = propertyType;
+                _uiMode = uiMode;
             }
 
             public override Type PropertyType
@@ -199,7 +218,7 @@ namespace pwiz.Common.DataBinding
             {
                 if (null != pivotKey)
                 {
-                    if (!rowItem.PivotKeys.Contains(pivotKey))
+                    if (!rowItem.ContainsPivotKey(pivotKey))
                     {
                         return null;
                     }
@@ -207,10 +226,15 @@ namespace pwiz.Common.DataBinding
                 return rowItem.Value;
             }
 
+            public override string UiMode
+            {
+                get { return _uiMode; }
+            }
+
 // ReSharper disable once MemberCanBePrivate.Local
             protected bool Equals(Root other)
             {
-                return base.Equals(other) && _propertyType == other._propertyType;
+                return base.Equals(other) && _propertyType == other._propertyType && _uiMode == other._uiMode;
             }
 
             public override bool Equals(object obj)
@@ -225,7 +249,10 @@ namespace pwiz.Common.DataBinding
             {
                 unchecked
                 {
-                    return (base.GetHashCode()*397) ^ _propertyType.GetHashCode();
+                    int result = base.GetHashCode();
+                    result = (result * 397) ^ _propertyType.GetHashCode();
+                    result = (result * 397) ^ (_uiMode == null ? 0 : _uiMode.GetHashCode());
+                    return result;
                 }
             }
         }
@@ -277,7 +304,7 @@ namespace pwiz.Common.DataBinding
 
             public override IEnumerable<Attribute> GetAttributes()
             {
-                return _propertyDescriptor.Attributes.Cast<Attribute>().Concat(base.GetAttributes());
+                return DataSchema.FilterAttributes(UiMode, _propertyDescriptor.Attributes.Cast<Attribute>()).Concat(base.GetAttributes());
             }
 
 // ReSharper disable once MemberCanBePrivate.Local
@@ -305,6 +332,11 @@ namespace pwiz.Common.DataBinding
             public override PropertyDescriptor ReflectedPropertyDescriptor
             {
                 get { return _propertyDescriptor; }
+            }
+
+            public override bool IsExpensive
+            {
+                get { return base.IsExpensive || GetAttributes().OfType<ExpensiveAttribute>().Any(); }
             }
         }
 

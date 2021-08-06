@@ -38,13 +38,26 @@ namespace pwiz.Skyline.Model.DocSettings
 
         public static class SpecialHandlingType
         {
-            public static string NONE { get { return "None"; } }    // Not L10N : Used only in XML and in memory
-            public const string MULTIPLEXED = "Multiplexed";  // Not L10N : Used only in XML and in memory
-            public const string MS_E = "MSe"; // Not L10N : This is a Waters trademark, and probably not localizable
-            public const string ALL_IONS = "All Ions";    // Not L10N?
-            public const string OVERLAP = "Overlap"; // Not L10N?
-            public const string OVERLAP_MULTIPLEXED = "Overlap Multiplexed"; // Not L10N?
-            public const string FAST_OVERLAP = "Fast Overlap"; // Not L10N
+            public class DefaultNone : DefaultValues
+            {
+                public override bool IsDefault(object obj, object parentObject)
+                {
+                    return Equals(obj, NONE);
+                }
+
+                public override bool IgnoreIfDefault
+                {
+                    get { return true; }
+                }
+            }
+
+            public static string NONE { get { return @"None"; } }    // : Used only in XML and in memory
+            public const string MULTIPLEXED = "Multiplexed";  // : Used only in XML and in memory
+            public const string MS_E = "MSe"; // : This is a Waters trademark, and probably not localizable
+            public const string ALL_IONS = "All Ions";    // CONSIDER: localize?
+            public const string OVERLAP = "Overlap"; // CONSIDER: localize?
+            public const string OVERLAP_MULTIPLEXED = "Overlap Multiplexed"; // CONSIDER: localize?
+            public const string FAST_OVERLAP = "Fast Overlap";
 
             public static void Validate(string specialHandling)
             {
@@ -67,9 +80,34 @@ namespace pwiz.Skyline.Model.DocSettings
             }
         };
 
+        [Track(defaultValues: typeof(DefaultValuesNull))]
         public double? PrecursorFilter { get; private set; }
         public double? PrecursorRightFilter { get; private set; }
         public bool UseMargin { get; private set; }
+
+        public enum IsolationWidthType
+        {
+            fixed_width,
+            results,
+            results_with_margin
+        }
+
+        [Track(defaultValues: typeof(DefaultValuesNull))]
+        public IsolationWidthType? IsolationWidth
+        {
+            get
+            {
+                if (!FromResults)
+                    return null;
+                if (UseMargin)
+                    return IsolationWidthType.results_with_margin;
+                else if (PrecursorFilter.HasValue)
+                    return IsolationWidthType.fixed_width;
+                else
+                    return IsolationWidthType.results;
+            }
+        }
+
         private ImmutableList<IsolationWindow> _prespecifiedIsolationWindows;
 
         /// <summary>
@@ -78,7 +116,9 @@ namespace pwiz.Skyline.Model.DocSettings
         /// </summary>
         private ImmutableList<IsolationWindow> _prespecifiedDisjointWindows;
 
+        [Track(defaultValues: typeof(SpecialHandlingType.DefaultNone))]
         public string SpecialHandling { get; private set; }
+        [Track(defaultValues: typeof(DefaultValuesNull))]
         public int? WindowsPerScan { get; private set; }
 
         public IsolationScheme(string name, string specialHandling, double? precursorFilter, double? precursorRightFilter = null, bool useMargin = false)
@@ -141,6 +181,7 @@ namespace pwiz.Skyline.Model.DocSettings
             get { return SpecialHandlingType.IsAllIons(SpecialHandling); }
         }
 
+        [TrackChildren]
         public IList<IsolationWindow> PrespecifiedIsolationWindows
         {
             get { return _prespecifiedIsolationWindows; }

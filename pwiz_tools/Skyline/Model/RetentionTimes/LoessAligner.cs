@@ -55,12 +55,20 @@ namespace pwiz.Skyline.Model.RetentionTimes
             _robustIters = robustIters;
         }
 
-        public override void Train(double[] xArr, double[] yArr) 
+        public override void Train(double[] xArr, double[] yArr, CustomCancellationToken token) 
         {
             //Calculate lowess
             Array.Sort(xArr, yArr);
-            LoessInterpolator interpolator = new LoessInterpolator(_bandwidth, _robustIters);
-            var lowessArr = interpolator.Smooth(xArr, yArr);
+            double[] lowessArr;
+            if (xArr.Length > 2)
+            {
+                LoessInterpolator interpolator = new LoessInterpolator(Math.Max(_bandwidth, 2.0 / xArr.Length), _robustIters);
+                lowessArr = interpolator.Smooth(xArr, yArr, token);
+            }
+            else
+            {
+                lowessArr = yArr;
+            }
 
             _minX = xArr[0];
             _maxX = xArr[xArr.Length - 1];

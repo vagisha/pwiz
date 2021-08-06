@@ -24,6 +24,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Windows.Forms;
+using Newtonsoft.Json;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Model.Databinding;
@@ -45,7 +46,7 @@ namespace pwiz.Skyline.ToolsUI
             using (var dlg = new OpenFileDialog
             {
                 Filter = TextUtil.FileDialogFiltersAll(TextUtil.FileDialogFilter(
-                    Resources.ConfigureToolsDlg_AddFromFile_Zip_Files, ".zip")), // Not L10N
+                    Resources.ConfigureToolsDlg_AddFromFile_Zip_Files, ToolDescription.EXT_INSTALL)),
                 Multiselect = false
             })
             {
@@ -80,6 +81,8 @@ namespace pwiz.Skyline.ToolsUI
             {
                 if (x.InnerException is ToolExecutionException || x.InnerException is WebException)
                     MessageDlg.Show(parent, String.Format(Resources.ConfigureToolsDlg_GetZipFromWeb_Error_connecting_to_the_Tool_Store___0_, x.Message));
+                else if (x.InnerException is JsonReaderException)
+                    MessageDlg.Show(parent, Resources.ToolInstallUI_InstallZipFromWeb_The_server_returned_an_invalid_response__It_might_be_down_for_maintenance__Please_check_the_Tool_Store_on_the_skyline_ms_website_);
                 else
                     throw;
             }
@@ -87,8 +90,11 @@ namespace pwiz.Skyline.ToolsUI
 
         public class InstallZipToolHelper : IUnpackZipToolSupport
         {
-            public InstallZipToolHelper(InstallProgram installProgram)
+            private readonly Control _parent;
+
+            public InstallZipToolHelper(Control parent, InstallProgram installProgram)
             {
+                _parent = parent;
                 _installProgram = installProgram;
             }
 
@@ -100,9 +106,10 @@ namespace pwiz.Skyline.ToolsUI
                                          string foundVersion,
                                          string newCollectionName)
             {
-                return OverwriteOrInParallel(toolCollectionName, toolCollectionVersion, reportList, foundVersion, newCollectionName);
+                return OverwriteOrInParallel(_parent, toolCollectionName, toolCollectionVersion, reportList, foundVersion, newCollectionName);
             }
 
+            // ReSharper disable once MemberHidesStaticFromOuterClass
             public string InstallProgram(ProgramPathContainer programPathContainer,
                                          ICollection<ToolPackage> packages,
                                          string pathToInstallScript)
@@ -112,7 +119,7 @@ namespace pwiz.Skyline.ToolsUI
 
             public bool? ShouldOverwriteAnnotations(List<AnnotationDef> annotations)
             {
-                return OverwriteAnnotations(annotations);
+                return OverwriteAnnotations(_parent, annotations);
             }
         }
 
@@ -130,7 +137,7 @@ namespace pwiz.Skyline.ToolsUI
             Exception xFailure = null;
             try
             {
-                result = ToolInstaller.UnpackZipTool(fullpath, new InstallZipToolHelper(install));
+                result = ToolInstaller.UnpackZipTool(fullpath, new InstallZipToolHelper(parent, install));
             }
             catch (ToolExecutionException x)
             {
@@ -167,7 +174,8 @@ namespace pwiz.Skyline.ToolsUI
             unknown
         }
 
-        public static bool? OverwriteOrInParallel(string toolCollectionName,
+        public static bool? OverwriteOrInParallel(Control parent,
+                                                  string toolCollectionName,
                                                   string toolCollectionVersion,
                                                   List<ReportOrViewSpec> reportList,
                                                   string foundVersion,
@@ -189,7 +197,7 @@ namespace pwiz.Skyline.ToolsUI
                     case RelativeVersion.olderversion:
                         toolMessage =
                             TextUtil.LineSeparate(
-                                String.Format(Resources.ConfigureToolsDlg_OverwriteOrInParallel_This_is_an_older_installation_v_0__of_the_tool__1_, foundVersion, "{0}"), // Not L10N
+                                String.Format(Resources.ConfigureToolsDlg_OverwriteOrInParallel_This_is_an_older_installation_v_0__of_the_tool__1_, foundVersion, @"{0}"),
                                 String.Empty,
                                 String.Format(Resources.ConfigureToolsDlg_OverwriteOrInParallel_Do_you_wish_to_overwrite_with_the_older_version__0__or_install_in_parallel_,
                                 foundVersion));
@@ -217,7 +225,7 @@ namespace pwiz.Skyline.ToolsUI
                 List<string> reportTitles = reportList.Select(sp => sp.GetKey()).ToList();
 
                 string reportMultiMessage = TextUtil.LineSeparate(Resources.ConfigureToolsDlg_OverwriteOrInParallel_This_installation_would_modify_the_following_reports, String.Empty,
-                                                              "{0}", String.Empty); // Not L10N
+                                                              @"{0}", String.Empty);
                 string reportSingleMessage = TextUtil.LineSeparate(Resources.ConfigureToolsDlg_OverwriteOrInParallel_This_installation_would_modify_the_report_titled__0_, String.Empty);
 
                 string reportMessage = reportList.Count == 1 ? reportSingleMessage : reportMultiMessage;
@@ -228,7 +236,7 @@ namespace pwiz.Skyline.ToolsUI
             }
 
             DialogResult result = MultiButtonMsgDlg.Show(
-                null, message, buttonText, Resources.ConfigureToolsDlg_OverwriteOrInParallel_In_Parallel, true);
+                parent, message, buttonText, Resources.ConfigureToolsDlg_OverwriteOrInParallel_In_Parallel, true);
             switch (result)
             {
                 case DialogResult.Cancel:
@@ -263,15 +271,15 @@ namespace pwiz.Skyline.ToolsUI
             return RelativeVersion.unknown;
         }
 
-        public static bool? OverwriteAnnotations(List<AnnotationDef> annotations)
+        public static bool? OverwriteAnnotations(Control parent, List<AnnotationDef> annotations)
         {
             List<string> annotationTitles = annotations.Select(annotation => annotation.GetKey()).ToList();
 
             string annotationMultiMessage = TextUtil.LineSeparate(Resources.ConfigureToolsDlg_OverwriteAnnotations_Annotations_with_the_following_names_already_exist_, String.Empty,
-                                                    "{0}", String.Empty); // Not L10N
+                                                    @"{0}", String.Empty);
 
             string annotationSingleMessage =
-                TextUtil.LineSeparate(Resources.ConfigureToolsDlg_OverwriteAnnotations_An_annotation_with_the_following_name_already_exists_, String.Empty, "{0}", String.Empty); // Not L10N
+                TextUtil.LineSeparate(Resources.ConfigureToolsDlg_OverwriteAnnotations_An_annotation_with_the_following_name_already_exists_, String.Empty, @"{0}", String.Empty);
 
             string annotationMessage = annotations.Count == 1 ? annotationSingleMessage : annotationMultiMessage;
             string question = Resources.ConfigureToolsDlg_OverwriteAnnotations_Do_you_want_to_overwrite_or_keep_the_existing_annotations_;
@@ -279,7 +287,7 @@ namespace pwiz.Skyline.ToolsUI
             string messageFormat = TextUtil.LineSeparate(annotationMessage, question);
 
             DialogResult result = MultiButtonMsgDlg.Show(
-                null,
+                parent,
                 String.Format(messageFormat, TextUtil.LineSeparate(annotationTitles)),
                 Resources.ConfigureToolsDlg_OverwriteOrInParallel_Overwrite,
                 Resources.ConfigureToolsDlg_OverwriteAnnotations_Keep_Existing, true);

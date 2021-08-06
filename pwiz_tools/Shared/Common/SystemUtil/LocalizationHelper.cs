@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 
+using System;
 using System.Globalization;
 using System.Threading;
 
@@ -36,7 +37,7 @@ namespace pwiz.Common.SystemUtil
             InitThread(Thread.CurrentThread);
             if (threadName != null)
                 Thread.CurrentThread.Name = threadName;
-            ConcurrencyVisualizer.AddThreadName();
+//            ConcurrencyVisualizer.AddThreadName();
         }
 
         public static void InitThread(Thread thread)
@@ -61,5 +62,41 @@ namespace pwiz.Common.SystemUtil
         public static CultureInfo CurrentCulture { get; set; }
 
         public static CultureInfo CurrentUICulture { get; set; }
+
+        public static T CallWithCulture<T>(CultureInfo cultureInfo, Func<T> func)
+        {
+            var originalCulture = Thread.CurrentThread.CurrentCulture;
+            var originalUiCulture = Thread.CurrentThread.CurrentUICulture;
+            try
+            {
+                Thread.CurrentThread.CurrentUICulture = Thread.CurrentThread.CurrentCulture = cultureInfo;
+                return func();
+            }
+            finally
+            {
+                Thread.CurrentThread.CurrentUICulture = originalUiCulture;
+                Thread.CurrentThread.CurrentCulture = originalCulture;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets CurrentThread.CurrentCulture for the duration of the object's lifetime (typically within a using() block),
+    /// then restores it back to its original value
+    /// </summary>
+    public class CurrentCultureSetter : IDisposable
+    {
+        private CultureInfo PreviousCulture { get; }
+
+        public CurrentCultureSetter(CultureInfo newCultureInfo)
+        {
+            PreviousCulture = Thread.CurrentThread.CurrentCulture;
+            Thread.CurrentThread.CurrentCulture = newCultureInfo;
+        }
+
+        public void Dispose()
+        {
+            Thread.CurrentThread.CurrentCulture = PreviousCulture;
+        }
     }
 }

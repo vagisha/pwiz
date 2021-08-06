@@ -26,10 +26,12 @@ using pwiz.Common.Controls;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
+using pwiz.Skyline.FileUI.PeptideSearch;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Optimization;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.SettingsUI.IonMobility;
 using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.SettingsUI
@@ -37,18 +39,19 @@ namespace pwiz.Skyline.SettingsUI
     public partial class TransitionSettingsUI : FormEx, IMultipleViewProvider
     {
 // ReSharper disable InconsistentNaming
-        public enum TABS { Prediction, Filter, Library, Instrument, FullScan } // Not L10N       
+        public enum TABS { Prediction, Filter, Library, Instrument, FullScan, IonMobility }
 // ReSharper restore InconsistentNaming
 
         public class PredictionTab : IFormView {}
         public class FilterTab : IFormView {}
+        public class IonMobilityTab : IFormView { }
         public class LibraryTab : IFormView {}
         public class InstrumentTab : IFormView {}
         public class FullScanTab : IFormView {}
 
         private static readonly IFormView[] TAB_PAGES =
         {
-            new PredictionTab(), new FilterTab(), new LibraryTab(), new InstrumentTab(), new FullScanTab()
+            new PredictionTab(), new FilterTab(), new LibraryTab(), new InstrumentTab(), new FullScanTab(), new IonMobilityTab()
         };
 
         private readonly SkylineWindow _parent;
@@ -62,6 +65,8 @@ namespace pwiz.Skyline.SettingsUI
         public const double DEFAULT_TIME_AROUND_MS2_IDS = 5;
         public const double DEFAULT_TIME_AROUND_PREDICTION = 5;
         private readonly int _lower_margin;
+        private IonType[] InitialPeptideIonTypes;
+        private IonType[] InitialSmallMoleculeIonTypes;
 
         public TransitionSettingsUI(SkylineWindow parent)
         {
@@ -75,6 +80,14 @@ namespace pwiz.Skyline.SettingsUI
 
             _parent = parent;
             _transitionSettings = _parent.DocumentUI.Settings.TransitionSettings;
+
+            // Populate the small mol adduct filter helper menu
+            AppendAdductMenus(contextMenuStripPrecursorAdduct, true, precursorAdductStripMenuItem_Click);
+            AppendAdductMenus(contextMenuStripFragmentAdduct, false, fragmentAdductStripMenuItem_Click);
+            Bitmap bm = Resources.PopupBtn;
+            bm.MakeTransparent(Color.Fuchsia);
+            btnPrecursorAdduct.Image = bm;
+            btnFragmentAdduct.Image = bm;
 
             // Initialize prediction settings
             comboPrecursorMass.SelectedItem = Prediction.PrecursorMassType.GetLocalizedString();
@@ -107,9 +120,14 @@ namespace pwiz.Skyline.SettingsUI
             }
 
             // Initialize filter settings
-            textPrecursorCharges.Text = Filter.PrecursorCharges.ToArray().ToString(", "); // Not L10N? Internationalization of comma?
-            textIonCharges.Text = Filter.ProductCharges.ToArray().ToString(", "); // Not L10N? Internationalization of comma?
-            textIonTypes.Text = TransitionFilter.ToStringIonTypes(Filter.IonTypes, true);
+            textPeptidePrecursorCharges.Text = Filter.PeptidePrecursorChargesString;
+            textPeptideIonCharges.Text = Filter.PeptideProductChargesString;
+            textPeptideIonTypes.Text = Filter.PeptideIonTypesString;
+            InitialPeptideIonTypes = Filter.PeptideIonTypes.ToArray();
+            textSmallMoleculeIonTypes.Text = Filter.SmallMoleculeIonTypesString;
+            InitialSmallMoleculeIonTypes = Filter.SmallMoleculeIonTypes.ToArray();
+            textSmallMoleculePrecursorAdducts.Text = Filter.SmallMoleculePrecursorAdductsString;
+            textSmallMoleculeFragmentAdducts.Text = Filter.SmallMoleculeFragmentAdductsString;
             comboRangeFrom.SelectedItem = Filter.FragmentRangeFirst.Label;
             comboRangeTo.SelectedItem = Filter.FragmentRangeLast.Label;
             textExclusionWindow.Text = Filter.PrecursorMzWindow != 0
@@ -125,6 +143,7 @@ namespace pwiz.Skyline.SettingsUI
             cbLibraryPick.Checked = (Libraries.Pick != TransitionLibraryPick.none);
             panelPick.Visible = cbLibraryPick.Checked;
             textTolerance.Text = Libraries.IonMatchTolerance.ToString(LocalizationHelper.CurrentCulture);
+            textMinIonCount.Text = Libraries.MinIonCount != 0 ? Libraries.MinIonCount.ToString(LocalizationHelper.CurrentCulture) : string.Empty;
             textIonCount.Text = Libraries.IonCount.ToString(LocalizationHelper.CurrentCulture);
             if (Libraries.Pick == TransitionLibraryPick.filter)
                 radioFiltered.Checked = true;
@@ -153,6 +172,7 @@ namespace pwiz.Skyline.SettingsUI
                                               Size = new Size(363, 491)
                                           };
             FullScanSettingsControl.IsolationSchemeChangedEvent += IsolationSchemeChanged;
+            FullScanSettingsControl.FullScanEnabledChanged += OnFullScanEnabledChanged; // Adjusts small molecule ion settings when full scan settings change
             tabFullScan.Controls.Add(FullScanSettingsControl);
 
             // VISUAL:
@@ -162,9 +182,18 @@ namespace pwiz.Skyline.SettingsUI
             int pixelShift = cbExclusionUseDIAWindow.Location.Y - lbPrecursorMzWindow.Location.Y;
             cbExclusionUseDIAWindow.Location = new Point(cbExclusionUseDIAWindow.Location.X, cbExclusionUseDIAWindow.Location.Y - pixelShift);
 
-            DoIsolationSchemeChanged();
-        }
+            // Declare list of controls that are inherently proteomic and should not receive the "peptide"->"molecule" treatment in small molecule UI mode
+            if (ModeUI == SrmDocument.DOCUMENT_TYPE.proteomic)
+                tabControlPeptidesSmallMols.SelectedIndex = 0;
+            else if (ModeUI == SrmDocument.DOCUMENT_TYPE.small_molecules)
+                tabControlPeptidesSmallMols.SelectedIndex = 1;
 
+            // Initialise ion mobility filtering settings
+            ionMobilityFilteringControl.InitializeSettings(_parent);
+
+            DoIsolationSchemeChanged();
+            cbxTriggeredAcquisition.Checked = Instrument.TriggeredAcquisition;
+        }
 
         /// <summary>
         /// Callback function which gets called when the user changes the isolation scheme in the full scan tab
@@ -221,12 +250,14 @@ namespace pwiz.Skyline.SettingsUI
         }
 
         private FullScanSettingsControl FullScanSettingsControl { get; set; }
+        public IonMobilityFilteringUserControl IonMobilityControl { get { return ionMobilityFilteringControl; } }
 
         public TransitionPrediction Prediction { get { return _transitionSettings.Prediction; } }
         public TransitionFilter Filter { get { return _transitionSettings.Filter; } }
         public TransitionLibraries Libraries { get { return _transitionSettings.Libraries; } }
         public TransitionInstrument Instrument { get { return _transitionSettings.Instrument; } }
         public TransitionFullScan FullScan { get { return _transitionSettings.FullScan; } }
+        public TransitionIonMobilityFiltering IonMobility { get { return _transitionSettings.IonMobilityFiltering; } }
         public TABS? TabControlSel { get; set; }
 
         public FullScanAcquisitionMethod AcquisitionMethod
@@ -283,10 +314,18 @@ namespace pwiz.Skyline.SettingsUI
             set { FullScanSettingsControl.PrecursorResMz = value; }
         }
 
+        public bool UseSelectiveExtraction
+        {
+            get { return FullScanSettingsControl.UseSelectiveExtraction; }
+            set { FullScanSettingsControl.UseSelectiveExtraction = value; }
+        }
+
         protected override void OnShown(EventArgs e)
         {
             if (TabControlSel != null)
+            {
                 tabControl1.SelectedIndex = (int)TabControlSel;
+            }
             tabControl1.FocusFirstTabStop();
         }
 
@@ -325,36 +364,58 @@ namespace pwiz.Skyline.SettingsUI
             Helpers.AssignIfEquals(ref prediction, Prediction);
 
             // Validate and store filter settings
-            int[] precursorCharges;
+            Adduct[] peptidePrecursorCharges;
             int min = TransitionGroup.MIN_PRECURSOR_CHARGE;
             int max = TransitionGroup.MAX_PRECURSOR_CHARGE;
-            if (!helper.ValidateNumberListTextBox(tabControl1, (int) TABS.Filter, textPrecursorCharges,
-                    min, max, out precursorCharges))
+            if (!TransitionSettingsControl.ValidateAdductListTextBox(helper, textPeptidePrecursorCharges, true,
+                    min, max, out peptidePrecursorCharges))
                 return;
-            precursorCharges = precursorCharges.Distinct().ToArray();
+            peptidePrecursorCharges = peptidePrecursorCharges.Distinct().ToArray();
 
-            int[] productCharges;
+            Adduct[] peptideProductCharges;
             min = Transition.MIN_PRODUCT_CHARGE;
             max = Transition.MAX_PRODUCT_CHARGE;
-            if (!helper.ValidateNumberListTextBox(tabControl1, (int) TABS.Filter, textIonCharges,
-                    min, max, out productCharges))
+            if (!TransitionSettingsControl.ValidateAdductListTextBox(helper, textPeptideIonCharges, true,
+                    min, max, out peptideProductCharges))
                 return;
-            productCharges = productCharges.Distinct().ToArray();
+            peptideProductCharges = peptideProductCharges.Distinct().ToArray();
 
-            IonType[] types = TransitionFilter.ParseTypes(textIonTypes.Text, new IonType[0]);
-            if (types.Length == 0)
+            Adduct[] smallMoleculeProductCharges;
+            min = Transition.MIN_PRODUCT_CHARGE;
+            max = Transition.MAX_PRODUCT_CHARGE;
+            if (!TransitionSettingsControl.ValidateAdductListTextBox(helper, textSmallMoleculeFragmentAdducts, false,
+                min, max, out smallMoleculeProductCharges))
+                return;
+            smallMoleculeProductCharges = smallMoleculeProductCharges.Distinct().ToArray();
+
+            IonType[] peptideIonTypes = TransitionFilter.ParseTypes(textPeptideIonTypes.Text, new IonType[0]);
+            if (peptideIonTypes.Length == 0)
             {
-                helper.ShowTextBoxError(tabControl1, (int) TABS.Filter, textIonTypes,
+                helper.ShowTextBoxError(textPeptideIonTypes,
                                         Resources.TransitionSettingsUI_OkDialog_Ion_types_must_contain_a_comma_separated_list_of_ion_types_a_b_c_x_y_z_and_p_for_precursor);
                 return;
             }
-            types = types.Distinct().ToArray();
+            peptideIonTypes = peptideIonTypes.Distinct().ToArray();
+
+            Adduct[] smallMoleculePrecursorAdducts;
+            if (!TransitionSettingsControl.ValidateAdductListTextBox(helper, textSmallMoleculePrecursorAdducts, false,
+                    min, max, out smallMoleculePrecursorAdducts))
+                return;
+            smallMoleculePrecursorAdducts = smallMoleculePrecursorAdducts.Distinct().ToArray();
+            IonType[] smallMoleculeIonTypes = TransitionFilter.ParseSmallMoleculeTypes(textSmallMoleculeIonTypes.Text, new IonType[0]);
+            if (smallMoleculeIonTypes.Length == 0)
+            {
+                helper.ShowTextBoxError(textSmallMoleculeIonTypes,
+                    Resources.TransitionSettingsUI_OkDialog_Small_molecule_ion_types_must_contain_a_comma_separated_list_of_ion_types__Valid_types_are__f___for_fragment__and_or__p___for_precursor_);
+                return;
+            }
+            smallMoleculeIonTypes = smallMoleculeIonTypes.Distinct().ToArray();
 
             double exclusionWindow = 0;
             if (!string.IsNullOrEmpty(textExclusionWindow.Text) &&
                 !Equals(textExclusionWindow.Text, exclusionWindow.ToString(LocalizationHelper.CurrentCulture)))
             {
-                if (!helper.ValidateDecimalTextBox(tabControl1, (int)TABS.Filter, textExclusionWindow,
+                if (!helper.ValidateDecimalTextBox(textExclusionWindow,
                         TransitionFilter.MIN_EXCLUSION_WINDOW, TransitionFilter.MAX_EXCLUSION_WINDOW, out exclusionWindow))
                 {
                     return;
@@ -367,9 +428,11 @@ namespace pwiz.Skyline.SettingsUI
             var measuredIons = _driverIons.Chosen;
             bool autoSelect = cbAutoSelect.Checked;
             bool exclusionUseDIAWindow = FullScanSettingsControl.IsDIA() && cbExclusionUseDIAWindow.Checked;
-            var filter = new TransitionFilter(precursorCharges, productCharges, types,
+            var filter = new TransitionFilter(peptidePrecursorCharges, peptideProductCharges, peptideIonTypes,
+                smallMoleculePrecursorAdducts, smallMoleculeProductCharges,smallMoleculeIonTypes,
                                               fragmentRangeFirst, fragmentRangeLast, measuredIons,
                                               exclusionWindow, exclusionUseDIAWindow, autoSelect);
+            
             Helpers.AssignIfEquals(ref filter, Filter);
 
             // Validate and store library settings
@@ -388,22 +451,33 @@ namespace pwiz.Skyline.SettingsUI
 
             double minTol = TransitionLibraries.MIN_MATCH_TOLERANCE;
             double maxTol = TransitionLibraries.MAX_MATCH_TOLERANCE;
-            if (!helper.ValidateDecimalTextBox(tabControl1, (int) TABS.Library, textTolerance,
+            if (!helper.ValidateDecimalTextBox(textTolerance,
                     minTol, maxTol, out ionMatchTolerance))
                 return;
 
+            int minIonCount = Libraries.MinIonCount;
             int ionCount = Libraries.IonCount;
 
             if (pick != TransitionLibraryPick.none)
             {
                 min = TransitionLibraries.MIN_ION_COUNT;
                 max = TransitionLibraries.MAX_ION_COUNT;
-                if (!helper.ValidateNumberTextBox(tabControl1, (int) TABS.Library, textIonCount,
+                if (string.IsNullOrEmpty(textMinIonCount.Text))
+                    minIonCount = 0;
+                else if (!helper.ValidateNumberTextBox(textMinIonCount, 0, max, out minIonCount))
+                    return;
+                if (!helper.ValidateNumberTextBox(textIonCount,
                         min, max, out ionCount))
                     return;
+                if (minIonCount > ionCount)
+                {
+                    helper.ShowTextBoxError(textIonCount, string.Format(Resources.TransitionLibraries_DoValidate_Library_ion_count_value__0__must_not_be_less_than_min_ion_count_value__1__,
+                                                                        ionCount, minIonCount));
+                    return;
+                }
             }
 
-            TransitionLibraries libraries = new TransitionLibraries(ionMatchTolerance, ionCount, pick);
+            TransitionLibraries libraries = new TransitionLibraries(ionMatchTolerance, minIonCount, ionCount, pick);
             Helpers.AssignIfEquals(ref libraries, Libraries);
 
             // This dialog does not yet change integration settings
@@ -413,18 +487,18 @@ namespace pwiz.Skyline.SettingsUI
             int minMz;
             min = TransitionInstrument.MIN_MEASUREABLE_MZ;
             max = TransitionInstrument.MAX_MEASURABLE_MZ - TransitionInstrument.MIN_MZ_RANGE;
-            if (!helper.ValidateNumberTextBox(tabControl1, (int) TABS.Instrument, textMinMz, min, max, out minMz))
+            if (!helper.ValidateNumberTextBox(textMinMz, min, max, out minMz))
                 return;
             int maxMz;
             min = minMz + TransitionInstrument.MIN_MZ_RANGE;
             max = TransitionInstrument.MAX_MEASURABLE_MZ;
-            if (!helper.ValidateNumberTextBox(tabControl1, (int) TABS.Instrument, textMaxMz, min, max, out maxMz))
+            if (!helper.ValidateNumberTextBox(textMaxMz, min, max, out maxMz))
                 return;
             bool isDynamicMin = cbDynamicMinimum.Checked;
             double mzMatchTolerance;
             minTol = TransitionInstrument.MIN_MZ_MATCH_TOLERANCE;
             maxTol = TransitionInstrument.MAX_MZ_MATCH_TOLERANCE;
-            if (!helper.ValidateDecimalTextBox(tabControl1, (int) TABS.Instrument, textMzMatchTolerance,
+            if (!helper.ValidateDecimalTextBox(textMzMatchTolerance,
                     minTol, maxTol, out mzMatchTolerance))
                 return;
             int? maxTrans = null;
@@ -433,7 +507,7 @@ namespace pwiz.Skyline.SettingsUI
                 int maxTransTemp;
                 min = TransitionInstrument.MIN_TRANSITION_MAX;
                 max = TransitionInstrument.MAX_TRANSITION_MAX;
-                if (!helper.ValidateNumberTextBox(tabControl1, (int) TABS.Instrument, textMaxTrans,
+                if (!helper.ValidateNumberTextBox(textMaxTrans,
                         min, max, out maxTransTemp))
                     return;
                 maxTrans = maxTransTemp;
@@ -444,8 +518,7 @@ namespace pwiz.Skyline.SettingsUI
                 int maxInclusionsTemp;
                 min = TransitionInstrument.MIN_INCLUSION_MAX;
                 max = TransitionInstrument.MAX_INCLUSION_MAX;
-                if (!helper.ValidateNumberTextBox(tabControl1, (int) TABS.Instrument, textMaxInclusions,
-                        min, max, out maxInclusionsTemp))
+                if (!helper.ValidateNumberTextBox(textMaxInclusions, min, max, out maxInclusionsTemp))
                     return;
                 maxInclusions = maxInclusionsTemp;
             }
@@ -455,29 +528,28 @@ namespace pwiz.Skyline.SettingsUI
             if (!string.IsNullOrEmpty(textMinTime.Text))
             {
                 int minTimeTemp;
-                if (!helper.ValidateNumberTextBox(tabControl1, (int)TABS.Instrument, textMinTime,
-                        min, max, out minTimeTemp))
+                if (!helper.ValidateNumberTextBox(textMinTime, min, max, out minTimeTemp))
                     return;
                 minTime = minTimeTemp;
             }
             if (!string.IsNullOrEmpty(textMaxTime.Text))
             {
                 int maxTimeTemp;
-                if (!helper.ValidateNumberTextBox(tabControl1, (int)TABS.Instrument, textMaxTime,
-                        min, max, out maxTimeTemp))
+                if (!helper.ValidateNumberTextBox(textMaxTime, min, max, out maxTimeTemp))
                     return;
                 maxTime = maxTimeTemp;
             }
             if (minTime.HasValue && maxTime.HasValue && maxTime.Value - minTime.Value < TransitionInstrument.MIN_TIME_RANGE)
             {
-                helper.ShowTextBoxError(tabControl1, (int) TABS.Instrument, textMaxTime,
+                helper.ShowTextBoxError(textMaxTime,
                                         string.Format(Resources.TransitionSettingsUI_OkDialog_The_allowable_retention_time_range__0__to__1__must_be_at_least__2__minutes_apart,
                                                       minTime, maxTime, TransitionInstrument.MIN_TIME_RANGE));
                 return;
             }
 
             TransitionInstrument instrument = new TransitionInstrument(minMz,
-                maxMz, isDynamicMin, mzMatchTolerance, maxTrans, maxInclusions, minTime, maxTime);
+                    maxMz, isDynamicMin, mzMatchTolerance, maxTrans, maxInclusions, minTime, maxTime)
+                .ChangeTriggeredAcquisition(cbxTriggeredAcquisition.Checked);
             Helpers.AssignIfEquals(ref instrument, Instrument);
 
             // Validate and store full-scan settings
@@ -489,7 +561,7 @@ namespace pwiz.Skyline.SettingsUI
             if (precursorIsotopes != FullScanPrecursorIsotopes.None &&
                     precursorAnalyzerType != FullScanMassAnalyzerType.qit)
             {
-                if (precursorMassType != MassType.Monoisotopic)
+                if (!precursorMassType.IsMonoisotopic())
                 {
                     MessageDlg.Show(this, Resources.TransitionSettingsUI_OkDialog_High_resolution_MS1_filtering_requires_use_of_monoisotopic_precursor_masses);
                     tabControl1.SelectedIndex = (int)TABS.Prediction;
@@ -543,13 +615,18 @@ namespace pwiz.Skyline.SettingsUI
             }
 
             TransitionFullScan fullScan;
-            if (!FullScanSettingsControl.ValidateFullScanSettings(helper, out fullScan, tabControl1, (int)TABS.FullScan))
+            if (!FullScanSettingsControl.ValidateFullScanSettings(helper, out fullScan))
                 return;
 
             Helpers.AssignIfEquals(ref fullScan, FullScan);
 
+            if (!IonMobilityControl.ValidateIonMobilitySettings(helper, out var ionMobilityFiltering))
+                return;
+
+            Helpers.AssignIfEquals(ref ionMobilityFiltering, IonMobility);
+
             TransitionSettings settings = new TransitionSettings(prediction,
-                filter, libraries, integration, instrument, fullScan);
+                filter, libraries, integration, instrument, fullScan, ionMobilityFiltering);
 
             // Only update, if anything changed
             if (!Equals(settings, _transitionSettings))
@@ -659,6 +736,13 @@ namespace pwiz.Skyline.SettingsUI
             set { tabControl1.SelectedIndex = (int)value; }
         }
 
+        // Chooses between "Peptides" and "Small Molecules" filter sub-tab
+        public int SelectedPeptidesSmallMolsSubTab
+        {
+            get { return tabControlPeptidesSmallMols.SelectedIndex; }
+            set { tabControlPeptidesSmallMols.SelectedIndex = value; }
+        }
+
         public MassType PrecursorMassType
         {
             get
@@ -696,20 +780,38 @@ namespace pwiz.Skyline.SettingsUI
 
         public string PrecursorCharges
         {
-            get { return textPrecursorCharges.Text; }
-            set { textPrecursorCharges.Text = value; }
+            get { return textPeptidePrecursorCharges.Text; }
+            set { textPeptidePrecursorCharges.Text = value; }
         }
 
         public string ProductCharges
         {
-            get { return textIonCharges.Text; }
-            set { textIonCharges.Text = value; }
+            get { return textPeptideIonCharges.Text; }
+            set { textPeptideIonCharges.Text = value; }
         }
 
         public string FragmentTypes
         {
-            get { return textIonTypes.Text; }
-            set { textIonTypes.Text = value; }
+            get { return textPeptideIonTypes.Text; }
+            set { textPeptideIonTypes.Text = value; }
+        }
+
+        public string SmallMoleculePrecursorAdducts
+        {
+            get { return textSmallMoleculePrecursorAdducts.Text; }
+            set { textSmallMoleculePrecursorAdducts.Text = value; }
+        }
+
+        public string SmallMoleculeFragmentAdducts
+        {
+            get { return textSmallMoleculeFragmentAdducts.Text; }
+            set { textSmallMoleculeFragmentAdducts.Text = value; }
+        }
+
+        public string SmallMoleculeFragmentTypes
+        {
+            get { return textSmallMoleculeIonTypes.Text; }
+            set { textSmallMoleculeIonTypes.Text = value; }
         }
 
         public string RangeFrom
@@ -771,6 +873,12 @@ namespace pwiz.Skyline.SettingsUI
             set { comboDeclusterPotential.SelectedItem = value; }
         }
 
+        public string OptimizationLibraryName
+        {
+            get { return comboOptimizationLibrary.SelectedItem.ToString(); }
+            set { comboOptimizationLibrary.SelectedItem = value; }
+        }
+
         public CompensationVoltageParameters RegressionCOV
         {
             get { return _driverCoV.SelectedItem; }
@@ -792,6 +900,12 @@ namespace pwiz.Skyline.SettingsUI
         {
             CheckDisposed();
             _driverCE.EditList();
+        }
+
+        public void EditCECurrent()
+        {
+            CheckDisposed();
+            _driverCE.EditCurrent();
         }
 
         public void AddToCEList()
@@ -853,6 +967,12 @@ namespace pwiz.Skyline.SettingsUI
             }
         }
 
+        public int MinIonCount
+        {
+            get { return Convert.ToInt32(textMinIonCount.Text); }
+            set { textMinIonCount.Text = value.ToString(LocalizationHelper.CurrentCulture); }
+        }
+
         public int IonCount
         {
             get { return Convert.ToInt32(textIonCount.Text); }
@@ -894,16 +1014,16 @@ namespace pwiz.Skyline.SettingsUI
             set { FullScanSettingsControl.Peaks = value; }
         }
 
-        public double MinTime
+        public double? MinTime
         {
-            get { return double.Parse(textMinTime.Text); }
-            set { textMinTime.Text = value.ToString(CultureInfo.CurrentCulture); }
+            get { return string.IsNullOrEmpty(textMinTime.Text) ? (double?)null : double.Parse(textMinTime.Text); }
+            set { textMinTime.Text = value.HasValue ? value.Value.ToString(CultureInfo.CurrentCulture) : string.Empty; }
         }
 
-        public double MaxTime
+        public double? MaxTime
         {
-            get { return double.Parse(textMaxTime.Text); }
-            set { textMaxTime.Text = value.ToString(CultureInfo.CurrentCulture); }
+            get { return string.IsNullOrEmpty(textMaxTime.Text) ? (double?)null : double.Parse(textMaxTime.Text); }
+            set { textMaxTime.Text = value.HasValue ? value.Value.ToString(CultureInfo.CurrentCulture) : string.Empty; }
         }
 
         public int MaxInclusions
@@ -933,6 +1053,11 @@ namespace pwiz.Skyline.SettingsUI
         public void AddIsolationScheme()
         {
             FullScanSettingsControl.AddIsolationScheme();
+        }
+
+        public void EditCurrentIsolationScheme()
+        {
+            FullScanSettingsControl.EditCurrentIsolationScheme();
         }
 
         public void EditIsolationScheme()
@@ -978,6 +1103,179 @@ namespace pwiz.Skyline.SettingsUI
                     e.NewValue = CheckState.Indeterminate;
                     break;
             }
+        }
+
+        // Sort the list of known adducts, filtered by charge, in order of liklihood
+        private static Adduct[] AdductMenuOrder(IEnumerable<String> adducts, int charge)
+        {
+            var sorted = adducts.Select(a => Adduct.FromString(a, Adduct.ADDUCT_TYPE.non_proteomic, null)).Where(a => a.AdductCharge == charge).ToArray();
+            Array.Sort(sorted,
+                delegate(Adduct a1, Adduct that)
+                {
+                    // Show the [2M... stuff after the [M... stuff
+                    var comp = Math.Abs(a1.GetMassMultiplier()).CompareTo(Math.Abs(that.GetMassMultiplier()));
+                    if (comp != 0)
+                    {
+                        return comp;  
+                    }
+                    // Simplest first - lowest unique element count
+                    comp = Math.Abs(a1.GetComposition().Count).CompareTo(Math.Abs(that.GetComposition().Count));
+                    if (comp != 0)
+                    {
+                        return comp;  
+                    }
+                    // Simplest first - shortest text description
+                    comp = a1.ToString().Length.CompareTo(that.ToString().Length);
+                    if (comp != 0)
+                    {
+                        return comp; 
+                    }
+                    // Alpha sort
+                    return string.Compare(a1.ToString(), that.ToString(), StringComparison.Ordinal);
+                });
+            return sorted;
+        }
+
+        // Append adduct picker submenus, one per charge 1,2,3,-1,-2,-3
+        public static void AppendAdductMenus(ContextMenuStrip menuParent, bool showOnlyAdductsWithMass, EventHandler adductStripMenuItem_Click)
+        {
+            var insertOffset = menuParent.Items.Count == 0 ? 0 : 1; // Leave Help as last item
+
+            var adductsInMenu = new HashSet<Adduct>();
+
+            foreach (var charge in new []{1,2,3,-1,-2,-3})
+            {
+                // Create a cascading menu item on parent menu
+                var text = charge > 0
+                    ? Resources.TransitionSettingsUI_PopulateAdductMenu_Adducts_plusplusplus
+                    : Resources.TransitionSettingsUI_PopulateAdductMenu_Adducts_minusminusminus;
+                var menuItem = new ToolStripMenuItem()
+                {
+                    Text = text.Substring(0, text.Length - (3 - Math.Abs(charge)))  // Trim "Adducts +++" or "Adducts ---" as needed
+                };
+                menuParent.Items.Insert(menuParent.Items.Count - insertOffset, menuItem);
+                var cascadeTop = menuItem;
+                if (!showOnlyAdductsWithMass)
+                {
+                    // Charge-only adducts first
+                    foreach (var adduct in AdductMenuOrder(Adduct.COMMON_CHARGEONLY_ADDUCTS, charge))
+                    {
+                        AddAdductMenuItem(menuItem, adduct.ToString(), adductStripMenuItem_Click);
+                        adductsInMenu.Add(adduct);
+                    }
+                }
+                // All the adducts from Fiehn lab list
+                foreach (var adduct in AdductMenuOrder(Adduct.DEFACTO_STANDARD_ADDUCTS, charge))
+                {
+                    if (!adductsInMenu.Contains(adduct))
+                    {
+                        if (ReferenceEquals(menuItem, cascadeTop) && adduct.GetComposition().Count > 2)
+                        {
+                            // Start another cascade level for the more exotic adducts
+                            var menuItemMore = new ToolStripMenuItem()
+                            {
+                                Text = Resources.TransitionSettingsUI_PopulateAdductMenu_More
+                            };
+                            menuItem.DropDownItems.Add(menuItemMore);
+                            menuItem = menuItemMore;
+                        }
+                        AddAdductMenuItem(menuItem, adduct.ToString(), adductStripMenuItem_Click);
+                        adductsInMenu.Add(adduct);
+                    }
+                }
+            }
+        }
+
+        private static void AddAdductMenuItem(ToolStripMenuItem menu, string adduct, EventHandler handler)
+        {
+            var menuItem = new ToolStripMenuItem()
+            {
+                Text = adduct
+            };
+            menuItem.Click += handler;
+            menu.DropDownItems.Add(menuItem);
+        }
+
+
+        private void AddAdduct(TextBox textBox, string adduct)
+        {
+            if (!string.IsNullOrEmpty(textBox.Text))
+            {
+                textBox.Text += @", ";
+            }
+            textBox.Text += adduct;
+        }
+
+
+        private void precursorAdductStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var mi = sender as ToolStripMenuItem;
+            if (mi != null)
+                AddAdduct(textSmallMoleculePrecursorAdducts, mi.Text);
+        }
+
+        private void fragmentAdductStripMenuItem_Click(object sender, EventArgs e)
+        {
+            var mi = sender as ToolStripMenuItem;
+            if (mi != null)
+                AddAdduct(textSmallMoleculeFragmentAdducts, mi.Text);
+        }
+
+        private void btnPrecursorAdductClick(object sender, EventArgs e)
+        {
+            contextMenuStripPrecursorAdduct.Show(this, btnPrecursorAdduct.Right + 1, btnPrecursorAdduct.Top);
+        }
+        private void btnFragmentAdductClick(object sender, EventArgs e)
+        {
+            contextMenuStripFragmentAdduct.Show(this, btnFragmentAdduct.Right + 1, btnFragmentAdduct.Top);
+        }
+
+        //
+        // Changes to Full Scan MS1 and/or MS2 settings may require changes in Filter iontypes settings
+        //
+        private void OnFullScanEnabledChanged(FullScanSettingsControl.FullScanEnabledChangeEventArgs e)
+        {
+
+            var peptideIonTypes = TransitionFilter.ParseTypes(textPeptideIonTypes.Text, new IonType[0]).ToList();
+
+            if (e.MS1Enabled.HasValue && (peptideIonTypes.Contains(IonType.precursor) != e.MS1Enabled.Value)) // Full-Scan settings adjusted ion types to include or exclude "p"
+            {
+                var ions = peptideIonTypes.ToList();
+                if (e.MS1Enabled.Value)
+                    ions.Add(IonType.precursor);
+                else if (!InitialPeptideIonTypes.Contains(IonType.precursor))
+                    ions.Remove(IonType.precursor); // Don't remove this if it was there at the start
+                if (ions.Count > 0)
+                    textPeptideIonTypes.Text = TransitionFilter.ToStringIonTypes(ions, true);
+            }
+
+            var smallMoleculeIonTypes = TransitionFilter.ParseSmallMoleculeTypes(textSmallMoleculeIonTypes.Text, new IonType[0]).ToList();
+            var smallMolIons = smallMoleculeIonTypes.ToList();
+
+            if (e.MS1Enabled.HasValue && smallMoleculeIonTypes.Contains(IonType.precursor) != e.MS1Enabled.Value) // Full-Scan settings adjusted ion types to include or exclude "f"
+            {
+                if (e.MS1Enabled.Value)
+                    smallMolIons.Add(IonType.precursor);
+                else if (!InitialSmallMoleculeIonTypes.Contains(IonType.precursor))
+                    smallMolIons.Remove(IonType.precursor);  // Don't remove this if it was there at the start
+            }
+
+            if (e.MSMSEnabled.HasValue && smallMoleculeIonTypes.Contains(IonType.custom) != e.MSMSEnabled.Value) // Full-Scan settings adjusted ion types to include or exclude "f"
+            {
+                if (e.MSMSEnabled.Value)
+                    smallMolIons.Insert(0, IonType.custom);
+                else if (!InitialSmallMoleculeIonTypes.Contains(IonType.custom))
+                    smallMolIons.Remove(IonType.custom);  // Don't remove this if it was there at the start
+            }
+
+            if (smallMolIons.Count > 0)
+                textSmallMoleculeIonTypes.Text = TransitionFilter.ToStringSmallMoleculeIonTypes(smallMolIons, true);
+        }
+
+        public bool TriggeredAcquisition
+        {
+            get { return cbxTriggeredAcquisition.Checked; }
+            set { cbxTriggeredAcquisition.Checked = value; }
         }
     }
 }

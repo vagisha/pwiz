@@ -17,10 +17,12 @@
  * limitations under the License.
  */
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using System.Xml.Serialization;
-using pwiz.Skyline.Controls.GroupComparison;
+using pwiz.Common.Collections;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Util;
@@ -35,13 +37,18 @@ namespace pwiz.Skyline.Model.GroupComparison
             NormalizationMethod = NormalizationMethod.NONE,
             SummarizationMethod = SummarizationMethod.AVERAGING,
             ConfidenceLevelTimes100 = 95,
+            ColorRows = ImmutableList<MatchRgbHexColor>.EMPTY
         };
 
         public GroupComparisonDef(string name) : base(name)
         {
             NormalizationMethod = NormalizationMethod.NONE;
+            SummarizationMethod = SummarizationMethod.AVERAGING;
+            ConfidenceLevelTimes100 = 95;
+            ColorRows = ImmutableList<MatchRgbHexColor>.EMPTY;
         }
 
+        [Track]
         public string ControlAnnotation { get; private set; }
 
         public GroupComparisonDef ChangeControlAnnotation(string value)
@@ -49,6 +56,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.ControlAnnotation = value);
         }
 
+        [Track]
         public string ControlValue { get; private set; }
 
         public GroupComparisonDef ChangeControlValue(string value)
@@ -56,6 +64,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.ControlValue = value);
         }
 
+        [Track]
         public string CaseValue { get; private set; }
 
         public GroupComparisonDef ChangeCaseValue(string value)
@@ -63,6 +72,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.CaseValue = value);
         }
 
+        [Track]
         public string IdentityAnnotation { get; private set; }
 
         public GroupComparisonDef ChangeIdentityAnnotation(string value)
@@ -77,6 +87,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.AverageTechnicalReplicates = value);
         }
 
+        [Track]
         public NormalizationMethod NormalizationMethod { get; private set; }
 
         public GroupComparisonDef ChangeNormalizationMethod(NormalizationMethod value)
@@ -96,6 +107,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return (GroupComparisonDef) base.ChangeName(name);
         }
 
+        [Track]
         public SummarizationMethod SummarizationMethod { get; private set; }
 
         public GroupComparisonDef ChangeSummarizationMethod(SummarizationMethod summarizationMethod)
@@ -105,6 +117,7 @@ namespace pwiz.Skyline.Model.GroupComparison
 
         public double ConfidenceLevel { get { return ConfidenceLevelTimes100/100; } }
 
+        [Track]
         public double ConfidenceLevelTimes100 { get; private set; }
 
         public GroupComparisonDef ChangeConfidenceLevelTimes100(double value)
@@ -112,6 +125,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.ConfidenceLevelTimes100 = value);
         }
 
+        [Track]
         public bool PerProtein { get; private set; }
 
         public GroupComparisonDef ChangePerProtein(bool value)
@@ -119,6 +133,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.PerProtein = value);
         }
 
+        [Track]
         public bool UseZeroForMissingPeaks { get; private set; }
 
         public GroupComparisonDef ChangeUseZeroForMissingPeaks(bool value)
@@ -126,6 +141,7 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.UseZeroForMissingPeaks = value);
         }
 
+        [Track]
         public double? QValueCutoff { get; private set; }
 
         public GroupComparisonDef ChangeQValueCutoff(double? qValueCutoff)
@@ -133,15 +149,15 @@ namespace pwiz.Skyline.Model.GroupComparison
             return ChangeProp(ImClone(this), im => im.QValueCutoff = qValueCutoff);
         }
 
-        public GroupIdentifier GetGroupIdentifier(SrmSettings settings, ChromatogramSet chromatogramSet)
+        public GroupIdentifier GetGroupIdentifier(AnnotationCalculator annotationCalculator, ChromatogramSet chromatogramSet)
         {
             AnnotationDef annotationDef =
-                settings.DataSettings.AnnotationDefs.FirstOrDefault(a => a.Name == ControlAnnotation);
+                annotationCalculator.SrmDocument.Settings.DataSettings.AnnotationDefs.FirstOrDefault(a => a.Name == ControlAnnotation);
             if (annotationDef == null)
             {
                 return default(GroupIdentifier);
             }
-            return GroupIdentifier.MakeGroupIdentifier(chromatogramSet.Annotations.GetAnnotation(annotationDef));
+            return GroupIdentifier.MakeGroupIdentifier(annotationCalculator.GetReplicateAnnotation(annotationDef, chromatogramSet));
         }
 
         public GroupIdentifier GetControlGroupIdentifier(SrmSettings settings)
@@ -159,7 +175,19 @@ namespace pwiz.Skyline.Model.GroupComparison
             return GroupIdentifier.MakeGroupIdentifier(annotationDef.ParsePersistedString(ControlValue));
         }
 
+        [TrackChildren]
+        public IList<MatchRgbHexColor> ColorRows { get; private set; }
+
+        public GroupComparisonDef ChangeColorRows(IEnumerable<MatchRgbHexColor> value)
+        {
+            return ChangeProp(ImClone(this), im => im.ColorRows = ImmutableList.ValueOf(value));
+        }
+
         #region XML serialization
+
+        private GroupComparisonDef()
+        {
+        }
 
         private enum ATTR
         {
@@ -174,10 +202,12 @@ namespace pwiz.Skyline.Model.GroupComparison
             confidence_level,
             per_protein,
             use_zero_for_missing_peaks,
-            q_value_cutoff,
+            q_value_cutoff
         }
-        private GroupComparisonDef()
+
+        public static GroupComparisonDef Deserialize(XmlReader reader)
         {
+            return reader.Deserialize(new GroupComparisonDef());
         }
 
         public override void ReadXml(XmlReader reader)
@@ -195,7 +225,23 @@ namespace pwiz.Skyline.Model.GroupComparison
             PerProtein = reader.GetBoolAttribute(ATTR.per_protein, false);
             UseZeroForMissingPeaks = reader.GetBoolAttribute(ATTR.use_zero_for_missing_peaks, false);
             QValueCutoff = reader.GetNullableDoubleAttribute(ATTR.q_value_cutoff);
+
+            var colorRows = new List<MatchRgbHexColor>();
+
             reader.Read();
+            while (reader.IsStartElement(MatchRgbHexColor.XML_ROOT))
+            {
+                var row = new MatchRgbHexColor();
+                row.ReadXml(reader);
+                colorRows.Add(row);
+            }
+
+            if (colorRows.Any())
+            {
+                reader.Read();
+            }
+
+            ColorRows = ImmutableList<MatchRgbHexColor>.ValueOf(colorRows);    
         }
 
         public override void WriteXml(XmlWriter writer)
@@ -216,30 +262,29 @@ namespace pwiz.Skyline.Model.GroupComparison
             writer.WriteAttribute(ATTR.per_protein, PerProtein, false);
             writer.WriteAttribute(ATTR.use_zero_for_missing_peaks, UseZeroForMissingPeaks, false);
             writer.WriteAttributeNullable(ATTR.q_value_cutoff, QValueCutoff);
-        }
 
-        public static GroupComparisonDef Deserialize(XmlReader reader)
-        {
-            return reader.Deserialize(new GroupComparisonDef());
+            foreach (var row in ColorRows)
+            {
+                writer.WriteElement(row);
+            }
         }
-
-        #endregion
 
         private bool Equals(GroupComparisonDef other)
         {
             return base.Equals(other) &&
                    string.Equals(ControlAnnotation, other.ControlAnnotation) &&
-                   string.Equals(ControlValue, other.ControlValue) && 
+                   string.Equals(ControlValue, other.ControlValue) &&
                    string.Equals(CaseValue, other.CaseValue) &&
                    string.Equals(IdentityAnnotation, other.IdentityAnnotation) &&
-                   AverageTechnicalReplicates.Equals(other.AverageTechnicalReplicates) &&
+                   AverageTechnicalReplicates == other.AverageTechnicalReplicates &&
                    Equals(NormalizationMethod, other.NormalizationMethod) &&
-                   IncludeInteractionTransitions.Equals(other.IncludeInteractionTransitions) &&
+                   IncludeInteractionTransitions == other.IncludeInteractionTransitions &&
                    Equals(SummarizationMethod, other.SummarizationMethod) &&
-                   Equals(ConfidenceLevel, other.ConfidenceLevel) && 
-                   Equals(PerProtein, other.PerProtein) &&
-                   Equals(UseZeroForMissingPeaks, other.UseZeroForMissingPeaks) &&
-                   Equals(QValueCutoff, other.QValueCutoff);
+                   ConfidenceLevelTimes100.Equals(other.ConfidenceLevelTimes100) &&
+                   PerProtein == other.PerProtein &&
+                   UseZeroForMissingPeaks == other.UseZeroForMissingPeaks &&
+                   QValueCutoff.Equals(other.QValueCutoff) &&
+                   ColorRows.SequenceEqual(other.ColorRows);
         }
 
         public override bool Equals(object obj)
@@ -259,15 +304,18 @@ namespace pwiz.Skyline.Model.GroupComparison
                 hashCode = (hashCode*397) ^ (CaseValue != null ? CaseValue.GetHashCode() : 0);
                 hashCode = (hashCode*397) ^ (IdentityAnnotation != null ? IdentityAnnotation.GetHashCode() : 0);
                 hashCode = (hashCode*397) ^ AverageTechnicalReplicates.GetHashCode();
-                hashCode = (hashCode*397) ^ NormalizationMethod.GetHashCode();
+                hashCode = (hashCode*397) ^ (NormalizationMethod != null ? NormalizationMethod.GetHashCode() : 0);
                 hashCode = (hashCode*397) ^ IncludeInteractionTransitions.GetHashCode();
-                hashCode = (hashCode*397) ^ SummarizationMethod.GetHashCode();
-                hashCode = (hashCode*397) ^ ConfidenceLevel.GetHashCode();
+                hashCode = (hashCode*397) ^ (SummarizationMethod != null ? SummarizationMethod.GetHashCode() : 0);
+                hashCode = (hashCode*397) ^ ConfidenceLevelTimes100.GetHashCode();
                 hashCode = (hashCode*397) ^ PerProtein.GetHashCode();
                 hashCode = (hashCode*397) ^ UseZeroForMissingPeaks.GetHashCode();
                 hashCode = (hashCode*397) ^ QValueCutoff.GetHashCode();
+                hashCode = (hashCode*397) ^ (ColorRows != null ? ColorRows.GetHashCode() : 0);
                 return hashCode;
             }
         }
+
+        #endregion
     }
 }

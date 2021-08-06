@@ -1,4 +1,4 @@
-//
+﻿//
 // $Id: MSGraphPane.cs 1599 2009-12-04 01:35:39Z brendanx $
 //
 //
@@ -46,7 +46,8 @@ namespace pwiz.MSGraph
             IsFontsScaled = false;
             YAxis.Scale.MaxGrace = 0.1;
             YAxis.MajorGrid.IsZeroLine = false; // Hide the y=0 line
-            LockYAxisAtZero = true;
+            LockYAxisMinAtZero = true;
+            LockYAxisMaxAtZero = false;
 
             _currentItemType = MSGraphItemType.unknown;
             _pointAnnotations = new GraphObjList();
@@ -65,7 +66,14 @@ namespace pwiz.MSGraph
 
         public bool AllowCurveOverlap { get; set; }
         public bool AllowLabelOverlap { get; set; }
-        public bool LockYAxisAtZero { get; set; }
+        public bool LockYAxisMinAtZero { get; set; }
+        public bool LockYAxisMaxAtZero { get; set; }
+
+        public bool LockYAxisAtZero
+        {
+            get { return LockYAxisMinAtZero; }
+            set { LockYAxisMinAtZero = value; }
+        }
 
         protected MSGraphItemType _currentItemType;
         public MSGraphItemType CurrentItemType
@@ -81,13 +89,16 @@ namespace pwiz.MSGraph
                 return;
 
             foreach( CurveItem curve in CurveList )
-                if( curve.Points is MSPointList )
+            {
+                if (curve.Points is MSPointList msPointList)
                 {
+                   
                     if( XAxis.Scale.MinAuto && XAxis.Scale.MaxAuto )
-                        ( curve.Points as MSPointList ).SetScale( bins );
+                        msPointList.SetScale( bins );
                     else
-                        ( curve.Points as MSPointList ).SetScale( XAxis.Scale, bins );
+                        msPointList.SetScale( XAxis.Scale, bins );
                 }
+            }
 
             AxisChange();
         }
@@ -249,8 +260,11 @@ namespace pwiz.MSGraph
             Axis yAxis = YAxis;
 
             yAxis.Scale.MinAuto = false;
-            if (LockYAxisAtZero)
+            if (LockYAxisMinAtZero)
                 yAxis.Scale.Min = 0;
+            if (LockYAxisMaxAtZero)
+                yAxis.Scale.Max = 0;
+            
 
             // ensure that the chart rectangle is the right size
             AxisChange(g);
@@ -277,7 +291,7 @@ namespace pwiz.MSGraph
 
 
             // some dummy labels for very fast clipping
-            string baseLabel = "0"; // Not L10N
+            string baseLabel = @"0";
             foreach( CurveItem item in CurveList )
             {
                 IMSGraphItemInfo info = item.Tag as IMSGraphItemInfo;
@@ -334,7 +348,8 @@ namespace pwiz.MSGraph
 
                 PointPairList fullList = points.FullList;
                 List<int> maxIndexList = points.ScaledMaxIndexList;
-                for( int i = 0; i < maxIndexList.Count; ++i )
+                var annotationsPrioritized = new Dictionary<PointAnnotation, int>();
+                for (int i = 0; i < maxIndexList.Count; ++i)
                 {
                     if( maxIndexList[i] < 0 )
                         continue;
@@ -348,13 +363,17 @@ namespace pwiz.MSGraph
                     float yPixel = yAxis.Scale.Transform( pt.Y );
 
                     // labelled points must be at least 3 pixels off the X axis
-                    if( xAxisPixel - yPixel < 3 )
+                    if( Math.Abs(xAxisPixel - yPixel) < 3 )
                         continue;
 
-                    PointAnnotation annotation = info.AnnotatePoint( pt );
-                    if( annotation == null )
-                        continue;
+                    PointAnnotation annotation = info.AnnotatePoint(pt);
+                    if (annotation != null)
+                        annotationsPrioritized.Add(annotation, i);
+                }
 
+                // Give the higher ranked point priority
+                foreach (var annotation in annotationsPrioritized.Keys.OrderBy(a => a.ZOrder ?? int.MaxValue))
+                {
                     if( annotation.ExtraAnnotation != null )
                     {
                         GraphObjList.Add( annotation.ExtraAnnotation );
@@ -366,7 +385,11 @@ namespace pwiz.MSGraph
 
                     float pointLabelWidth = labelLengthToWidthRatio * annotation.Label.Split('\n').Max(o => o.Length);
 
-                    double labelY = yAxis.Scale.ReverseTransform(yPixel - 5);
+                    var i = annotationsPrioritized[annotation];
+                    PointPair pt = fullList[maxIndexList[i]];
+                    float yPixel = yAxis.Scale.Transform(pt.Y);
+                    var shift = pt.Y < 0 ? 5 : -5;
+                    double labelY = yAxis.Scale.ReverseTransform(yPixel + shift);
 
                     if (!AllowCurveOverlap)
                     {
@@ -395,11 +418,12 @@ namespace pwiz.MSGraph
                     }
 
                     TextObj text = new TextObj( annotation.Label, pt.X, labelY,
-                                                CoordType.AxisXYScale, AlignH.Center, AlignV.Bottom )
+                                                CoordType.AxisXYScale, AlignH.Center, pt.Y < 0 ? AlignV.Top : AlignV.Bottom )
                     {
                         ZOrder = ZOrder.A_InFront,
                         FontSpec = annotation.FontSpec,
-                        IsClippedToChartRect = true
+                        IsClippedToChartRect = true,
+                        Tag = annotation.ZOrder
                     };
 
                     var textRect = _labelBoundsCache.GetLabelBounds(text, this, g);
@@ -451,6 +475,12 @@ namespace pwiz.MSGraph
                 TextObj text = obj as TextObj;
                 if (text != null)
                 {
+                    if (text.Location.CoordinateFrame == CoordType.ChartFraction &&
+                        text.Location.AlignH == AlignH.Left && text.Location.AlignV == AlignV.Top)
+                    {
+                        GraphObjList.Add(text);
+                        continue;
+                    }
                     if (isXChartFractionObject(text) && (text.Location.X < XAxis.Scale.Min || text.Location.X > XAxis.Scale.Max))
                         continue;
 
@@ -529,8 +559,8 @@ namespace pwiz.MSGraph
 
                     if (!GraphObjList.Any(
                             o =>
-                                (o is TextObj) && (o as TextObj).Location == text.Location &&
-                                (o as TextObj).Text == text.Text))
+                                (o is TextObj) && ((TextObj) o).Location == text.Location &&
+                                ((TextObj) o).Text == text.Text))
                     {
                         if (_pointAnnotations.Contains(text))
                             GraphObjList.Add(text);

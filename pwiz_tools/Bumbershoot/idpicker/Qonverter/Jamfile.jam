@@ -22,7 +22,13 @@
 # Contributor(s): Surendra Dasaris
 #
 
-#project Qonverter : requirements <define>QONVERTER_HAS_NATIVEID ;
+project
+    : requirements 
+        #<toolset>msvc,<link>shared:<define>PWIZ_DYN_LINK
+        <toolset>gcc:<runtime-link>shared # cannot link shared objects (IdpSqlExtensions) with static runtime
+        <toolset>clang:<runtime-link>shared # cannot link shared objects (IdpSqlExtensions) with static runtime
+        #<define>QONVERTER_HAS_NATIVEID
+    ;
 
 
 if --teamcity-test-decoration in [ modules.peek : ARGV ]
@@ -42,6 +48,25 @@ obj SchemaUpdater : SchemaUpdater.cpp
                   ;
 using ext-png : 1.5.6 : $(PNG_SOURCE) : <zlib-src-location>$(ZLIB_SOURCE) ;
 
+lib IdpSqlExtensions
+    : # sources
+        IdpSqlExtensions.cpp
+    : # requirements
+        <library>$(PWIZ_LIBRARIES_PATH)/SQLite//sqlite3pp/<link>static
+        <library>$(PWIZ_ROOT_PATH)/pwiz/utility/misc//pwiz_utility_misc/<link>static
+        <library>$(PWIZ_ROOT_PATH)/pwiz/utility/chemistry//pwiz_utility_chemistry/<link>static
+        <link>shared
+        <toolset>msvc:<define>PWIZ_DYN_LINK
+        #<debug-symbols>on
+    : # default-build
+    : # usage-requirements
+        <library>$(PWIZ_LIBRARIES_PATH)/SQLite//sqlite3pp/<link>static
+        <library>$(PWIZ_ROOT_PATH)/pwiz/utility/misc//pwiz_utility_misc/<link>static
+        <library>$(PWIZ_ROOT_PATH)/pwiz/utility/chemistry//pwiz_utility_chemistry/<link>static
+    ;
+
+doctest IdpSqlExtensionsDoctest : SchemaUpdater.cpp : <library>IdpSqlExtensions/<location-prefix>doctest <conditional>@gcc-install-dll-path $(TEAMCITY_TEST_DECORATION) ;
+
 lib Qonverter
     : # sources
         [ glob *Qonverter.cpp ]
@@ -58,19 +83,23 @@ lib Qonverter
     : # requirements
         <library>$(PWIZ_ROOT_PATH)//svm
         <library>/ext/boost//thread
+        #<library>/ext/boost//iostreams
         <library>/ext/boost//log
         <library>waffles//waffles
         <library>crawdad//crawdad
         <library>$(PWIZ_ROOT_PATH)/pwiz_tools/common//pwiz_tools_common
         <library>$(PWIZ_ROOT_PATH)/pwiz/data/proteome//pwiz_data_proteome
         <library>$(PWIZ_ROOT_PATH)/pwiz/data/identdata//pwiz_data_identdata
+        <include>$(PWIZ_LIBRARIES_PATH)/Eigen
         <library>$(PWIZ_ROOT_PATH)/pwiz/analysis/proteome_processing//pwiz_analysis_proteome_processing
+        <library>IdpSqlExtensions
         <toolset>msvc:<cxxflags>/bigobj
         <use>$(IDPICKER_PATH)/../freicore//freicore
     : # default-build
     : # usage-requirements
         <library>$(PWIZ_ROOT_PATH)//svm
         <library>/ext/boost//thread
+        #<library>/ext/boost//iostreams
         <library>/ext/boost//log
         <library>waffles//waffles
         <library>crawdad//crawdad
@@ -78,31 +107,43 @@ lib Qonverter
         <library>$(PWIZ_ROOT_PATH)/pwiz/data/proteome//pwiz_data_proteome
         <library>$(PWIZ_ROOT_PATH)/pwiz/data/identdata//pwiz_data_identdata
         <library>$(PWIZ_ROOT_PATH)/pwiz/analysis/proteome_processing//pwiz_analysis_proteome_processing
+        <library>IdpSqlExtensions
         <use>$(IDPICKER_PATH)/../freicore//freicore
     ;
 
 import path ;
 import generate-version ;
 
-generate-version.cpp $(IDPICKER_PATH)/Qonverter/CoreVersion.cpp : IDPicker : $(MAJOR) : $(MINOR) : [ path.glob $(IDPICKER_PATH)/Qonverter : *.?pp *.h : idp*.cpp Version.cpp ] ;
-generate-version.cpp $(IDPICKER_PATH)/Qonverter/idpQonvertVersion.cpp : idpQonvert : $(MAJOR) : $(MINOR) : $(IDPICKER_PATH)/Qonverter/idpQonvert.cpp ;
-generate-version.cpp $(IDPICKER_PATH)/Qonverter/idpAssembleVersion.cpp : idpAssemble : $(MAJOR) : $(MINOR) : $(IDPICKER_PATH)/Qonverter/idpAssemble.cpp ;
-generate-version.cpp $(IDPICKER_PATH)/Qonverter/idpQueryVersion.cpp : idpQuery : $(MAJOR) : $(MINOR) : $(IDPICKER_PATH)/Qonverter/idpQuery.cpp ;
+generate-version.cpp $(IDPICKER_PATH)/Qonverter/CoreVersion.cpp : IDPicker : $(MAJOR) : $(MINOR) : $(PWIZ_BUILD_TIMESTAMP) : $(PWIZ_GIT_REV) : $(PWIZ_GIT_BRANCH) ;
+generate-version.cpp $(IDPICKER_PATH)/Qonverter/idpQonvertVersion.cpp : idpQonvert : $(MAJOR) : $(MINOR) : $(PWIZ_BUILD_TIMESTAMP) : $(PWIZ_GIT_REV) : $(PWIZ_GIT_BRANCH) ;
+generate-version.cpp $(IDPICKER_PATH)/Qonverter/idpAssembleVersion.cpp : idpAssemble : $(MAJOR) : $(MINOR) : $(PWIZ_BUILD_TIMESTAMP) : $(PWIZ_GIT_REV) : $(PWIZ_GIT_BRANCH) ;
+generate-version.cpp $(IDPICKER_PATH)/Qonverter/idpQueryVersion.cpp : idpQuery : $(MAJOR) : $(MINOR) : $(PWIZ_BUILD_TIMESTAMP) : $(PWIZ_GIT_REV) : $(PWIZ_GIT_BRANCH) ;
 
 obj CoreVersion : CoreVersion.cpp ;
 
-make gene2protein.db3 : ../gene2protein.db3 : @common.copy ;
+make gene2protein.db3 : ../gene2protein.db3 : @common.copy : <dependency>CoreVersion ; # dependency on a build target makes all build features relevant (so <location> is calculated properly)
 explicit gene2protein.db3 ;
 
-exe idpQonvert : idpQonvert.cpp CoreVersion idpQonvertVersion.cpp Qonverter $(IDPICKER_PATH)/../freicore : <dependency>gene2protein.db3 ;
-exe idpAssemble : idpAssemble.cpp CoreVersion idpAssembleVersion.cpp Qonverter ;
-exe idpQuery : idpQuery.cpp CoreVersion idpQueryVersion.cpp Qonverter /ext/boost//regex ;
+exe idpQonvert : idpQonvert.cpp CoreVersion idpQonvertVersion.cpp Qonverter $(IDPICKER_PATH)/../freicore : <dependency>gene2protein.db3 <conditional>@gcc-install-dll-path : : <conditional>@gcc-install-dll-path ;
+exe idpAssemble : idpAssemble.cpp CoreVersion idpAssembleVersion.cpp Qonverter : <conditional>@gcc-install-dll-path : : <conditional>@gcc-install-dll-path ;
+exe idpQuery : idpQuery.cpp CoreVersion idpQueryVersion.cpp Qonverter /ext/boost//regex : <conditional>@gcc-install-dll-path : : <conditional>@gcc-install-dll-path ;
+
+#exe ClusterReporter : ClusterReporter.cpp Qonverter $(IDPICKER_PATH)/../freicore : <toolset>msvc:<cxxflags>/bigobj ;
+#run CommandRunner.cpp : "d:/test/iprg_tmt.clustering" -OverwriteExistingFiles 1 -SourceSearchPath d:\\test\\iprg_tmt -QuantitationMethod TMT6plex -SourceExtensionPriorityList "mzML" -OutputSuffix "-no-ids" : ClusterReporter : : ClusterReporter-no-ids ;
+#run CommandRunner.cpp Qonverter $(IDPICKER_PATH)/../freicore : "d:/test/iprg_tmt.clustering" -OverwriteExistingFiles 1 -SourceSearchPath d:\\test\\iprg_tmt -QuantitationMethod TMT6plex -SourceExtensionPriorityList "mzML" -OutputSuffix "-with-ids"                -IdpDbFilepath "D:/test/iPRG_TMT/mm-subset.idpDB" : ClusterReporter : : ClusterReporter-ids ;
+#run CommandRunner.cpp Qonverter $(IDPICKER_PATH)/../freicore : "d:/test/iprg_tmt.clustering" -OverwriteExistingFiles 1 -SourceSearchPath d:\\test\\iprg_tmt -QuantitationMethod TMT6plex -SourceExtensionPriorityList "mzML" -OutputSuffix "-with-ids-groups"         -IdpDbFilepath "D:/test/iPRG_TMT/mm-subset.idpDB" -AssignSourceHierarchy "d:/test/iprg_tmt_assemble.tsv" : ClusterReporter : : ClusterReporter-ids-groups ;
+#run CommandRunner.cpp Qonverter $(IDPICKER_PATH)/../freicore : "d:/test/iprg_tmt.clustering" -OverwriteExistingFiles 1 -SourceSearchPath d:\\test\\iprg_tmt -QuantitationMethod TMT6plex -SourceExtensionPriorityList "mzML" -OutputSuffix "-with-ids-groups-mapping" -IdpDbFilepath "D:/test/iPRG_TMT/mm-subset.idpDB" -AssignSourceHierarchy "d:/test/iprg_tmt_assemble.tsv" -IsobaricSampleMapping "d:/test/iprg_tmt_sample_mapping.tsv" : ClusterReporter : : ClusterReporter-ids-groups-mapping ;
+#run CommandRunner.cpp Qonverter $(IDPICKER_PATH)/../freicore : "d:/test/iprg_tmt.clustering" -OverwriteExistingFiles 1 -SourceSearchPath d:\\test\\iprg_tmt -QuantitationMethod TMT6plex -SourceExtensionPriorityList "mzML" -OutputSuffix "-with-groups"             -AssignSourceHierarchy "d:/test/iprg_tmt_assemble.tsv" : ClusterReporter : : ClusterReporter-groups ;
+#run CommandRunner.cpp Qonverter $(IDPICKER_PATH)/../freicore : "d:/test/iprg_tmt.clustering" -OverwriteExistingFiles 1 -SourceSearchPath d:\\test\\iprg_tmt -QuantitationMethod TMT6plex -SourceExtensionPriorityList "mzML" -OutputSuffix "-with-groups-mapping"     -AssignSourceHierarchy "d:/test/iprg_tmt_assemble.tsv" -IsobaricSampleMapping "d:/test/iprg_tmt_sample_mapping.tsv" : ClusterReporter : : ClusterReporter-groups-mapping ;
+#alias ClusterReporterTests : ClusterReporter-no-ids ClusterReporter-ids ClusterReporter-ids-groups ClusterReporter-ids-groups-mapping ClusterReporter-groups-mapping ;
 
 import testing ;
 unit-test QonverterTest : QonverterTest.cpp Qonverter : $(TEAMCITY_TEST_DECORATION) ;
 unit-test EmbedderTest : EmbedderTest.cpp Qonverter $(PWIZ_ROOT_PATH)/pwiz/data/identdata//pwiz_data_identdata_examples $(PWIZ_ROOT_PATH)/pwiz/data/msdata//pwiz_data_msdata : $(TEAMCITY_TEST_DECORATION) <dependency>gene2protein.db3 ;
 unit-test FilterTest : FilterTest.cpp Qonverter : $(TEAMCITY_TEST_DECORATION) ;
 unit-test LoggerTest : LoggerTest.cpp Qonverter : $(TEAMCITY_TEST_DECORATION) ;
+
+doctest EmbedderDoctest : Embedder.cpp Qonverter : $(TEAMCITY_TEST_DECORATION) ;
 
 path-constant TEST_DATA_PATH : ../TestData ;
 run CommandlineTest.cpp

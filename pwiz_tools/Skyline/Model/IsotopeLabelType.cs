@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -18,16 +18,18 @@
  */
 using System;
 using System.Globalization;
+using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Model
 {
-    public sealed class IsotopeLabelType : IComparable
+    public sealed class IsotopeLabelType : IComparable, IAuditLogObject
     {
         // ReSharper disable InconsistentNaming 
-        public const string LIGHT_NAME = "light"; // Not L10N
-        public const string HEAVY_NAME = "heavy"; // Not L10N
-        public const string NONE_NAME = "none"; // Not L10N
+        public const string LIGHT_NAME = "light";
+        public const string HEAVY_NAME = "heavy";
+        public const string NONE_NAME = "none";
 
         public static readonly IsotopeLabelType light = new IsotopeLabelType(LIGHT_NAME, 0);
         // Default heavy label for testing
@@ -75,6 +77,9 @@ namespace pwiz.Skyline.Model
         {
             return SortOrder - ((IsotopeLabelType) obj).SortOrder;
         }
+
+        public string AuditLogText { get { return LogMessage.Quote(Title); } }
+        public bool IsName { get { return false; } }
 
         #region object overrides
 

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Alana Killeen <killea .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -27,6 +27,7 @@ namespace pwiz.Skyline.Model.DocSettings
 {
     public static class UniMod
     {
+        public const int UNIMOD_PRECISION = 6;
         public static Dictionary<string, StaticMod> DictStructuralModNames { get; private set; }
         public static Dictionary<string, StaticMod> DictHiddenStructuralModNames { get; private set; }
         public static Dictionary<string, StaticMod> DictIsotopeModNames { get; private set; }
@@ -39,7 +40,7 @@ namespace pwiz.Skyline.Model.DocSettings
         public static readonly char[] AMINO_ACIDS = 
             {
                 'A', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'N', 
-                'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'Y' // Not L10N
+                'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'Y'
             };
         private static readonly bool INITIALIZING;
 
@@ -70,7 +71,7 @@ namespace pwiz.Skyline.Model.DocSettings
         {
             var newMod = new StaticMod(data.Name, data.AAs, data.Terminus, false, data.Formula, data.LabelAtoms,
                                        RelativeRT.Matching, null, null, data.Losses, data.ID,
-                                       data.ShortName);
+                                       data.ShortName, data.PrecisionRequired);
             if (data.ID.HasValue && data.ShortName != null)
             {
                 int id;
@@ -83,7 +84,7 @@ namespace pwiz.Skyline.Model.DocSettings
                 // This error should never be seen by users
                 else if (id != data.ID.Value)
                 {
-                    throw new InvalidDataException("Short mod names and unimod ID's must be consistent"); // Not L10N
+                    throw new InvalidDataException(@"Short mod names and unimod ID's must be consistent");
                 }
             }
             AddMod(newMod, data.ID, data.Structural, data.Hidden);
@@ -184,7 +185,7 @@ namespace pwiz.Skyline.Model.DocSettings
                 return true;
             var idKey = new UniModIdKey
             {
-                Aa = mod.AAs == null ? 'A' : mod.AminoAcids.First(), // Not L10N
+                Aa = mod.AAs == null ? 'A' : mod.AminoAcids.First(),
                 AllAas = mod.AAs == null,
                 Id = mod.UnimodId.Value,
                 Terminus = mod.Terminus
@@ -215,6 +216,7 @@ namespace pwiz.Skyline.Model.DocSettings
         public int? ID { get; set; }
         public bool Structural { get; set; }
         public bool Hidden { get; set; }
+        public int? PrecisionRequired { get; set; }
         public string ShortName { get; set; }
     }
 
@@ -229,7 +231,7 @@ namespace pwiz.Skyline.Model.DocSettings
             char c = char.ToLowerInvariant(aa);
             // Check range, because we used to use Char.ToLower(), which had problems with Turkish I
             if ('a' > c || c > 'z')
-                throw new ArgumentOutOfRangeException(string.Format("Error converting {0} to {1}.", aa, c));    // Not L10N
+                throw new ArgumentOutOfRangeException(string.Format(@"Error converting {0} to {1}.", aa, c));
             return c;
         }
 
@@ -238,7 +240,7 @@ namespace pwiz.Skyline.Model.DocSettings
             char c = char.ToUpperInvariant(aa);
             // Check range, because we used to use Char.ToLower(), which had problems with Turkish i
             if ('A' > c || c > 'Z')
-                throw new ArgumentOutOfRangeException(string.Format("Error converting {0} to {1}.", aa, c));    // Not L10N
+                throw new ArgumentOutOfRangeException(string.Format(@"Error converting {0} to {1}.", aa, c));
             return c;
         }
 
@@ -267,7 +269,7 @@ namespace pwiz.Skyline.Model.DocSettings
             if (!_completed)
                 throw new InvalidOperationException(Resources.ModMassLookup_MatchModificationMass_Invalid_attempt_to_access_incomplete_MassLookup);
             var massLookup = _aaMassLookups[structural ? ToStructuralIndex(aa) : ToIsotopeIndex(aa)];
-            return massLookup != null ? massLookup.ClosestMatch(mass, roundTo, terminus, specific) : null;
+            return massLookup != null ? massLookup.ClosestMatch(new MassModification(mass, roundTo), terminus, specific) : null;
         }
 
         public void Complete()
@@ -323,51 +325,49 @@ namespace pwiz.Skyline.Model.DocSettings
             _listAllAAsMasses.Sort(MASS_COMPARER);
         }
 
-        public StaticMod ClosestMatch(double mass, int roundTo, ModTerminus? terminus, bool specific)
+        public StaticMod ClosestMatch(MassModification massModification, ModTerminus? terminus, bool specific)
         {
             return specific
-               ? ClosestMatchSpecific(mass, roundTo, terminus)
-               : ClosestMatchGeneral(mass, roundTo, terminus);
+               ? ClosestMatchSpecific(massModification, terminus)
+               : ClosestMatchGeneral(massModification, terminus);
         }
 
-        public StaticMod ClosestMatchSpecific(double mass, int roundTo, ModTerminus? terminus)
+        public StaticMod ClosestMatchSpecific(MassModification massModification, ModTerminus? terminus)
         {
             // Order of preference: matches that specific amino acids
-            StaticMod match = ClosestMatch(_listMasses, mass, roundTo);
+            StaticMod match = ClosestMatch(_listMasses, massModification);
             // Terminal matches
             if (match == null && terminus != null)
             {
-                match = ClosestMatch(terminus == ModTerminus.C ? _listCTerminalMasses : _listNTerminalMasses, mass,
-                                     roundTo);
+                match = ClosestMatch(terminus == ModTerminus.C ? _listCTerminalMasses : _listNTerminalMasses, massModification);
             }
             // Matches that apply to all amino acids
-            return match ?? ClosestMatch(_listAllAAsMasses, mass, roundTo);
+            return match ?? ClosestMatch(_listAllAAsMasses, massModification);
         }
 
-        public StaticMod ClosestMatchGeneral(double mass, int roundTo, ModTerminus? terminus)
+        public StaticMod ClosestMatchGeneral(MassModification massModification, ModTerminus? terminus)
         {
-            StaticMod match = ClosestMatch(_listAllAAsMasses, mass, roundTo);
+            StaticMod match = ClosestMatch(_listAllAAsMasses, massModification);
             if (match == null && terminus != null)
             {
-                match = ClosestMatch(terminus == ModTerminus.C ? _listCTerminalMasses : _listNTerminalMasses, mass,
-                                     roundTo);
+                match = ClosestMatch(terminus == ModTerminus.C ? _listCTerminalMasses : _listNTerminalMasses, massModification);
             }
-            return match ?? ClosestMatch(_listMasses, mass, roundTo);
+            return match ?? ClosestMatch(_listMasses, massModification);
         }
 
-        private static StaticMod ClosestMatch(List<KeyValuePair<double, StaticMod>> listSearch, double mass, int roundTo)
+        private static StaticMod ClosestMatch(List<KeyValuePair<double, StaticMod>> listSearch, MassModification massModification)
         {
             if (listSearch.Count == 0)
                 return null;
-            int i = listSearch.BinarySearch(new KeyValuePair<double, StaticMod>(mass, null), MASS_COMPARER);
+            int i = listSearch.BinarySearch(new KeyValuePair<double, StaticMod>(massModification.Mass, null), MASS_COMPARER);
             i = i < 0 ? ~i : i;
             var match = listSearch[i == listSearch.Count ? i - 1 : i];
-            if (Math.Round(match.Key, roundTo) == mass)
+            if (massModification.Matches(new MassModification(match.Key, UniMod.UNIMOD_PRECISION)))
                 return match.Value;
             if (i > 0)
             {
                 match = listSearch[i - 1];
-                if (Math.Round(match.Key, roundTo) == mass)
+                if (massModification.Matches(new MassModification(match.Key, UniMod.UNIMOD_PRECISION)))
                     return match.Value;
             }
             return null;

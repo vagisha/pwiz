@@ -17,7 +17,6 @@
  * limitations under the License.
  */
 
-using System.Collections.Generic;
 using pwiz.Skyline.Model.Databinding.Entities;
 
 namespace pwiz.Skyline.Model.Databinding.Collections
@@ -26,14 +25,6 @@ namespace pwiz.Skyline.Model.Databinding.Collections
     {
         public Proteins(SkylineDataSchema dataSchema) : base(dataSchema, IdentityPath.ROOT)
         {
-        }
-
-        public override IList<Protein> DeepClone()
-        {
-            return new Proteins(DataSchema.Clone())
-                {
-                    AncestorIdentityPaths = AncestorIdentityPaths
-                };
         }
 
         protected override Protein ConstructItem(IdentityPath identityPath)

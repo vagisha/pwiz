@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -34,7 +34,7 @@ namespace pwiz.Skyline.Model.Results
         private readonly bool _assumeNegativeChargeInPreV11Caches;
 
         private readonly byte[] _buffer = new byte[0x40000];  // 256K
-        private readonly Dictionary<string, int> _dictTextIdToByteIndex = new Dictionary<string, int>();
+        private readonly Dictionary<Target, int> _dictTextIdToByteIndex = new Dictionary<Target, int>();
 
         public ChromCacheJoiner(string cachePath, IPooledStream streamDest,
                                 IList<string> cacheFilePaths, ILoadMonitor loader, ProgressStatus status,
@@ -131,21 +131,21 @@ namespace pwiz.Skyline.Model.Results
                     {
                         // If the existing score types in the caches are not the same, the caches cannot be joined
                         if (_listScoreTypes.Intersect(rawData.ScoreTypes).Count() != _listScoreTypes.Count)
-                            throw new InvalidDataException("Data cache files with different score types cannot be joined.");    // Not L10N
+                            throw new InvalidDataException(@"Data cache files with different score types cannot be joined.");
                     }
                     _scoreCount += rawData.Scores.Length;
                     rawData.Scores.WriteArray(block => PrimitiveArrays.Write(_fsScores.Stream, block));
 
                     for (int i = 0; i < rawData.ChromatogramEntries.Length; i++)
                     {
-                        _listGroups.Add(rawData.RecalcEntry(i,
+                        _listGroups.Add(new ChromGroupHeaderEntry(i, rawData.RecalcEntry(i,
                                             offsetFiles,
                                             offsetTransitions,
                                             offsetPeaks,
                                             offsetScores,
                                             offsetPoints,
                                             _dictTextIdToByteIndex,
-                                            _listTextIdBytes));
+                                            _listTextIdBytes)));
                     }
 
                     inStream.Seek(0, SeekOrigin.Begin);

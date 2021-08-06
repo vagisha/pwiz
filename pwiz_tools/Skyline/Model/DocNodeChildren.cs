@@ -17,12 +17,12 @@ namespace pwiz.Skyline.Model
             _items = ImmutableList.ValueOf(items);
             _itemCount = _items.Count;
             var previousChildren = previous as DocNodeChildren;
-            if (previousChildren != null && IsOrderSame(previousChildren))
+            if (previousChildren != null && previousChildren._items != null && IsOrderSame(previousChildren))
                 _indexes = previousChildren._indexes;
             else
             {
-                _indexes = new Dictionary<Identity, int>(_items.Count, IDENTITY_EQUALITY_COMPARER);
-                for (int i = 0; i < _items.Count; i++)
+                _indexes = new Dictionary<Identity, int>(_itemCount, IDENTITY_EQUALITY_COMPARER);
+                for (int i = 0; i < _itemCount; i++)
                 {
                     _indexes.Add(_items[i].Id, i);
                 }
@@ -98,6 +98,10 @@ namespace pwiz.Skyline.Model
 
         bool ICollection<DocNode>.Contains(DocNode item)
         {
+            if (ReferenceEquals(null, item))
+            {
+                return false;
+            }
             int index = IndexOf(item.Id);
             return index >= 0 && Equals(item, _items[index]);
         }
@@ -124,6 +128,10 @@ namespace pwiz.Skyline.Model
 
         int IList<DocNode>.IndexOf(DocNode item)
         {
+            if (ReferenceEquals(item, null))
+            {
+                return -1;
+            }
             int index = IndexOf(item.Id);
             if (index < 0)
             {

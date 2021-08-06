@@ -31,8 +31,8 @@
             this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(EditCustomMoleculeDlg));
             this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
-            this.textDriftTimeMsec = new System.Windows.Forms.TextBox();
-            this.textDriftTimeHighEnergyOffsetMsec = new System.Windows.Forms.TextBox();
+            this.textIonMobility = new System.Windows.Forms.TextBox();
+            this.textIonMobilityHighEnergyOffset = new System.Windows.Forms.TextBox();
             this.textRetentionTime = new System.Windows.Forms.TextBox();
             this.textRetentionTimeWindow = new System.Windows.Forms.TextBox();
             this.textCollisionEnergy = new System.Windows.Forms.TextBox();
@@ -41,18 +41,18 @@
             this.labelConeVoltage = new System.Windows.Forms.Label();
             this.textConeVoltage = new System.Windows.Forms.TextBox();
             this.textDeclusteringPotential = new System.Windows.Forms.TextBox();
-            this.textCompensationVoltage = new System.Windows.Forms.TextBox();
             this.textCharge = new System.Windows.Forms.TextBox();
             this.textName = new System.Windows.Forms.TextBox();
             this.textBoxCCS = new System.Windows.Forms.TextBox();
             this.btnOK = new System.Windows.Forms.Button();
             this.btnCancel = new System.Windows.Forms.Button();
             this.groupBoxOptionalValues = new System.Windows.Forms.GroupBox();
+            this.comboBoxIonMobilityUnits = new System.Windows.Forms.ComboBox();
+            this.labelIonMobilityUnits = new System.Windows.Forms.Label();
             this.labelCCS = new System.Windows.Forms.Label();
-            this.labelCompensationVoltage = new System.Windows.Forms.Label();
             this.labelDeclusteringPotential = new System.Windows.Forms.Label();
-            this.labelDriftTimeMsec = new System.Windows.Forms.Label();
-            this.labelDriftTimeHighEnergyOffsetMsec = new System.Windows.Forms.Label();
+            this.labelIonMobility = new System.Windows.Forms.Label();
+            this.labelIonMobilityHighEnergyOffset = new System.Windows.Forms.Label();
             this.labelRetentionTime = new System.Windows.Forms.Label();
             this.labelRetentionTimeWindow = new System.Windows.Forms.Label();
             this.labelCollisionEnergy = new System.Windows.Forms.Label();
@@ -60,6 +60,8 @@
             this.label1 = new System.Windows.Forms.Label();
             this.labelIsotopeLabelType = new System.Windows.Forms.Label();
             this.comboIsotopeLabelType = new System.Windows.Forms.ComboBox();
+            this.labelPrecursorCollisionEnergy = new System.Windows.Forms.Label();
+            this.textBoxPrecursorCollisionEnergy = new System.Windows.Forms.TextBox();
             this.groupBoxOptionalValues.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -69,17 +71,18 @@
             this.toolTip1.InitialDelay = 500;
             this.toolTip1.ReshowDelay = 100;
             // 
-            // textDriftTimeMsec
+            // textIonMobility
             // 
-            resources.ApplyResources(this.textDriftTimeMsec, "textDriftTimeMsec");
-            this.textDriftTimeMsec.Name = "textDriftTimeMsec";
-            this.toolTip1.SetToolTip(this.textDriftTimeMsec, resources.GetString("textDriftTimeMsec.ToolTip"));
+            resources.ApplyResources(this.textIonMobility, "textIonMobility");
+            this.textIonMobility.Name = "textIonMobility";
+            this.toolTip1.SetToolTip(this.textIonMobility, resources.GetString("textIonMobility.ToolTip"));
+            this.textIonMobility.TextChanged += new System.EventHandler(this.textIonMobility_TextChanged);
             // 
-            // textDriftTimeHighEnergyOffsetMsec
+            // textIonMobilityHighEnergyOffset
             // 
-            resources.ApplyResources(this.textDriftTimeHighEnergyOffsetMsec, "textDriftTimeHighEnergyOffsetMsec");
-            this.textDriftTimeHighEnergyOffsetMsec.Name = "textDriftTimeHighEnergyOffsetMsec";
-            this.toolTip1.SetToolTip(this.textDriftTimeHighEnergyOffsetMsec, resources.GetString("textDriftTimeHighEnergyOffsetMsec.ToolTip"));
+            resources.ApplyResources(this.textIonMobilityHighEnergyOffset, "textIonMobilityHighEnergyOffset");
+            this.textIonMobilityHighEnergyOffset.Name = "textIonMobilityHighEnergyOffset";
+            this.toolTip1.SetToolTip(this.textIonMobilityHighEnergyOffset, resources.GetString("textIonMobilityHighEnergyOffset.ToolTip"));
             // 
             // textRetentionTime
             // 
@@ -129,12 +132,6 @@
             this.textDeclusteringPotential.Name = "textDeclusteringPotential";
             this.toolTip1.SetToolTip(this.textDeclusteringPotential, resources.GetString("textDeclusteringPotential.ToolTip"));
             // 
-            // textCompensationVoltage
-            // 
-            resources.ApplyResources(this.textCompensationVoltage, "textCompensationVoltage");
-            this.textCompensationVoltage.Name = "textCompensationVoltage";
-            this.toolTip1.SetToolTip(this.textCompensationVoltage, resources.GetString("textCompensationVoltage.ToolTip"));
-            // 
             // textCharge
             // 
             resources.ApplyResources(this.textCharge, "textCharge");
@@ -170,16 +167,18 @@
             // 
             // groupBoxOptionalValues
             // 
+            this.groupBoxOptionalValues.Controls.Add(this.labelPrecursorCollisionEnergy);
+            this.groupBoxOptionalValues.Controls.Add(this.textBoxPrecursorCollisionEnergy);
+            this.groupBoxOptionalValues.Controls.Add(this.comboBoxIonMobilityUnits);
+            this.groupBoxOptionalValues.Controls.Add(this.labelIonMobilityUnits);
             this.groupBoxOptionalValues.Controls.Add(this.labelCCS);
             this.groupBoxOptionalValues.Controls.Add(this.textBoxCCS);
-            this.groupBoxOptionalValues.Controls.Add(this.labelCompensationVoltage);
-            this.groupBoxOptionalValues.Controls.Add(this.textCompensationVoltage);
             this.groupBoxOptionalValues.Controls.Add(this.labelDeclusteringPotential);
             this.groupBoxOptionalValues.Controls.Add(this.textDeclusteringPotential);
-            this.groupBoxOptionalValues.Controls.Add(this.textDriftTimeMsec);
-            this.groupBoxOptionalValues.Controls.Add(this.labelDriftTimeMsec);
-            this.groupBoxOptionalValues.Controls.Add(this.textDriftTimeHighEnergyOffsetMsec);
-            this.groupBoxOptionalValues.Controls.Add(this.labelDriftTimeHighEnergyOffsetMsec);
+            this.groupBoxOptionalValues.Controls.Add(this.textIonMobility);
+            this.groupBoxOptionalValues.Controls.Add(this.labelIonMobility);
+            this.groupBoxOptionalValues.Controls.Add(this.textIonMobilityHighEnergyOffset);
+            this.groupBoxOptionalValues.Controls.Add(this.labelIonMobilityHighEnergyOffset);
             this.groupBoxOptionalValues.Controls.Add(this.textRetentionTime);
             this.groupBoxOptionalValues.Controls.Add(this.labelRetentionTime);
             this.groupBoxOptionalValues.Controls.Add(this.textRetentionTimeWindow);
@@ -194,30 +193,37 @@
             this.groupBoxOptionalValues.Name = "groupBoxOptionalValues";
             this.groupBoxOptionalValues.TabStop = false;
             // 
+            // comboBoxIonMobilityUnits
+            // 
+            resources.ApplyResources(this.comboBoxIonMobilityUnits, "comboBoxIonMobilityUnits");
+            this.comboBoxIonMobilityUnits.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboBoxIonMobilityUnits.FormattingEnabled = true;
+            this.comboBoxIonMobilityUnits.Name = "comboBoxIonMobilityUnits";
+            // 
+            // labelIonMobilityUnits
+            // 
+            resources.ApplyResources(this.labelIonMobilityUnits, "labelIonMobilityUnits");
+            this.labelIonMobilityUnits.Name = "labelIonMobilityUnits";
+            // 
             // labelCCS
             // 
             resources.ApplyResources(this.labelCCS, "labelCCS");
             this.labelCCS.Name = "labelCCS";
-            // 
-            // labelCompensationVoltage
-            // 
-            resources.ApplyResources(this.labelCompensationVoltage, "labelCompensationVoltage");
-            this.labelCompensationVoltage.Name = "labelCompensationVoltage";
             // 
             // labelDeclusteringPotential
             // 
             resources.ApplyResources(this.labelDeclusteringPotential, "labelDeclusteringPotential");
             this.labelDeclusteringPotential.Name = "labelDeclusteringPotential";
             // 
-            // labelDriftTimeMsec
+            // labelIonMobility
             // 
-            resources.ApplyResources(this.labelDriftTimeMsec, "labelDriftTimeMsec");
-            this.labelDriftTimeMsec.Name = "labelDriftTimeMsec";
+            resources.ApplyResources(this.labelIonMobility, "labelIonMobility");
+            this.labelIonMobility.Name = "labelIonMobility";
             // 
-            // labelDriftTimeHighEnergyOffsetMsec
+            // labelIonMobilityHighEnergyOffset
             // 
-            resources.ApplyResources(this.labelDriftTimeHighEnergyOffsetMsec, "labelDriftTimeHighEnergyOffsetMsec");
-            this.labelDriftTimeHighEnergyOffsetMsec.Name = "labelDriftTimeHighEnergyOffsetMsec";
+            resources.ApplyResources(this.labelIonMobilityHighEnergyOffset, "labelIonMobilityHighEnergyOffset");
+            this.labelIonMobilityHighEnergyOffset.Name = "labelIonMobilityHighEnergyOffset";
             // 
             // labelRetentionTime
             // 
@@ -256,6 +262,17 @@
             resources.ApplyResources(this.comboIsotopeLabelType, "comboIsotopeLabelType");
             this.comboIsotopeLabelType.Name = "comboIsotopeLabelType";
             this.comboIsotopeLabelType.SelectedIndexChanged += new System.EventHandler(this.comboLabelType_SelectedIndexChanged);
+            // 
+            // labelPrecursorCollisionEnergy
+            // 
+            resources.ApplyResources(this.labelPrecursorCollisionEnergy, "labelPrecursorCollisionEnergy");
+            this.labelPrecursorCollisionEnergy.Name = "labelPrecursorCollisionEnergy";
+            // 
+            // textBoxPrecursorCollisionEnergy
+            // 
+            resources.ApplyResources(this.textBoxPrecursorCollisionEnergy, "textBoxPrecursorCollisionEnergy");
+            this.textBoxPrecursorCollisionEnergy.Name = "textBoxPrecursorCollisionEnergy";
+            this.toolTip1.SetToolTip(this.textBoxPrecursorCollisionEnergy, resources.GetString("textBoxPrecursorCollisionEnergy.ToolTip"));
             // 
             // EditCustomMoleculeDlg
             // 
@@ -302,18 +319,20 @@
         private System.Windows.Forms.Label labelRetentionTime;
         private System.Windows.Forms.TextBox textRetentionTimeWindow;
         private System.Windows.Forms.Label labelRetentionTimeWindow;
-        private System.Windows.Forms.TextBox textDriftTimeMsec;
-        private System.Windows.Forms.Label labelDriftTimeMsec;
-        private System.Windows.Forms.TextBox textDriftTimeHighEnergyOffsetMsec;
-        private System.Windows.Forms.Label labelDriftTimeHighEnergyOffsetMsec;
+        private System.Windows.Forms.TextBox textIonMobility;
+        private System.Windows.Forms.Label labelIonMobility;
+        private System.Windows.Forms.TextBox textIonMobilityHighEnergyOffset;
+        private System.Windows.Forms.Label labelIonMobilityHighEnergyOffset;
         private System.Windows.Forms.ToolTip toolTip1;
         private System.Windows.Forms.Label labelIsotopeLabelType;
         private System.Windows.Forms.ComboBox comboIsotopeLabelType;
-        private System.Windows.Forms.Label labelCompensationVoltage;
-        private System.Windows.Forms.TextBox textCompensationVoltage;
         private System.Windows.Forms.Label labelDeclusteringPotential;
         private System.Windows.Forms.TextBox textDeclusteringPotential;
         private System.Windows.Forms.Label labelCCS;
         private System.Windows.Forms.TextBox textBoxCCS;
+        private System.Windows.Forms.ComboBox comboBoxIonMobilityUnits;
+        private System.Windows.Forms.Label labelIonMobilityUnits;
+        private System.Windows.Forms.Label labelPrecursorCollisionEnergy;
+        private System.Windows.Forms.TextBox textBoxPrecursorCollisionEnergy;
     }
 }

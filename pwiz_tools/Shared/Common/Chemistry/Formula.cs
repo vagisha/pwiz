@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using pwiz.Common.Collections;
 
@@ -31,7 +32,7 @@ namespace pwiz.Common.Chemistry
 // ReSharper disable InconsistentNaming
         public static readonly T Empty = new T { Dictionary = ImmutableSortedList<string, TValue>.EMPTY };
 // ReSharper restore InconsistentNaming
-        public override abstract string ToString();
+        public abstract override string ToString();
         private int _hashCode;
         private ImmutableSortedList<string, TValue> _dict;
         public virtual String ToDisplayString()
@@ -248,12 +249,17 @@ namespace pwiz.Common.Chemistry
         }
 
         // Handle formulae which may contain subtractions, as is deprotonation description ie C12H8O2-H (=C12H7O2) or even C12H8O2-H2O (=C12H6O)
+        public static T ParseExpression(String formula)
+        {
+            return new T { Dictionary = ImmutableSortedList.FromValues(ParseExpressionToDictionary(formula)) };
+        }
+
         public static Dictionary<String, int> ParseExpressionToDictionary(string expression)
         {
             var parts = expression.Split('-');
             if (parts.Length > 2)
             {
-                throw new ArgumentException("Molecular formula subtraction expressions are limited a single operation"); // Not L10N
+                throw new ArgumentException(@"Molecular formula subtraction expressions are limited a single operation");
             }
             var result = ParseToDictionary(parts[0]);
             if (parts.Length > 1)
@@ -275,9 +281,63 @@ namespace pwiz.Common.Chemistry
             return result;
         }
 
+        // Subtract other's atom counts from ours
+        public T Difference(T other)
+        {
+            var resultDict = new Dictionary<string, int>(this);
+            foreach (var kvp in other)
+            {
+                int count;
+                if (TryGetValue(kvp.Key, out count))
+                {
+                    resultDict[kvp.Key] = count - kvp.Value;
+                }
+                else
+                {
+                    resultDict.Add(kvp.Key, -kvp.Value);
+                }
+            }
+            return new T { Dictionary = new ImmutableSortedList<string, int>(resultDict) };
+        }
+
         public static T FromDict(ImmutableSortedList<string, int> dict)
         {
             return new T {Dictionary = dict};
+        }
+
+        public static T FromDict(IDictionary<string, int> dict)
+        {
+            return new T {Dictionary = ImmutableSortedList.FromValues(dict)};
+        }
+
+        public static string AdjustElementCount(string formula, string element, int delta)
+        {
+            var dict = Molecule.ParseToDictionary(formula);
+            int count;
+            if (!dict.TryGetValue(element, out count))
+                count = 0;
+            if ((count > 0) || (delta > 0)) // There are some to take away, or we're planning to add some
+            {
+                count += delta;
+                if (count >= 0)
+                {
+                    dict[element] = count;
+                    return Molecule.FromDict(dict).ToString();
+                }
+            }
+            return formula;
+        }
+
+        public static bool AreEquivalentFormulas(string formulaLeft, string formulaRight)
+        {
+            if (string.Equals(formulaLeft, formulaRight))
+            {
+                return true;
+            }
+            // Consider C2C'4H5 to be same as H5C'4C2, or "C10H30Si5O5H-CH4" same as "C9H26O5Si5", etc
+            var left = ParseExpression(formulaLeft);
+            var right = ParseExpression(formulaRight);
+            return left.Difference(right).All(atom => atom.Value == 0);
         }
 
         public override string ToString()
@@ -285,13 +345,38 @@ namespace pwiz.Common.Chemistry
             var result = new StringBuilder();
             foreach (var entry in this)
             {
-                result.Append(entry.Key);
-                if (entry.Value != 1)
+                if (entry.Value > 0)
                 {
-                    result.Append(entry.Value);
+                    result.Append(entry.Key);
+                    if (entry.Value != 1)
+                    {
+                        result.Append(entry.Value);
+                    }
                 }
             }
             return result.ToString();
+        }
+
+        public static T Sum(IEnumerable<T> items)
+        {
+            var dictionary = new Dictionary<string, int>();
+            foreach (var item in items)
+            {
+                foreach (var entry in item)
+                {
+                    int count;
+                    if (dictionary.TryGetValue(entry.Key, out count))
+                    {
+                        dictionary[entry.Key] = count + entry.Value;
+                    }
+                    else
+                    {
+                        dictionary.Add(entry.Key, entry.Value);
+                    }
+                }
+            }
+
+            return FromDict(dictionary);
         }
     }
 }

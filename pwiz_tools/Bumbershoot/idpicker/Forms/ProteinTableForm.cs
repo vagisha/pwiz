@@ -36,7 +36,6 @@ using System.Threading;
 using System.IO;
 using DigitalRune.Windows.Docking;
 using NHibernate.Linq;
-using NHibernate.Util;
 using PopupControl;
 using IDPicker;
 using IDPicker.DataModel;
@@ -158,8 +157,8 @@ namespace IDPicker.Forms
                                                        ", pro" +
                                                        ", COUNT(DISTINCT pro.id)" +
                                                        ", AVG(pro.Coverage)" +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.iTRAQ_ReporterIonIntensities)" +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.TMT_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.iTRAQ_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.TMT_ReporterIonIntensities)" +
                                                        ", DISTINCT_GROUP_CONCAT(ROUND_TO_INTEGER(mod.MonoMassDelta) || '@' || pm.Site || PARENS(pi.Offset+pm.Offset+1))" +
                                                        ", pro.ProteinGroup" +
                                                        dataFilter.GetFilteredQueryString(DataFilter.FromProtein,
@@ -208,8 +207,8 @@ namespace IDPicker.Forms
                 lock (session)
                 {
                     basicColumns = session.CreateQuery(AggregateRow.Selection +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.iTRAQ_ReporterIonIntensities)" +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.TMT_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.iTRAQ_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.TMT_ReporterIonIntensities)" +
                                                        ", DISTINCT_GROUP_CONCAT(ROUND_TO_INTEGER(mod.MonoMassDelta) || '@' || pm.Site || PARENS(pi.Offset+pm.Offset+1))" +
                                                        ", pro" +
                                                        dataFilter.GetFilteredQueryString(DataFilter.FromProtein,
@@ -270,13 +269,13 @@ namespace IDPicker.Forms
                 lock (session)
                 {
                     basicColumns = session.CreateQuery(AggregateRow.Selection +
-                                                       ", DISTINCT_GROUP_CONCAT(pro.GeneId)" +
+                                                       ", SORT_UNMAPPED_LAST(DISTINCT_GROUP_CONCAT(pro.GeneId))" +
                                                        ", pro" +
                                                        ", COUNT(DISTINCT pro.GeneId)" +
                                                        ", COUNT(DISTINCT pro.Id)" +
                                                        ", AVG(pro.Coverage)" +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.iTRAQ_ReporterIonIntensities)" +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.TMT_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.iTRAQ_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.TMT_ReporterIonIntensities)" +
                                                        ", pro.GeneGroup" +
                                                        dataFilter.GetFilteredQueryString(DataFilter.FromProtein,
                                                                                          DataFilter.ProteinToSpectrum) +
@@ -324,8 +323,8 @@ namespace IDPicker.Forms
                 {
                     basicColumns = session.CreateQuery(AggregateRow.Selection +
                                                        ", COUNT(DISTINCT pro.Id)" +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.iTRAQ_ReporterIonIntensities)" +
-                                                       ", DISTINCT_DOUBLE_ARRAY_SUM(s.TMT_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.iTRAQ_ReporterIonIntensities)" +
+                                                       ", " + RollupSQL + "(s.TMT_ReporterIonIntensities)" +
                                                        ", pro" +
                                                        dataFilter.GetFilteredQueryString(DataFilter.FromProtein,
                                                                                          DataFilter.ProteinToSpectrum) +
@@ -498,8 +497,8 @@ namespace IDPicker.Forms
             if (pivot.Text.Contains("Spectra")) valueColumn = "COUNT(DISTINCT psm.Spectrum.id)";
             else if (pivot.Text.Contains("Matches")) valueColumn = "COUNT(DISTINCT psm.DistinctMatchId)";
             else if (pivot.Text.Contains("Peptides")) valueColumn = "COUNT(DISTINCT psm.Peptide.id)";
-            else if (pivot.Text.Contains("iTRAQ")) valueColumn = "DISTINCT_DOUBLE_ARRAY_SUM(s.iTRAQ_ReporterIonIntensities)";
-            else if (pivot.Text.Contains("TMT")) valueColumn = "DISTINCT_DOUBLE_ARRAY_SUM(s.TMT_ReporterIonIntensities)";
+            else if (pivot.Text.Contains("iTRAQ")) valueColumn = Row.RollupSQL + "(s.iTRAQ_ReporterIonIntensities)";
+            else if (pivot.Text.Contains("TMT")) valueColumn = Row.RollupSQL + "(s.TMT_ReporterIonIntensities)";
             else if (pivot.Text.Contains("MS1")) valueColumn = "DISTINCT_SUM(xic.PeakIntensity)";
             else throw new ArgumentException("unable to handle pivot column " + pivot.Text);
 
@@ -549,14 +548,14 @@ namespace IDPicker.Forms
 
         private TotalCounts totalCounts, basicTotalCounts;
 
+        private DataGridViewColumn ReferenceColumn { get; set; }
+
         // map source/group id to row index to pivot data
         private Map<long, Map<long, PivotData>> statsBySpectrumSource, basicStatsBySpectrumSource;
         private Map<long, Map<long, PivotData>> statsBySpectrumSourceGroup, basicStatsBySpectrumSourceGroup;
 
         private Dictionary<long, SpectrumSource> sourceById;
         private Dictionary<long, SpectrumSourceGroup> groupById;
-
-        List<DataGridViewTextBoxColumn> iTRAQ_ReporterIonColumns, TMT_ReporterIonColumns;
 
         private ToolStripMenuItem exportNetGestaltAsLogMenuItem = new ToolStripMenuItem("Export values in log scale") { CheckOnClick = true, Checked = true };
         private ToolStripMenuItem exportNetGestaltWithNormalizedColumnsMenuItem = new ToolStripMenuItem("Export values normalized by column") { CheckOnClick = true, Checked = true };
@@ -568,35 +567,6 @@ namespace IDPicker.Forms
 
             Text = TabText = "Protein View";
             Icon = Properties.Resources.ProteinViewIcon;
-
-            iTRAQ_ReporterIonColumns = new List<DataGridViewTextBoxColumn>();
-            TMT_ReporterIonColumns = new List<DataGridViewTextBoxColumn>();
-
-            foreach (int ion in new int[] { 113, 114, 115, 116, 117, 118, 119, 121 })
-            {
-                var column = new DataGridViewTextBoxColumn
-                {
-                    HeaderText = "iTRAQ-" + ion.ToString(),
-                    Name = "iTRAQ-" + ion.ToString() + "Column",
-                    ReadOnly = true,
-                    Tag = iTRAQ_ReporterIonColumns.Count,
-                    Width = 100
-                };
-                iTRAQ_ReporterIonColumns.Add(column);
-            }
-
-            foreach (string ion in new string[] { "126", "127N", "127C", "128N", "128C", "129N", "129C", "130N", "130C", "131" })
-            {
-                var column = new DataGridViewTextBoxColumn
-                {
-                    HeaderText = "TMT-" + ion,
-                    Name = "TMT-" + ion + "Column",
-                    ReadOnly = true,
-                    Tag = TMT_ReporterIonColumns.Count,
-                    Width = 100
-                };
-                TMT_ReporterIonColumns.Add(column);
-            }
 
             treeDataGridView.Columns.AddRange(iTRAQ_ReporterIonColumns.ToArray());
             treeDataGridView.Columns.AddRange(TMT_ReporterIonColumns.ToArray());
@@ -739,12 +709,18 @@ namespace IDPicker.Forms
                 else if (quantitationMethods.Contains(QuantitationMethod.ITRAQ4plex))
                     // add iTRAQ4plex-only columns
                     iTRAQ_ReporterIonColumns.GetRange(1, 4).ForEach(o => reporterIonColumns.Add(o));
-                else if (quantitationMethods.Contains(QuantitationMethod.TMT10plex))
+                else if (quantitationMethods.Contains(QuantitationMethod.TMTpro16plex))
                     // add all TMT columns
                     TMT_ReporterIonColumns.ForEach(o => reporterIonColumns.Add(o));
+                else if (quantitationMethods.Contains(QuantitationMethod.TMT11plex))
+                    // add TMT11plex-only columns
+                    TMT_ReporterIonColumns.GetRange(0, 11).ForEach(o => reporterIonColumns.Add(o));
+                else if (quantitationMethods.Contains(QuantitationMethod.TMT10plex))
+                    // add TMT10plex-only columns
+                    TMT_ReporterIonColumns.GetRange(0, 10).ForEach(o => reporterIonColumns.Add(o));
                 else if (quantitationMethods.Contains(QuantitationMethod.TMT6plex))
                     // add TMT6plex-only columns
-                    TMT_ReporterIonColumns.Where(o => new List<int> {0, 2, 4, 6, 8, 9}.Contains((int) o.Tag)).ForEach(o => reporterIonColumns.Add(o));
+                    TMT_ReporterIonColumns.Where(o => new List<int> {0, 1, 4, 5, 8, 9}.Contains((int) o.Tag)).ForEach(o => reporterIonColumns.Add(o));
                 else if (quantitationMethods.Contains(QuantitationMethod.TMT2plex))
                     // add TMT2plex-only columns
                     TMT_ReporterIonColumns.Where(o => new List<int> {0, 2}.Contains((int) o.Tag)).ForEach(o => reporterIonColumns.Add(o));
@@ -1062,20 +1038,25 @@ namespace IDPicker.Forms
                 var itr = stats.second.Find(rowId);
                 if (itr.IsValid)
                 {
-                    if (stats.first)
+                    if (itr.Current.Value.IsArray)
                     {
-                        if (itr.Current.Value.IsArray)
-                            return ((double[]) itr.Current.Value.Value)[Convert.ToInt32(pivotColumn.DataPropertyName)];
-                        else
-                            return itr.Current.Value.Value;
+                        double value = ((double[]) itr.Current.Value.Value)[Convert.ToInt32(pivotColumn.DataPropertyName)];
+                        if (ReferenceColumn != null)
+                        {
+                            var referenceStats = ReferenceColumn.Tag as Pair<bool, Map<long, PivotData>>;
+                            var refItr = referenceStats.second.Find(rowId);
+                            if (refItr.IsValid)
+                            {
+                                double refValue = ((double[]) refItr.Current.Value.Value)[Convert.ToInt32(ReferenceColumn.DataPropertyName)];
+                                if (refValue > 0)
+                                    value /= refValue;
+                            }
+                        }
+
+                        return value;
                     }
-                    else
-                    {
-                        if (itr.Current.Value.IsArray)
-                            return ((double[]) itr.Current.Value.Value)[Convert.ToInt32(pivotColumn.DataPropertyName)];
-                        else
-                            return itr.Current.Value.Value;
-                    }
+
+                    return itr.Current.Value.Value;
                 }
             }
             else if (baseRow is ClusterRow)
@@ -1581,6 +1562,7 @@ namespace IDPicker.Forms
                 return;
 
             var sourceNames = sourceById.Select(o => o.Value.Name);
+            var isobaricSampleMapping = Embedder.GetIsobaricSampleMapping(session.Connection.GetDataSource());
 
             if (statsBySpectrumSource != null)
             foreach (long sourceId in statsBySpectrumSource.Keys)
@@ -1652,17 +1634,33 @@ namespace IDPicker.Forms
                 if (checkedPivots.Any(o => o.Text.Contains("Group") && (o.Text.Contains("TMT") || o.Text.Contains("iTRAQ"))))
                 {
                     var quantColumns = checkedPivots.Any(o => o.Text.Contains("TMT")) ? TMT_ReporterIonColumns : iTRAQ_ReporterIonColumns;
-
+                    var sampleNames = isobaricSampleMapping.ContainsKey(groupName.TrimEnd('/')) ? isobaricSampleMapping[groupName.TrimEnd('/')] : null;
+                    ReferenceColumn = null;
+                    int sampleMapIndex = 0;
                     for (int i = 0; i < quantColumns.Count; ++i)
                     {
+                        string sampleName = groupName;
+                        bool isReferenceColumn = false;
+                        if (quantColumns[i].Visible && sampleNames != null)
+                        {
+                            sampleName = sampleNames[sampleMapIndex];
+                            ++sampleMapIndex;
+                            if (sampleName.Equals("Empty", StringComparison.InvariantCultureIgnoreCase))
+                                continue;
+                            if (sampleName.Equals("Reference", StringComparison.InvariantCultureIgnoreCase))
+                                isReferenceColumn = true;
+                        }
+
                         DataGridViewColumn newColumn = quantColumns[i].Clone() as DataGridViewColumn;
-                        newColumn.HeaderText = String.Format("{0} ({1})", groupName, newColumn.HeaderText);
+                        newColumn.HeaderText = String.Format("{0} ({1})", sampleName, newColumn.HeaderText);
                         newColumn.Tag = new Pair<bool, Map<long, PivotData>>(true, statsBySpectrumSourceGroup[groupId]);
                         newColumn.DataPropertyName = i.ToString();
                         newColumn.Name = "pivotQuantColumn" + i.ToString();
                         newColumn.FillWeight = 1;
-                        // preserve the visibility of the cloned column
                         pivotColumns.Add(newColumn);
+
+                        if (isReferenceColumn)
+                            ReferenceColumn = newColumn;
                     }
 
                     continue;
@@ -1716,6 +1714,12 @@ namespace IDPicker.Forms
             {
                 treeDataGridView.ResumeLayout(true);
                 return;
+            }
+
+            if (statsBySpectrumSourceGroup != null && pivotColumns.Count > 0)
+            {
+                foreach (var c in TMT_ReporterIonColumns) c.Visible = false;
+                foreach (var c in iTRAQ_ReporterIonColumns) c.Visible = false;
             }
 
             var sourceNames = sourceById.Select(o => o.Value.Name);
@@ -1899,10 +1903,14 @@ namespace IDPicker.Forms
                     else if (quantitationMethods.Contains(QuantitationMethod.ITRAQ4plex))
                         iTRAQ_ReporterIonColumns.GetRange(1, 4).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
 
-                    if (quantitationMethods.Contains(QuantitationMethod.TMT10plex))
+                    if (quantitationMethods.Contains(QuantitationMethod.TMTpro16plex))
                         TMT_ReporterIonColumns.ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                    else if (quantitationMethods.Contains(QuantitationMethod.TMT11plex))
+                        TMT_ReporterIonColumns.GetRange(0, 11).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                    else if (quantitationMethods.Contains(QuantitationMethod.TMT10plex))
+                        TMT_ReporterIonColumns.GetRange(0, 10).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
                     else if (quantitationMethods.Contains(QuantitationMethod.TMT6plex))
-                        TMT_ReporterIonColumns.Where(o => new List<int> {0, 2, 4, 6, 8, 9}.Contains((int) o.Tag)).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                        TMT_ReporterIonColumns.Where(o => new List<int> {0, 1, 4, 5, 8, 9}.Contains((int) o.Tag)).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
                     else if (quantitationMethods.Contains(QuantitationMethod.TMT2plex))
                         TMT_ReporterIonColumns.Where(o => new List<int> {0, 2}.Contains((int) o.Tag)).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
                 }

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Tahmina Jahan <tabaker .at. u.washington.edu>,
  *                  Alana Killeen <killea .at. u.washington.edu>,
  *                  UWPR, Department of Genome Sciences, UW
@@ -27,6 +27,7 @@ using System.Linq;
 using System.Text;
 using System.Windows.Forms;
 using pwiz.Common.Chemistry;
+using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
 using pwiz.MSGraph;
 using pwiz.ProteomeDatabase.API;
@@ -36,12 +37,14 @@ using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.EditUI;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
+using pwiz.Skyline.Model.Hibernate;
 using pwiz.Skyline.Model.Lib.Midas;
 using pwiz.Skyline.Model.Proteome;
 using ZedGraph;
@@ -57,11 +60,10 @@ namespace pwiz.Skyline.SettingsUI
     /// from a drop-down, view and search the list of peptides, and view the
     /// spectrum for peptide selected in the list.
     /// </summary>
-    public partial class ViewLibraryDlg : FormEx, IGraphContainer, ITipDisplayer
+    public partial class ViewLibraryDlg : FormEx, IAuditLogModifier<ViewLibraryDlg.ViewLibrarySettings>, IGraphContainer, ITipDisplayer
     {
         // Used to parse the modification string in a given sequence
-        private const string REGEX_MODIFICATION_PATTERN = @"\[[^\]]*\]"; // Not L10N
-        private const string COLON_SEP = ": ";  // Not L10N
+        private const string COLON_SEP = ": ";
 
         protected internal const int PADDING = 3;
         private const TextFormatFlags FORMAT_PLAIN = TextFormatFlags.SingleLine | TextFormatFlags.VerticalCenter;
@@ -72,11 +74,11 @@ namespace pwiz.Skyline.SettingsUI
         private string _selectedLibName;
         private Library _selectedLibrary;
         private LibrarySpec _selectedSpec;
-        private Range _currentRange;
         private readonly PageInfo _pageInfo;
         private readonly IDocumentUIContainer _documentUiContainer;
         private SrmDocument Document { get { return _documentUiContainer.Document; }  }
         private readonly Bitmap _peptideImg;
+        private readonly Bitmap _moleculeImg;
         public ViewLibSpectrumGraphItem GraphItem { get; private set; }
         public GraphSpectrumSettings GraphSettings { get; private set; }
         public int LineWidth { get; set; }
@@ -84,8 +86,8 @@ namespace pwiz.Skyline.SettingsUI
 
         private readonly SettingsListComboDriver<LibrarySpec> _driverLibraries;
 
-        private ViewLibraryPepInfo[] _peptides;
-        private byte[] _lookupPool;
+        private ViewLibraryPepInfoList _peptides;
+        private IList<int> _currentRange;
 
         private LibKeyModificationMatcher _matcher;
 
@@ -93,9 +95,11 @@ namespace pwiz.Skyline.SettingsUI
 
         private readonly NodeTip _nodeTip;
         private readonly MoveThreshold _moveThreshold = new MoveThreshold(5, 5);
-        private ViewLibraryPepInfo? _lastTipNode;
+        private ViewLibraryPepInfo _lastTipNode;
         private ITipProvider _lastTipProvider;
         private bool _showChromatograms;
+        private bool _hasChromatograms;
+        private bool _hasScores;
         private readonly GraphHelper _graphHelper;
 
         private ModFontHolder ModFonts { get; set; }
@@ -112,7 +116,10 @@ namespace pwiz.Skyline.SettingsUI
             }
         }
 
-        public int PeptidesCount { get { return _peptides.Count(); } }
+        public int PeptidesCount { get { return _peptides.Count; } }
+
+        public bool HasSmallMolecules { get; private set; }
+        public bool HasPeptides { get; private set;  }
 
         public int PeptideDisplayCount { get { return listPeptide.Items.Count; } }
 
@@ -132,7 +139,7 @@ namespace pwiz.Skyline.SettingsUI
             if (string.IsNullOrEmpty(_selectedLibName) && Settings.Default.SpectralLibraryList.Count > 0)
                 _selectedLibName = Settings.Default.SpectralLibraryList[0].Name;
 
-            _pageInfo = new PageInfo(100, 0, _currentRange);
+            _pageInfo = new PageInfo(100, 0, new IndexedSubList<ViewLibraryPepInfo>(_peptides, _currentRange));
             _documentUiContainer = documentContainer;
             _documentUiContainer.ListenUI(OnDocumentChange);
 
@@ -144,9 +151,10 @@ namespace pwiz.Skyline.SettingsUI
             Icon = Resources.Skyline;
             ModFonts = new ModFontHolder(listPeptide);
             _peptideImg = Resources.PeptideLib;
+            _moleculeImg = Resources.MoleculeLib;
 
             // Tip for peptides in list
-            _nodeTip = new NodeTip(this);
+            _nodeTip = new NodeTip(this) {Parent = this};
 
             // Restore window placement.
             Size size = Settings.Default.ViewLibrarySize;
@@ -164,6 +172,7 @@ namespace pwiz.Skyline.SettingsUI
 
             _matcher = new LibKeyModificationMatcher();
             _showChromatograms = Settings.Default.ShowLibraryChromatograms;
+            _hasChromatograms = false; // We'll set this true if the user opens a chromatogram library
         }
 
         private void SpectralLibraryList_ListChanged(object sender, EventArgs e)
@@ -188,73 +197,6 @@ namespace pwiz.Skyline.SettingsUI
             _driverLibraries.LoadList(_selectedLibName);
         }
 
-        /// <summary>
-        /// Uses binary search to find the range of peptides in the list
-        /// that match the string passed in. If none is found, a range of
-        /// (-1, -1) is returned.
-        /// </summary>
-        private Range BinaryRangeSearch(string s, Range rangeIn)
-        {
-            // First try to find a single match for s within the peptides list
-            var searchRange = new Range(rangeIn);
-            if (s.Length > 0)
-            {
-                bool found = false;
-                int mid = 0;
-                while (searchRange.StartIndex <= searchRange.EndIndex)
-                {
-                    mid = (searchRange.StartIndex + searchRange.EndIndex) / 2;
-                    int compResult = Compare(_peptides[mid], s);
-                    if (compResult < 0)
-                    {
-                        searchRange.StartIndex = mid + 1;
-                    }
-                    else if (compResult > 0)
-                    {
-                        searchRange.EndIndex = mid - 1;
-                    }
-                    else
-                    {
-                        // We've found a single match
-                        found = true;
-                        break;
-                    }
-                }
-
-                // We'll return (-1, -1) if nothing was found
-                searchRange.StartIndex = -1;
-                searchRange.EndIndex = -1;
-
-                if (found)
-                {
-                    // Now that we've found a single match, we first need to
-                    // walk up the array and find each matching peptide above
-                    // it in the peptides list.
-                    searchRange.StartIndex = mid;
-                    int previousIndex = searchRange.StartIndex - 1;
-                    while ((previousIndex >= rangeIn.StartIndex) &&
-                            IsMatch(_peptides[previousIndex], s))
-                    {
-                        searchRange.StartIndex = previousIndex;
-                        previousIndex--;
-                    }
-
-                    // Next, we walk down the array and find each matching 
-                    // peptide below it in the peptides list.
-                    searchRange.EndIndex = mid;
-                    int nextIndex = searchRange.EndIndex + 1;
-                    while ((nextIndex <= rangeIn.EndIndex) &&
-                            IsMatch(_peptides[nextIndex], s))
-                    {
-                        searchRange.EndIndex = nextIndex;
-                        nextIndex++;
-                    }
-                }
-            }
-
-            return searchRange;
-        }
-
         public bool AssociateMatchingProteins
         {
             get { return cbAssociateProteins.Checked; }
@@ -265,7 +207,7 @@ namespace pwiz.Skyline.SettingsUI
         {
             foreach(ViewLibraryPepInfo pepInfo in listPeptide.Items)
             {
-                if (pepInfo.DisplayString.Contains(text))
+                if (pepInfo.AnnotatedDisplayText.Contains(text))
                 {
                     listPeptide.SelectedItem = pepInfo;
                     return;
@@ -366,7 +308,7 @@ namespace pwiz.Skyline.SettingsUI
             // Order matters!!
             LoadLibrary();
             InitializePeptides();
-            _currentRange = BinaryRangeSearch(textPeptide.Text, new Range(0, _peptides.Length - 1));
+            _currentRange = new RangeList(0, _peptides.Count);
             UpdatePageInfo();
             UpdateStatusArea();
             cbShowModMasses.Checked = Settings.Default.ShowModMassesInExplorer;
@@ -407,6 +349,10 @@ namespace pwiz.Skyline.SettingsUI
                             MessageDlg.ShowException(this, status.ErrorException);
                             return;
                         }
+                        else if (!string.IsNullOrEmpty(status.WarningMessage))
+                        {
+                            MessageDlg.Show(this, status.WarningMessage);
+                        }
                     }
                     catch (Exception x)
                     {
@@ -428,22 +374,29 @@ namespace pwiz.Skyline.SettingsUI
         /// </summary>
         private void InitializePeptides()
         {
-            var lookupPool = new List<byte>();
-            _peptides = new ViewLibraryPepInfo[_selectedLibrary != null ? _selectedLibrary.SpectrumCount : 0];
-            if (_selectedLibrary != null)
+            IEnumerable<ViewLibraryPepInfo> pepInfos;
+            if (_selectedLibrary == null)
             {
-                int index = 0;
-                foreach (var libKey in _selectedLibrary.Keys)
-                {
-                    var pepInfo = new ViewLibraryPepInfo(libKey, lookupPool);
-                    _peptides[index] = pepInfo;
-                    index++;
-                }
-                Array.Sort(_peptides, new PepInfoComparer(lookupPool));
+                pepInfos = new ViewLibraryPepInfo[0];
             }
-
-            _lookupPool = lookupPool.ToArray();
-            _currentRange = new Range(0, _peptides.Length - 1);
+            else
+            {
+                pepInfos = _selectedLibrary.Keys.Select(
+                    key =>
+                    {
+                        if (!_selectedLibrary.TryGetLibInfo(key, out var libInfo))
+                        {
+                            libInfo = null;
+                        }
+                        return new ViewLibraryPepInfo(key, libInfo);
+                    });
+            }
+            _peptides = new ViewLibraryPepInfoList(pepInfos);
+            bool allPeptides = _peptides.All(key => key.Key.IsProteomicKey);
+            MoleculeLabel.Left = PeptideLabel.Left;
+            PeptideLabel.Visible = HasPeptides = allPeptides;
+            MoleculeLabel.Visible = HasSmallMolecules = !allPeptides;
+            _currentRange = _peptides.Filter(null);
         }
 
         public bool MatchModifications()
@@ -477,7 +430,9 @@ namespace pwiz.Skyline.SettingsUI
                         doc = doc.ChangeSettings(doc.Settings.ChangePeptideSettings(doc.Settings.PeptideSettings.ChangeModifications(mods)));
                         doc.Settings.UpdateDefaultModifications(false);
                         return doc;
-                    });
+                    }, docPair => AuditLogEntry.SettingsLogFunction(docPair)
+                        .ChangeUndoRedo(new MessageInfo(MessageType.matched_modifications_of_library, docPair.NewDocumentType,
+                            _selectedLibName)));
                 }
                 return true;
             }
@@ -490,7 +445,7 @@ namespace pwiz.Skyline.SettingsUI
         private void UpdatePageInfo()
         {
             // We need to update the number of total items
-            _pageInfo.ItemIndexRange = _currentRange;
+            _pageInfo.ItemIndexRange = new IndexedSubList<ViewLibraryPepInfo>(_peptides, _currentRange);
 
             // Restart on page 1 (or 0 if we have no items)
             PreviousLink.Enabled = false;
@@ -517,13 +472,16 @@ namespace pwiz.Skyline.SettingsUI
                 showEnd = _pageInfo.EndIndex;
             }
 
-            const string numFormat = "#,0"; // Not L10N
+            const string numFormat = "#,0";
+            var peptideCountFormat = HasSmallMolecules
+                ? Resources.ViewLibraryDlg_UpdateStatusArea_Molecules__0__through__1__of__2__total_
+                : Resources.ViewLibraryDlg_UpdateStatusArea_Peptides__0__through__1__of__2__total;
 
             PeptideCount.Text =
-                string.Format(Resources.ViewLibraryDlg_UpdateStatusArea_Peptides__0__through__1__of__2__total,
+                string.Format(peptideCountFormat,
                               showStart.ToString(numFormat),
                               showEnd.ToString(numFormat),
-                              _peptides.Length.ToString(numFormat));
+                                _peptides.Count.ToString(numFormat));
 
             PageCount.Text = string.Format(Resources.ViewLibraryDlg_UpdateStatusArea_Page__0__of__1__, _pageInfo.Page,
                                            _pageInfo.Pages);
@@ -536,7 +494,7 @@ namespace pwiz.Skyline.SettingsUI
         private void UpdateListPeptide(int selectPeptideIndex)
         {
             var pepMatcher = new ViewLibraryPepMatching(Document,
-                _selectedLibrary, _selectedSpec, _lookupPool, _matcher, _peptides);
+                _selectedLibrary, _selectedSpec, _matcher, _peptides);
             listPeptide.BeginUpdate();
             listPeptide.Items.Clear();
             if (_currentRange.Count > 0)
@@ -552,18 +510,27 @@ namespace pwiz.Skyline.SettingsUI
                     {
                         for (int i = start; i < end; i++)
                         {
-                            if (IsUpdateCanceled)   // Allows tests to get out of this loop and fail
+                            if (IsUpdateCanceled) // Allows tests to get out of this loop and fail
                                 break;
                             longWaitBroker.SetProgressCheckCancel(i - start, end - start);
-                            ViewLibraryPepInfo pepInfo = _peptides[i];
-                            int charge = pepInfo.Key.Charge;
+                            ViewLibraryPepInfo pepInfo = _peptides[_currentRange[i]];
+                            var adduct = pepInfo.Key.Adduct;
                             var diff = new SrmSettingsDiff(true, false, true, false, false, false);
-                            listPeptide.Items.Add(pepMatcher.AssociateMatchingPeptide(pepInfo, charge, diff));
+                            listPeptide.Items.Add(pepMatcher.AssociateMatchingPeptide(pepInfo, adduct, diff));
                         }
                     });
                 }
                 catch (OperationCanceledException)
                 {
+                }
+                catch (Exception x)
+                {
+                    // Unexpected exception, gather context info and pass it along
+                    var errorMessage = TextUtil.LineSeparate(
+                        string.Format(Resources.BiblioSpecLiteLibrary_Load_Failed_loading_library__0__, _selectedLibName),
+                        x.Message,
+                        _selectedLibrary.LibraryDetails.ToString());
+                    throw new Exception(errorMessage, x);
                 }
 
                 listPeptide.SelectedIndex = Math.Min(selectPeptideIndex, listPeptide.Items.Count - 1);
@@ -573,8 +540,8 @@ namespace pwiz.Skyline.SettingsUI
         }
 
         public static void GetPeptideInfo(ViewLibraryPepInfo pepInfo, 
-                                        LibKeyModificationMatcher matcher, byte[] lookupPool, 
-                                        out SrmSettings settings, out TransitionGroup transitionGroup, out ExplicitMods mods)
+                                        LibKeyModificationMatcher matcher, 
+                                        out SrmSettings settings, out TransitionGroupDocNode transitionGroup, out ExplicitMods mods)
         {
             settings = Program.ActiveDocumentUI.Settings;
 
@@ -587,14 +554,18 @@ namespace pwiz.Skyline.SettingsUI
             {
                 mods = nodePep.ExplicitMods;
                 // Should always be just one child.  The child that matched this spectrum.
-                transitionGroup = nodePep.TransitionGroups.First().TransitionGroup;
+                transitionGroup = nodePep.TransitionGroups.First();
             }
-            else if (!pepInfo.Key.IsPrecursorKey)
+            else if (null != pepInfo.Key.LibraryKey.Target)
             {
-                var peptide = new Peptide(null, pepInfo.GetAASequence(lookupPool),
-                                          null, null, 0);
-                transitionGroup = new TransitionGroup(peptide, pepInfo.Charge,
-                                                      IsotopeLabelType.light, true, null);
+                var peptide = pepInfo.Key.LibraryKey.CreatePeptideIdentityObj();
+                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, pepInfo.Adduct,
+                                                      IsotopeLabelType.light, true, null), null);
+                if (pepInfo.Key.IsSmallMoleculeKey)
+                {
+                    mods = null;
+                    return;
+                }
 
                 // Because the document modifications do not explain this peptide, a set of
                 // explicit modifications must be constructed, even if they are empty.
@@ -602,7 +573,7 @@ namespace pwiz.Skyline.SettingsUI
                 IEnumerable<ModificationInfo> modList = GetModifications(pepInfo);
                 foreach (var modInfo in modList)
                 {
-                    var smod = new StaticMod("temp", // Not L10N
+                    var smod = new StaticMod(@"temp",
                                              modInfo.ModifiedAminoAcid.ToString(CultureInfo.InvariantCulture),
                                              null,
                                              null,
@@ -619,8 +590,10 @@ namespace pwiz.Skyline.SettingsUI
             {
                 // Create custom ion node for midas library
                 var precursor = pepInfo.Key.PrecursorMz.GetValueOrDefault();
-                var peptide = new Peptide(new DocNodeCustomIon(precursor, precursor, precursor.ToString(CultureInfo.CurrentCulture)));
-                transitionGroup = new TransitionGroup(peptide, 0, IsotopeLabelType.light, true, null);
+                var precursorMono = new TypedMass(precursor, MassType.Monoisotopic);
+                var precursorAverage = new TypedMass(precursor, MassType.Average);
+                var peptide = new Peptide(new CustomMolecule(precursorMono, precursorAverage, precursor.ToString(CultureInfo.CurrentCulture)));
+                transitionGroup = new TransitionGroupDocNode(new TransitionGroup(peptide, Adduct.EMPTY, IsotopeLabelType.light, true, null), null);
                 mods = new ExplicitMods(peptide, new ExplicitMod[0], new TypedExplicitModifications[0]);
             }
         }
@@ -649,20 +622,41 @@ namespace pwiz.Skyline.SettingsUI
             {
                 int index = GetIndexOfSelectedPeptide();
                 bool isSequenceLibrary = !(_selectedLibrary is MidasLibrary);
+                bool isSmallMoleculeItem = -1 != index && _peptides[index].Key.IsSmallMoleculeKey;
                 if (isSequenceLibrary)
+                {
                     btnAdd.Enabled = -1 != index;
+                    cbAssociateProteins.Enabled = !isSmallMoleculeItem;
+                    cbAssociateProteins.Visible = HasPeptides; // Don't show the control at all if library is all small mol
+                }
                 else
+                {
                     btnAdd.Enabled = btnAddAll.Enabled = cbAssociateProteins.Enabled = false;
+                }
 
-                btnAIons.Enabled = btnBIons.Enabled = btnCIons.Enabled = btnXIons.Enabled = btnYIons.Enabled = btnZIons.Enabled
+                btnAIons.Enabled = btnAIons.Visible =
+                    btnBIons.Enabled = btnBIons.Visible =
+                    btnCIons.Enabled = btnCIons.Visible =
+                    btnXIons.Enabled = btnXIons.Visible =
+                    btnYIons.Enabled = btnYIons.Visible =
+                    btnZIons.Enabled = btnZIons.Visible =
+                    aionsContextMenuItem.Enabled = aionsContextMenuItem.Visible =
+                    bionsContextMenuItem.Enabled = bionsContextMenuItem.Visible =
+                    cionsContextMenuItem.Enabled = cionsContextMenuItem.Visible =
+                    xionsContextMenuItem.Enabled = xionsContextMenuItem.Visible =
+                    yionsContextMenuItem.Enabled = yionsContextMenuItem.Visible =
+                    zionsContextMenuItem.Enabled = zionsContextMenuItem.Visible
+                    = isSequenceLibrary && !isSmallMoleculeItem;
+                btnFragmentIons.Enabled = btnFragmentIons.Visible =
+                    fragmentionsContextMenuItem.Enabled = fragmentionsContextMenuItem.Visible =
+                    isSequenceLibrary && isSmallMoleculeItem;
+                precursorIonContextMenuItem.Enabled = chargesContextMenuItem.Enabled
                     = toolStripSeparator1.Enabled = toolStripSeparator2.Enabled = charge1Button.Enabled = charge2Button.Enabled
-                    = aionsContextMenuItem.Enabled = bionsContextMenuItem.Enabled = cionsContextMenuItem.Enabled
-                    = xionsContextMenuItem.Enabled = yionsContextMenuItem.Enabled = zionsContextMenuItem.Enabled
-                    = precursorIonContextMenuItem.Enabled = chargesContextMenuItem.Enabled
                     = toolStripSeparator11.Enabled = toolStripSeparator12.Enabled = toolStripSeparator13.Enabled
-                    = ranksContextMenuItem.Enabled = ionMzValuesContextMenuItem.Enabled
+                    = ranksContextMenuItem.Enabled = scoreContextMenuItem.Enabled = ionMzValuesContextMenuItem.Enabled
                     = observedMzValuesContextMenuItem.Enabled = duplicatesContextMenuItem.Enabled
                     = isSequenceLibrary;
+
 
                 if (-1 != index)
                 {
@@ -674,16 +668,21 @@ namespace pwiz.Skyline.SettingsUI
                         if (_matcher.HasMatches)
                             settings = settings.ChangePeptideModifications(modifications => _matcher.MatcherPepMods);
 
-                        TransitionGroup transitionGroup;
+                        TransitionGroupDocNode transitionGroupDocNode;
 
-                        var types = ShowIonTypes;
-                        var charges = ShowIonCharges;
-                        var rankTypes = settings.TransitionSettings.Filter.IonTypes;
-                        var rankCharges = settings.TransitionSettings.Filter.ProductCharges;
+                        var types = ShowIonTypes(!isSmallMoleculeItem);
+                        var rankTypes = isSmallMoleculeItem ?
+                            settings.TransitionSettings.Filter.SmallMoleculeIonTypes :
+                            settings.TransitionSettings.Filter.PeptideIonTypes;
+                        var rankCharges = isSmallMoleculeItem ?
+                            settings.TransitionSettings.Filter.SmallMoleculeFragmentAdducts :
+                            settings.TransitionSettings.Filter.PeptideProductCharges;
 
                         ExplicitMods mods;
                         var pepInfo = (ViewLibraryPepInfo)listPeptide.SelectedItem;
-                        GetPeptideInfo(pepInfo, _matcher, _lookupPool, out settings, out transitionGroup, out mods);
+                        GetPeptideInfo(pepInfo, _matcher, out settings, out transitionGroupDocNode, out mods);
+                        var showAdducts = (isSmallMoleculeItem ?  transitionGroupDocNode.InUseAdducts : Transition.DEFAULT_PEPTIDE_LIBRARY_CHARGES).ToList();
+                        var charges = ShowIonCharges(showAdducts);
 
                         // Make sure the types and charges in the settings are at the head
                         // of these lists to give them top priority, and get rankings correct.
@@ -694,36 +693,42 @@ namespace pwiz.Skyline.SettingsUI
                                 types.Insert(i++, type);
                         }
                         i = 0;
-                        foreach (int charge in rankCharges)
+                        var adducts = new List<Adduct>();
+                        var absoluteChargeValues = Adduct.OrderedAbsoluteChargeValues(rankCharges);
+                        foreach (var charge in absoluteChargeValues)
                         {
                             if (charges.Remove(charge))
                                 charges.Insert(i++, charge);
+                            adducts.AddRange(showAdducts.Where(a => charge == Math.Abs(a.AdductCharge)));
                         }
+                        adducts.AddRange(showAdducts.Where(a => charges.Contains(Math.Abs(a.AdductCharge)) && !adducts.Contains(a))); // And the unranked charges as well
 
-                        var spectrumInfoR = new LibraryRankedSpectrumInfo(spectrum,
-                                                                          transitionGroup.LabelType,
-                                                                          transitionGroup,
+                        var spectrumInfo = _selectedLibrary.GetSpectra(_peptides[index].Key, null, LibraryRedundancy.best).FirstOrDefault();
+                        var spectrumInfoR = LibraryRankedSpectrumInfo.NewLibraryRankedSpectrumInfo(spectrum,
+                                                                          transitionGroupDocNode.TransitionGroup.LabelType,
+                                                                          transitionGroupDocNode,
                                                                           settings,
-                                                                          transitionGroup.Peptide.Sequence,
+                                                                          transitionGroupDocNode.Peptide.Target,
                                                                           mods,
-                                                                          charges,
+                                                                          adducts,
                                                                           types,
                                                                           rankCharges,
-                                                                          rankTypes);
+                                                                          rankTypes,
+                                                                          (spectrumInfo?.SpectrumHeaderInfo as BiblioSpecSpectrumHeaderInfo)?.Score);
                         LibraryChromGroup libraryChromGroup = null;
-                        if (_showChromatograms)
+                        if (spectrumInfo != null)
                         {
-                            var spectrumInfo = _selectedLibrary.GetSpectra(_peptides[index].Key, null, LibraryRedundancy.best).FirstOrDefault();
-                            if (null != spectrumInfo)
-                            {
-                                libraryChromGroup = _selectedLibrary.LoadChromatogramData(spectrumInfo.SpectrumKey);
-                            }
+                            libraryChromGroup = _selectedLibrary.LoadChromatogramData(spectrumInfo.SpectrumKey);
                         }
-                        GraphItem = new ViewLibSpectrumGraphItem(spectrumInfoR, transitionGroup, _selectedLibrary, pepInfo.Key)
+                        _hasChromatograms = libraryChromGroup != null;
+                        _hasScores = (spectrumInfo?.SpectrumHeaderInfo as BiblioSpecSpectrumHeaderInfo) != null;
+
+                        GraphItem = new ViewLibSpectrumGraphItem(spectrumInfoR, transitionGroupDocNode.TransitionGroup, _selectedLibrary, pepInfo.Key)
                         {
                             ShowTypes = types,
                             ShowCharges = charges,
                             ShowRanks = Settings.Default.ShowRanks,
+                            ShowScores = Settings.Default.ShowLibraryScores,
                             ShowMz = Settings.Default.ShowIonMz,
                             ShowObservedMz = Settings.Default.ShowObservedMz,
                             ShowDuplicates = Settings.Default.ShowDuplicateIons,
@@ -738,7 +743,7 @@ namespace pwiz.Skyline.SettingsUI
                             IsotopeLabelType.light, LibraryRedundancy.best).FirstOrDefault();
                         if (bestSpectrum != null)
                         {
-                            double? rt = bestSpectrum.RetentionTime;
+                            double? rt = libraryChromGroup?.RetentionTime ?? bestSpectrum.RetentionTime;
                             string filename = bestSpectrum.FileName;
 
                             if (!string.IsNullOrEmpty(filename))
@@ -747,22 +752,24 @@ namespace pwiz.Skyline.SettingsUI
                             }
                             if (rt.HasValue)
                             {
-                                labelRT.Text = Resources.ViewLibraryDlg_UpdateUI_RT + COLON_SEP + rt;
+                                labelRT.Text = Resources.ViewLibraryDlg_UpdateUI_RT + COLON_SEP + rt.Value.ToString(Formats.RETENTION_TIME);
                             }
-                            DriftTimeInfo dt = bestSpectrum.DriftTimeInfo;
+                            IonMobilityAndCCS dt = bestSpectrum.IonMobilityInfo;
                             if (dt != null && !dt.IsEmpty)
                             {
-                                var dtText = string.Empty;
-                                if (dt.HasCollisionalCrossSection)
-                                    dtText = "CCS" + COLON_SEP + string.Format("{0:F4} ", dt.CollisionalCrossSectionSqA.Value); // Not L10N
-                                if (dt.HasDriftTime)
-                                    dtText += "DT" + COLON_SEP + string.Format("{0:F4}", dt.DriftTimeMsec.Value); // Not L10N
-                                if (dt.HighEnergyDriftTimeOffsetMsec != 0) // Show the high energy value (as in Waters MSe) if different
-                                    dtText += String.Format("({0:F4}ms)", dt.HighEnergyDriftTimeOffsetMsec); // Not L10N
-                                labelRT.Text = TextUtil.SpaceSeparate(labelRT.Text, dtText);
+                                var ccsText = string.Empty;
+                                var imText = string.Empty;
+                                var ccs = libraryChromGroup?.CCS ?? dt.CollisionalCrossSectionSqA;
+                                if (ccs.HasValue)
+                                    ccsText = Resources.ViewLibraryDlg_UpdateUI_CCS__ + string.Format(@"{0:F2}", ccs.Value);
+                                if (dt.HasIonMobilityValue)
+                                    imText = Resources.ViewLibraryDlg_UpdateUI_IM__ + string.Format(@"{0:F2} {1}", dt.IonMobility.Mobility, dt.IonMobility.UnitsString);
+                                if (dt.HighEnergyIonMobilityValueOffset != 0) // Show the high energy value (as in Waters MSe) if different
+                                    imText += String.Format(@"({0:F2})", dt.HighEnergyIonMobilityValueOffset);
+                                labelRT.Text = TextUtil.TextSeparate(@"  ", labelRT.Text, ccsText, imText);
                             }
                         }
-                        if (null == libraryChromGroup)
+                        if (!_showChromatograms || !_hasChromatograms)
                         {
                             _graphHelper.ResetForSpectrum(null);
                             _graphHelper.AddSpectrum(GraphItem);
@@ -770,7 +777,7 @@ namespace pwiz.Skyline.SettingsUI
                         }
                         else
                         {
-                            _graphHelper.ResetForChromatograms(new[]{transitionGroup});
+                            _graphHelper.ResetForChromatograms(new[]{transitionGroupDocNode.TransitionGroup}, forceLegendDisplay:true);
                             double maxHeight = libraryChromGroup.ChromDatas.Max(chromData => chromData.Height);
                             int iChromDataPrimary = libraryChromGroup.ChromDatas.IndexOf(chromData => maxHeight == chromData.Height);
                             for (int iChromData = 0; iChromData < libraryChromGroup.ChromDatas.Count; iChromData++)
@@ -779,11 +786,11 @@ namespace pwiz.Skyline.SettingsUI
                                 TransitionChromInfo transitionChromInfo;
                                 var chromData = libraryChromGroup.ChromDatas[iChromData];
                                 GraphSpectrum.MakeChromatogramInfo(SignedMz.ZERO, libraryChromGroup, chromData, out chromatogramInfo, out transitionChromInfo);
-                                var nodeGroup = new TransitionGroupDocNode(transitionGroup, new TransitionDocNode[0]);
+                                var nodeGroup = new TransitionGroupDocNode(transitionGroupDocNode.TransitionGroup, new TransitionDocNode[0]);
                                 var color =
                                     GraphChromatogram.COLORS_LIBRARY[iChromData%GraphChromatogram.COLORS_LIBRARY.Count];
                                 var graphItem = new ChromGraphItem(nodeGroup, null, chromatogramInfo, iChromData == iChromDataPrimary ? transitionChromInfo : null, null,
-                                   new[] { iChromData == iChromDataPrimary }, null, 0, false, false, 0,
+                                   new[] { iChromData == iChromDataPrimary }, null, 0, false, false, null, 0,
                                    color, Settings.Default.ChromatogramFontSize, 1);
                                 LineItem curve = (LineItem) _graphHelper.AddChromatogram(PaneKey.DEFAULT, graphItem);
                                 var pointAnnotation = GraphItem.AnnotatePoint(new PointPair(chromData.Mz, 1.0));
@@ -793,7 +800,7 @@ namespace pwiz.Skyline.SettingsUI
                                 }
                                 else
                                 {
-                                    curve.Label.Text = chromData.Mz.ToString("0.####"); // Not L10N? international # formats
+                                    curve.Label.Text = chromData.Mz.ToString(@"0.####"); // CONSIDER: localize? international # formats
                                 }
                                 curve.Line.Width = Settings.Default.ChromatogramLineWidth;
                                 curve.Color = color;
@@ -828,6 +835,7 @@ namespace pwiz.Skyline.SettingsUI
             btnXIons.Checked = btnXIons.Enabled && Settings.Default.ShowXIons;
             btnYIons.Checked = btnYIons.Enabled && Settings.Default.ShowYIons;
             btnZIons.Checked = btnZIons.Enabled && Settings.Default.ShowZIons;
+            btnFragmentIons.Checked = btnFragmentIons.Enabled && Settings.Default.ShowFragmentIons;
             charge1Button.Checked = charge1Button.Enabled && Settings.Default.ShowCharge1;
             charge2Button.Checked = charge2Button.Enabled && Settings.Default.ShowCharge2;
         }
@@ -846,42 +854,37 @@ namespace pwiz.Skyline.SettingsUI
         /// </summary>
         private int GetIndexOfSelectedPeptide()
         {
-            if (_currentRange.Count > 0)
+            var selPepInfo = listPeptide.SelectedItem as ViewLibraryPepInfo;
+            if (selPepInfo == null)
             {
-                var selPepInfo = (ViewLibraryPepInfo) listPeptide.SelectedItem;
-                string selPeptide = selPepInfo.DisplayString;
-                string selPeptideAASequence = GetPepInfoComparisonString(selPepInfo);
-
-                Range selPeptideRange = BinaryRangeSearch(selPeptideAASequence, new Range(_currentRange));
-                if (selPeptideRange.Count > 0)
-                {
-                    int start = selPeptideRange.StartIndex;
-                    int end = selPeptideRange.EndIndex;
-                    for (int i = start; i <= end; i++)
-                    {
-                        if (selPeptide.Equals(_peptides[i].DisplayString))
-                        {
-                            return i;
-                        }
-                    }
-                }
+                return -1;
             }
-
-            return -1;
+            int indexInFullList = _peptides.IndexOf(selPepInfo.Key.LibraryKey);
+            if (indexInFullList < 0)
+            {
+                return -1;
+            }
+            if (!_currentRange.Contains(indexInFullList))
+            {
+                return -1;
+            }
+            return indexInFullList;
         }
 
         #endregion
 
         #region IStateProvider Implementation
 
-        public IList<IonType> ShowIonTypes
+        public IList<IonType> ShowIonTypes(bool isProteomic)
         {
-            get { return GraphSettings.ShowIonTypes; }
+            return GraphSettings.ShowIonTypes(isProteomic); 
         }
 
-        public IList<int> ShowIonCharges
+        // N.B. we're interested in the absolute value of charge here, so output list may be shorter than input list
+        // CONSIDER(bspratt): will we want finer grained (full adduct sense) control for small molecule libs?
+        public IList<int> ShowIonCharges(IEnumerable<Adduct> chargePriority)
         {
-            get { return GraphSettings.ShowIonCharges; }
+            return GraphSettings.ShowIonCharges(chargePriority); 
         }
 
         public void BuildSpectrumMenu(ZedGraphControl zedGraphControl, ContextMenuStrip menuStrip)
@@ -893,7 +896,7 @@ namespace pwiz.Skyline.SettingsUI
             {
                 items[i] = menuStrip.Items[i];
                 var tag = (string)items[i].Tag;
-                if (tag == "unzoom") // Not L10N
+                if (tag == @"unzoom")
                     iUnzoom = i;
             }
 
@@ -915,6 +918,8 @@ namespace pwiz.Skyline.SettingsUI
             menuStrip.Items.Insert(iInsert++, yionsContextMenuItem);
             zionsContextMenuItem.Checked = set.ShowZIons;
             menuStrip.Items.Insert(iInsert++, zionsContextMenuItem);
+            fragmentionsContextMenuItem.Checked = set.ShowFragmentIons;
+            menuStrip.Items.Insert(iInsert++, fragmentionsContextMenuItem);
             precursorIonContextMenuItem.Checked = set.ShowPrecursorIon;
             menuStrip.Items.Insert(iInsert++, precursorIonContextMenuItem);
             menuStrip.Items.Insert(iInsert++, toolStripSeparator11);
@@ -932,6 +937,11 @@ namespace pwiz.Skyline.SettingsUI
             menuStrip.Items.Insert(iInsert++, toolStripSeparator12);
             ranksContextMenuItem.Checked = set.ShowRanks;
             menuStrip.Items.Insert(iInsert++, ranksContextMenuItem);
+            if (_hasScores)
+            {
+                scoreContextMenuItem.Checked = set.ShowLibraryScores;
+                menuStrip.Items.Insert(iInsert++, scoreContextMenuItem);
+            }
             ionMzValuesContextMenuItem.Checked = set.ShowIonMz;
             menuStrip.Items.Insert(iInsert++, ionMzValuesContextMenuItem);
             observedMzValuesContextMenuItem.Checked = set.ShowObservedMz;
@@ -943,15 +953,18 @@ namespace pwiz.Skyline.SettingsUI
             menuStrip.Items.Insert(iInsert++, lockYaxisContextMenuItem);
             menuStrip.Items.Insert(iInsert++, toolStripSeparator14);
             menuStrip.Items.Insert(iInsert++, spectrumPropsContextMenuItem);
-            showChromatogramsContextMenuItem.Checked = _showChromatograms;
-            menuStrip.Items.Insert(iInsert++, showChromatogramsContextMenuItem);
+            if (_hasChromatograms)
+            {
+                showChromatogramsContextMenuItem.Checked = _showChromatograms;
+                menuStrip.Items.Insert(iInsert++, showChromatogramsContextMenuItem);
+            }
             menuStrip.Items.Insert(iInsert, toolStripSeparator15);
 
             // Remove some ZedGraph menu items not of interest
             foreach (var item in items)
             {
                 var tag = (string)item.Tag;
-                if (tag == "set_default" || tag == "show_val") // Not L10N
+                if (tag == @"set_default" || tag == @"show_val")
                     menuStrip.Items.Remove(item);
             }
             CopyEmfToolStripMenuItem.AddToContextMenu(graphControl, menuStrip);
@@ -978,12 +991,12 @@ namespace pwiz.Skyline.SettingsUI
                 if (_matcher.HasMatches)
                     settings = settings.ChangePeptideModifications(mods => _matcher.MatcherPepMods);
                 textSequences = PeptideTreeNode.CreateTextSequences(pepInfo.PeptideNode, settings,
-                    pepInfo.GetPlainDisplayString(_lookupPool), null, new ModFontHolder(this));
+                    pepInfo.GetPlainDisplayString(), null, new ModFontHolder(this));
             }
             // If no modifications, use a single plain test sequence
             else if (!pepInfo.IsModified)
             {
-                textSequences.Add(CreateTextSequence(pepInfo.DisplayString, false));
+                textSequences.Add(CreateTextSequence(pepInfo.AnnotatedDisplayText, false));
             }
             // Otherwise bold-underline all modifications
             else
@@ -991,7 +1004,7 @@ namespace pwiz.Skyline.SettingsUI
                 var sb = new StringBuilder(128);
                 bool inMod = false;
 
-                string sequence = pepInfo.DisplayString;
+                string sequence = pepInfo.AnnotatedDisplayText;
                 for (int i = 0; i < sequence.Length; i++)
                 {
                     bool isMod = i < sequence.Length - 1 && sequence[i + 1] == '[';
@@ -1046,7 +1059,7 @@ namespace pwiz.Skyline.SettingsUI
             {
                 // Draw the current item text based on the current Font 
                 // and a black brush.
-                TextRenderer.DrawText(e.Graphics, ((ViewLibraryPepInfo)listPeptide.Items[e.Index]).DisplayString,
+                TextRenderer.DrawText(e.Graphics, ((ViewLibraryPepInfo)listPeptide.Items[e.Index]).AnnotatedDisplayText,
                                       e.Font, e.Bounds, e.ForeColor, backColor,
                                       FORMAT_PLAIN);
             }
@@ -1058,7 +1071,7 @@ namespace pwiz.Skyline.SettingsUI
                 Rectangle bounds = e.Bounds;
                 var imgWidth = _peptideImg.Width;
                 if (pepInfo.PeptideNode != null)
-                    e.Graphics.DrawImage(_peptideImg, bounds.Left, bounds.Top, imgWidth, bounds.Height);
+                    e.Graphics.DrawImage(pepInfo.PeptideNode.IsProteomic ? _peptideImg : _moleculeImg, bounds.Left, bounds.Top, imgWidth, bounds.Height);
                 Rectangle rectDraw = new Rectangle(0, bounds.Y, 0, bounds.Height);
                 foreach (var textSequence in GetTextSequences(e))
                 {
@@ -1078,7 +1091,7 @@ namespace pwiz.Skyline.SettingsUI
 
         private void textPeptide_TextChanged(object sender, EventArgs e)
         {
-            _currentRange = BinaryRangeSearch(textPeptide.Text, new Range(0, _peptides.Length - 1));
+            _currentRange = _peptides.Filter(textPeptide.Text);
             UpdatePageInfo();
             UpdateStatusArea();
             UpdateListPeptide(0);
@@ -1173,6 +1186,11 @@ namespace pwiz.Skyline.SettingsUI
             GraphSettings.ShowZIons = !GraphSettings.ShowZIons;
         }
 
+        private void fragmentionsContextMenuItem_Click(object sender, EventArgs e)
+        {
+            GraphSettings.ShowFragmentIons = !GraphSettings.ShowFragmentIons;
+        }
+
         private void precursorIonContextMenuItem_Click(object sender, EventArgs e)
         {
             GraphSettings.ShowPrecursorIon = !GraphSettings.ShowPrecursorIon;
@@ -1210,6 +1228,12 @@ namespace pwiz.Skyline.SettingsUI
         private void ranksContextMenuItem_Click(object sender, EventArgs e)
         {
             Settings.Default.ShowRanks = !Settings.Default.ShowRanks;
+            UpdateUI();
+        }
+
+        private void scoreContextMenuItem_Click(object sender, EventArgs e)
+        {
+            Settings.Default.ShowLibraryScores = !Settings.Default.ShowLibraryScores;
             UpdateUI();
         }
 
@@ -1305,10 +1329,15 @@ namespace pwiz.Skyline.SettingsUI
 
         public void AddPeptide()
         {
-            if (CheckLibraryInSettings() == DialogResult.Cancel || listPeptide.SelectedItem == null)
+            AddPeptide(false);
+        }
+
+        public void AddPeptide(bool addLibraryToDocSeparately)
+        {
+            var startingDocument = Document;
+            if (CheckLibraryInSettings(out startingDocument, addLibraryToDocSeparately) == DialogResult.Cancel || listPeptide.SelectedItem == null)
                 return;
 
-            var startingDocument = Document;
             // Open m/z limitations without allowing doc node tree to change, since that can take
             // seconds to achieve in a large document.
             var broadRangeDocument = startingDocument.ChangeSettingsNoDiff(startingDocument.Settings
@@ -1318,11 +1347,13 @@ namespace pwiz.Skyline.SettingsUI
             var pepMatcher = new ViewLibraryPepMatching(broadRangeDocument,
                                                         _selectedLibrary,
                                                         _selectedSpec,
-                                                        _lookupPool, 
                                                         _matcher,
                                                         _peptides);
 
-            if (!EnsureBackgroundProteome(startingDocument, pepMatcher, false))
+            var entryCreatorList = new AuditLogEntryCreatorList();
+            entryCreatorList.Add(FormSettings.EntryCreator);
+
+            if (!EnsureBackgroundProteome(startingDocument, pepMatcher, false, entryCreatorList))
                 return;
 
             var pepInfo = (ViewLibraryPepInfo)listPeptide.SelectedItem;
@@ -1352,7 +1383,7 @@ namespace pwiz.Skyline.SettingsUI
             if (nodePepMatched.Children.Count > 0)
             {
                 var keyMatched = nodePepMatched.SequenceKey;
-                int chargeMatched = ((TransitionGroupDocNode)nodePepMatched.Children[0]).TransitionGroup.PrecursorCharge;
+                var chargeMatched = ((TransitionGroupDocNode)nodePepMatched.Children[0]).TransitionGroup.PrecursorAdduct;
                 if (!cbAssociateProteins.Checked && Document.Peptides.Contains(nodePep => Equals(nodePep.SequenceKey, keyMatched) && nodePep.HasChildCharge(chargeMatched)))
                 {
                     MessageDlg.Show(this, string.Format(Resources.ViewLibraryDlg_AddPeptide_The_peptide__0__already_exists_with_charge__1__in_the_current_document,
@@ -1361,40 +1392,75 @@ namespace pwiz.Skyline.SettingsUI
                 }
             }
 
-            if (pepMatcher.EnsureDuplicateProteinFilter(this, true) == DialogResult.Cancel)
+            if (pepMatcher.EnsureDuplicateProteinFilter(this, true, entryCreatorList) == DialogResult.Cancel)
                 return;
 
             IdentityPath toPath = Program.MainWindow.SelectedPath;
             IdentityPath selectedPath = toPath;
 
             string message = string.Format(Resources.ViewLibraryDlg_AddPeptide_Add_library_peptide__0__,
-                                           nodePepMatched.Peptide.Sequence);
-            Program.MainWindow.ModifyDocument(message, doc =>
-                {
-                    var newDoc = doc;
-                    if (_matcher.HasMatches)
-                    {
-                        var matchingDocument = newDoc;
-                        newDoc = newDoc.ChangeSettings(
-                            newDoc.Settings.ChangePeptideModifications(mods =>
-                                _matcher.SafeMergeImplicitMods(matchingDocument)));
-                    }
+                                           nodePepMatched.Peptide.Target);
 
-                    newDoc = pepMatcher.AddPeptides(newDoc, null, toPath,
-                                      out selectedPath);
-                    if (newDoc.PeptideTransitionGroupCount == doc.PeptideTransitionGroupCount)
-                        return doc;
-                    if(!_matcher.HasMatches)
-                            return newDoc;
-                    var modsNew = _matcher.GetDocModifications(newDoc); 
-                    return newDoc.ChangeSettings(newDoc.Settings.ChangePeptideModifications(mods => modsNew));
-                });
+            entryCreatorList.Add(AuditLogEntry.SettingsLogFunction);
+            Program.MainWindow.ModifyDocument(message, doc =>
+            {
+                var newDoc = doc;
+
+                if (!ReferenceEquals(doc.Settings.PeptideSettings.Libraries,
+                    startingDocument.Settings.PeptideSettings.Libraries))
+                    newDoc = newDoc.ChangeSettings(newDoc.Settings.ChangePeptideLibraries(old =>
+                        startingDocument.Settings.PeptideSettings.Libraries));
+
+                if (_matcher.HasMatches)
+                {
+                    var matchingDocument = newDoc;
+                    newDoc = newDoc.ChangeSettings(
+                        newDoc.Settings.ChangePeptideModifications(mods =>
+                            _matcher.SafeMergeImplicitMods(matchingDocument)));
+                }
+
+                newDoc = pepMatcher.AddPeptides(newDoc, null, toPath,
+                    out selectedPath);
+                if (newDoc.MoleculeTransitionGroupCount == doc.MoleculeTransitionGroupCount)
+                    return doc;
+                if (!_matcher.HasMatches)
+                    return newDoc;
+                var modsNew = _matcher.GetDocModifications(newDoc);
+                return newDoc.ChangeSettings(newDoc.Settings.ChangePeptideModifications(mods => modsNew));
+            }, docPair => CreateAddPeptideEntry(docPair, MessageType.added_peptide_from_library, entryCreatorList,
+                nodePepMatched.AuditLogText, _selectedLibName));
             
             Program.MainWindow.SelectedPath = selectedPath;
             Document.Settings.UpdateDefaultModifications(true, true);
         }
 
-        private bool EnsureBackgroundProteome(SrmDocument document, ViewLibraryPepMatching pepMatcher, bool ensureDigested)
+        public ViewLibrarySettings FormSettings
+        {
+            get { return new ViewLibrarySettings(cbAssociateProteins.Checked); }
+        }
+
+        public class ViewLibrarySettings : AuditLogOperationSettings<ViewLibrarySettings>//, IAuditLogComparable
+        {
+            public ViewLibrarySettings(bool associateProteins)
+            {
+                AssociateProteins = associateProteins;
+            }
+
+            [Track(defaultValues:typeof(DefaultValuesFalse))]
+            public bool AssociateProteins { get; private set; }
+
+            /*public object GetDefaultObject(ObjectInfo<object> info)
+            {
+                return new ViewLibrarySettings(false);
+            }*/
+        }
+
+        private static AuditLogEntry CreateAddPeptideEntry(SrmDocumentPair docPair, MessageType type, AuditLogEntryCreatorList entryCreatorList, params object[] args)
+        {
+            return AuditLogEntry.CreateSimpleEntry(type, docPair.NewDocumentType, args).Merge(docPair, entryCreatorList);
+        }
+
+        private bool EnsureBackgroundProteome(SrmDocument document, ViewLibraryPepMatching pepMatcher, bool ensureDigested, AuditLogEntryCreatorList entryCreators)
         {
             if (cbAssociateProteins.Checked)
             {
@@ -1408,7 +1474,7 @@ namespace pwiz.Skyline.SettingsUI
                 }
                 if (ensureDigested)
                 {
-                    if (!EnsureDigested(this, backgroundProteome))
+                    if (!EnsureDigested(this, backgroundProteome, entryCreators))
                     {
                         return false;
                     }
@@ -1418,57 +1484,74 @@ namespace pwiz.Skyline.SettingsUI
             return true;
         }
 
-        public static bool EnsureDigested(Control owner, BackgroundProteome backgroundProteome)
+        public static bool EnsureDigested(Control owner, BackgroundProteome backgroundProteome, AuditLogEntryCreatorList entryCreators)
         {
-            using (var proteomeDb = backgroundProteome.OpenProteomeDb())
+            try
             {
-                if (proteomeDb.IsDigested())
+                using (var proteomeDb = backgroundProteome.OpenProteomeDb())
                 {
-                    return true;
-                }
-            }
-            String message = string.Format(
-                Resources.ViewLibraryDlg_EnsureDigested_The_background_proteome___0___is_in_an_older_format___In_order_to_be_able_to_efficiently_find_peptide_sequences__the_background_proteome_should_be_upgraded_to_the_latest_version___Do_you_want_to_upgrade_the_background_proteome_now_,
-                backgroundProteome.Name);
-            using (var alertDlg = new AlertDlg(message, MessageBoxButtons.YesNoCancel))
-            {
-                switch (alertDlg.ShowDialog(owner))
-                {
-                    case DialogResult.Cancel:
-                        return false;
-                    case DialogResult.No:
-                        return true;
-                }
-            }
-            using (var longWaitDlg = new LongWaitDlg())
-            {
-                bool finished = false;
-                longWaitDlg.PerformWork(owner, 1000, progressMonitor =>
-                {
-                    using (var fileSaver = new FileSaver(backgroundProteome.DatabasePath))
+                    if (proteomeDb.IsDigested())
                     {
-                        var progressStatus = new ProgressStatus().ChangeMessage(Resources.ViewLibraryDlg_EnsureDigested_Copying_database);
-                        progressMonitor.UpdateProgress(progressStatus);
-                        File.Copy(backgroundProteome.DatabasePath, fileSaver.SafeName, true);
-
-                        using (var newProteomeDb = ProteomeDb.OpenProteomeDb(fileSaver.SafeName, longWaitDlg.CancellationToken))
-                        {
-                            newProteomeDb.Digest(progressMonitor, ref progressStatus);
-                        }
-                        if (progressMonitor.IsCanceled)
-                        {
-                            return;
-                        }
-                        fileSaver.Commit();
-                        finished = true;
+                        return true;
                     }
-                });
-                return finished;
+                }
+                String message = string.Format(
+                    Resources.ViewLibraryDlg_EnsureDigested_The_background_proteome___0___is_in_an_older_format___In_order_to_be_able_to_efficiently_find_peptide_sequences__the_background_proteome_should_be_upgraded_to_the_latest_version___Do_you_want_to_upgrade_the_background_proteome_now_,
+                    backgroundProteome.Name);
+                using (var alertDlg = new AlertDlg(message, MessageBoxButtons.YesNoCancel))
+                {
+                    switch (alertDlg.ShowDialog(owner))
+                    {
+                        case DialogResult.Cancel:
+                            return false;
+                        case DialogResult.No:
+                            return true;
+                    }
+                }
+                using (var longWaitDlg = new LongWaitDlg())
+                {
+                    bool finished = false;
+                    longWaitDlg.PerformWork(owner, 1000, progressMonitor =>
+                    {
+                        using (var fileSaver = new FileSaver(backgroundProteome.DatabasePath))
+                        {
+                            var progressStatus =
+                                new ProgressStatus().ChangeMessage(Resources
+                                    .ViewLibraryDlg_EnsureDigested_Copying_database);
+                            progressMonitor.UpdateProgress(progressStatus);
+                            File.Copy(backgroundProteome.DatabasePath, fileSaver.SafeName, true);
+
+                            using (var newProteomeDb =
+                                ProteomeDb.OpenProteomeDb(fileSaver.SafeName, longWaitDlg.CancellationToken))
+                            {
+                                newProteomeDb.Digest(progressMonitor, ref progressStatus);
+                            }
+                            if (progressMonitor.IsCanceled)
+                            {
+                                return;
+                            }
+                            fileSaver.Commit();
+                            finished = true;
+                        }
+                    });
+                    if (finished && entryCreators != null)
+                        entryCreators.Add(docPair => AuditLogEntry.CreateSimpleEntry(MessageType.upgraded_background_proteome, docPair.NewDocumentType, backgroundProteome.Name));
+                    return finished;
+                } 
+            }
+            catch (Exception e)
+            {
+                string errorMessage = TextUtil.LineSeparate(
+                    string.Format(Resources.ViewLibraryDlg_EnsureDigested_An_error_occurred_while_trying_to_process_the_file__0__,
+                        backgroundProteome.DatabasePath), e.Message);
+                MessageDlg.ShowWithException(owner, errorMessage, e);
+                return false;
             }
         }
 
-        public DialogResult CheckLibraryInSettings()
+        public DialogResult CheckLibraryInSettings(out SrmDocument newDoc, bool addToDoc = false)
         {
+            newDoc = Document;
             // Check to see if the library is part of the settings. If not, prompt the user to add it.
             var docLibraries = Document.Settings.PeptideSettings.Libraries;
             if (docLibraries.GetLibrary(_selectedLibName) == null)
@@ -1482,10 +1565,16 @@ namespace pwiz.Skyline.SettingsUI
                 if (result == DialogResult.No)
                     return result;
                 if (result == DialogResult.Yes)
-                    Program.MainWindow.ModifyDocument(Resources.ViewLibraryDlg_CheckLibraryInSettings_Add_Library, doc =>
-                        doc.ChangeSettings(doc.Settings.ChangePeptideLibraries(pepLibraries =>
-                            pepLibraries.ChangeLibraries(new List<LibrarySpec>(docLibraries.LibrarySpecs) { _selectedSpec },
-                            new List<Library>(docLibraries.Libraries) { _selectedLibrary }))));
+                {
+                    newDoc = newDoc.ChangeSettings(Document.Settings.ChangePeptideLibraries(pepLibraries =>
+                        pepLibraries.ChangeLibraries(new List<LibrarySpec>(docLibraries.LibrarySpecs) { _selectedSpec },
+                            new List<Library>(docLibraries.Libraries) { _selectedLibrary })));
+                    var copy = newDoc;
+                    if (addToDoc)
+                        Program.MainWindow.ModifyDocument(Resources.ViewLibraryDlg_CheckLibraryInSettings_Add_Library, oldDoc => copy,
+                            docPair => AuditLogEntry.CreateSimpleEntry(MessageType.added_spectral_library, docPair.NewDocumentType, _selectedLibName));
+                }
+
             }
             return DialogResult.OK;
         }
@@ -1500,12 +1589,16 @@ namespace pwiz.Skyline.SettingsUI
 
         public void AddAllPeptides()
         {
+            AddAllPeptides(false);
+        }
+
+        public void AddAllPeptides(bool addLibraryToDocSeparately = false)
+        {
             CheckDisposed();
 
-            if (CheckLibraryInSettings() == DialogResult.Cancel)
-                return;
-            
             var startingDocument = Document;
+            if (CheckLibraryInSettings(out startingDocument, addLibraryToDocSeparately) == DialogResult.Cancel)
+                return;
 
             SrmDocument startingDocumentImplicitMods = startingDocument;
             if(_matcher.HasMatches)
@@ -1516,22 +1609,24 @@ namespace pwiz.Skyline.SettingsUI
             var pepMatcher = new ViewLibraryPepMatching(startingDocumentImplicitMods,
                                                         _selectedLibrary,
                                                         _selectedSpec,
-                                                        _lookupPool,
                                                         _matcher,
                                                         _peptides);
 
-            if (!EnsureBackgroundProteome(startingDocument, pepMatcher, true))
+            var entryCreatorList = new AuditLogEntryCreatorList();
+            entryCreatorList.Add(FormSettings.EntryCreator);
+            if (!EnsureBackgroundProteome(startingDocument, pepMatcher, true, entryCreatorList))
                 return;
             pepMatcher.AddAllPeptidesSelectedPath = Program.MainWindow.SelectedPath;
 
             SrmDocument newDocument;
+            var hasSmallMolecules = HasSmallMolecules;
             using (var longWaitDlg = new LongWaitDlg
                 {
-                    Text = Resources.ViewLibraryDlg_AddAllPeptides_Matching_Peptides,
-                    Message = Resources.ViewLibraryDlg_AddAllPeptides_Matching_peptides_to_the_current_document_settings
+                    Text = hasSmallMolecules ? Resources.ViewLibraryDlg_AddAllPeptides_Matching_Molecules : Resources.ViewLibraryDlg_AddAllPeptides_Matching_Peptides,
+                    Message = hasSmallMolecules ? Resources.ViewLibraryDlg_AddAllPeptides_Matching_molecules_to_the_current_document_settings : Resources.ViewLibraryDlg_AddAllPeptides_Matching_peptides_to_the_current_document_settings
                 })
             {
-                longWaitDlg.PerformWork(this, 1000, pepMatcher.AddAllPeptidesToDocument);
+                longWaitDlg.PerformWork(this, 1000, broker => pepMatcher.AddAllPeptidesToDocument(broker, entryCreatorList));
                 newDocument = pepMatcher.DocAllPeptides;
                 if (longWaitDlg.IsCanceled || newDocument == null)
                     return;
@@ -1546,19 +1641,23 @@ namespace pwiz.Skyline.SettingsUI
             }
 
             // Calculate changes that will occur.
-            var peptideCountDiff = newDocument.PeptideCount - startingDocument.PeptideCount;
-            var groupCountDiff = newDocument.PeptideTransitionGroupCount - startingDocument.PeptideTransitionGroupCount;
+            var peptideCountDiff = newDocument.MoleculeCount - startingDocument.MoleculeCount;
+            var groupCountDiff = newDocument.MoleculeTransitionGroupCount - startingDocument.MoleculeTransitionGroupCount;
             if (peptideCountDiff + groupCountDiff == 0)
             {
                 MessageDlg.Show(this, Resources.ViewLibraryDlg_AddAllPeptides_All_library_peptides_already_exist_in_the_current_document);
                 return;
             }
-            var pepGroupCountDiff = newDocument.PeptideGroupCount - startingDocument.PeptideGroupCount;
+            var pepGroupCountDiff = newDocument.MoleculeGroupCount - startingDocument.MoleculeGroupCount;
             string proteins = cbAssociateProteins.Checked ? string.Format(Resources.ViewLibraryDlg_AddAllPeptides__0__proteins, pepGroupCountDiff)
                 : string.Empty;
-            string msg = string.Format(Resources.ViewLibraryDlg_AddAllPeptides_This_operation_will_add__0__1__peptides__2__precursors_and__3__transitions_to_the_document,
+            var format = HasSmallMolecules
+                ? Resources.ViewLibraryDlg_AddAllPeptides_This_operation_will_add__0__1__molecules__2__precursors_and__3__transitions_to_the_document
+                : Resources.ViewLibraryDlg_AddAllPeptides_This_operation_will_add__0__1__peptides__2__precursors_and__3__transitions_to_the_document;
+
+            string msg = string.Format(format,
                                         proteins, peptideCountDiff, groupCountDiff,
-                                        newDocument.PeptideTransitionCount - startingDocument.PeptideTransitionCount);
+                                        newDocument.MoleculeTransitionCount - startingDocument.MoleculeTransitionCount);
             var numSkipped = pepMatcher.SkippedPeptideCount;          
             var hasSkipped = numSkipped > 0;
             var numUnmatchedPeptides = PeptidesCount - numMatchedPeptides;
@@ -1598,6 +1697,7 @@ namespace pwiz.Skyline.SettingsUI
 
             // If the user chooses to continue with the operation, call AddPeptides again in case the document has changed.
             var toPath = Program.MainWindow.SelectedPath;
+            entryCreatorList.Add(AuditLogEntry.SettingsLogFunction);
             Program.MainWindow.ModifyDocument(string.Format(Resources.ViewLibraryDlg_AddAllPeptides_Add_all_peptides_from__0__library, SelectedLibraryName), 
                 doc =>
                 {
@@ -1611,13 +1711,19 @@ namespace pwiz.Skyline.SettingsUI
                         throw new InvalidDataException(message);
                     }
                     var newDoc = doc;
+
+                    if (!ReferenceEquals(doc.Settings.PeptideSettings.Libraries, startingDocument.Settings.PeptideSettings.Libraries))
+                        newDoc = newDoc.ChangeSettings(newDoc.Settings.ChangePeptideLibraries(old =>
+                            startingDocument.Settings.PeptideSettings.Libraries));
+
                     newDoc = pepMatcher.AddPeptides(newDoc, null, toPath, out selectedPath);
-                    if (newDoc.PeptideTransitionGroupCount == doc.PeptideTransitionGroupCount)
+                    if (newDoc.MoleculeTransitionGroupCount == doc.MoleculeTransitionGroupCount)
                         return doc;
                     if (!_matcher.HasMatches)
                         return newDoc;
                     return newDoc.ChangeSettings(newDoc.Settings.ChangePeptideModifications(mods => modsNew));
-                });
+                }, docPair => CreateAddPeptideEntry(docPair, MessageType.added_all_peptides_from_library, entryCreatorList,
+                    pepMatcher.MatchedPeptideCount, _selectedLibName));
 
             Program.MainWindow.SelectedPath = selectedPath;
             Document.Settings.UpdateDefaultModifications(true, true);
@@ -1760,7 +1866,6 @@ namespace pwiz.Skyline.SettingsUI
 
         #region Node Tip
 
-
         private void listPeptide_MouseMove(object sender, MouseEventArgs e)
         {
             Point pt = e.Location;
@@ -1782,7 +1887,7 @@ namespace pwiz.Skyline.SettingsUI
                 if (!Equals(pepInfo, _lastTipNode))
                 {
                     _lastTipNode = pepInfo;
-                    _lastTipProvider = new PeptideTipProvider(pepInfo, _matcher, _lookupPool);
+                    _lastTipProvider = new PeptideTipProvider(pepInfo, _matcher, _selectedLibrary);
                 }
                 tipProvider = _lastTipProvider;
             }
@@ -1836,35 +1941,20 @@ namespace pwiz.Skyline.SettingsUI
 
         # region ViewLibraryPepInfo Helpers
 
-        /// <summary>
-        /// Gets the ViewLibraryPepInfo sequence without the modification characters, with a long-form
-        /// charge state inditcator that sorts like pepInfo sort order.
-        /// </summary>
-        private string GetPepInfoComparisonString(ViewLibraryPepInfo pep)
-        {
-            return !pep.Key.IsPrecursorKey
-                ? pep.GetAASequence(_lookupPool) + _pluses.Substring(0, pep.Charge)
-                : pep.DisplayString;
-        }
-
-        private static readonly string _pluses;
-
-        static ViewLibraryDlg()
-        {
-            var sb = new StringBuilder();
-            for (int i = 0; i < TransitionGroup.MAX_PRECURSOR_CHARGE; i++)
-            {
-                sb.Append('+');
-            }
-            _pluses = sb.ToString();
-        }
-
         // Computes each ModificationInfo for the given peptide and returns a 
         // list of all modifications.
         private static IEnumerable<ModificationInfo> GetModifications(ViewLibraryPepInfo pep)
         {
             IList<ModificationInfo> modList = new List<ModificationInfo>();
-            string sequence = pep.Sequence;
+            string sequence;
+            if (pep.Key.LibraryKey is PeptideLibraryKey peptideLibraryKey)
+            {
+                sequence = peptideLibraryKey.ModifiedSequence;
+            }
+            else
+            {
+                return modList;
+            }
             int iMod = -1;
             for (int i = 0; i < sequence.Length; i++)
             {
@@ -1900,21 +1990,6 @@ namespace pwiz.Skyline.SettingsUI
             }
             return modList;
         }
-
-        // Compares the display string minus the modification characters for 
-        // the given peptide with the string passed in.
-        private int Compare(ViewLibraryPepInfo pep, string s)
-        {
-            return string.Compare(GetPepInfoComparisonString(pep), 0, s, 0, s.Length, true);
-        }
-
-        // Checks to see if the display string minus the modification
-        // characters starts with the string passed in. 
-        private bool IsMatch(ViewLibraryPepInfo pep, string s)
-        {
-            return GetPepInfoComparisonString(pep).StartsWith(s, StringComparison.InvariantCultureIgnoreCase);
-        }
-
         #endregion
 
         #region Test helpers
@@ -1942,6 +2017,8 @@ namespace pwiz.Skyline.SettingsUI
             set { listPeptide.SelectedIndex = value; }
         }
 
+        public bool HasSelectedLibrary => _selectedLibrary != null;
+
         public string SourceFile
         {
             get { return GetLabelValue(labelFilename); }
@@ -1967,7 +2044,19 @@ namespace pwiz.Skyline.SettingsUI
             if (split.Length == 2)
                 return split[1];
             // Trickier case of ""RT: 12.345 DT: 67.89"
-            return split[1].Substring(0, split[1].LastIndexOf(' ')); // Not L10N
+            return split[1].Substring(0, split[1].LastIndexOf(' '));
+        }
+
+        public PeptideTipProvider GetTipProvider(int i)
+        {
+            return new PeptideTipProvider(GetPepInfo(i), _matcher, _selectedLibrary);
+        }
+
+        private ViewLibraryPepInfo GetPepInfo(int i)
+        {
+            if (listPeptide.Items.Count <= i || i < 0)
+                return null;
+            return (ViewLibraryPepInfo)listPeptide.Items[i];
         }
 
         public bool HasMatches
@@ -2017,68 +2106,6 @@ namespace pwiz.Skyline.SettingsUI
         }
 
         /// <summary>
-        /// IComparer implementation to compare two ViewLibraryPepInfo objects. It is used
-        /// to sort the array of ViewLibraryPepInfo objects we load from each library so 
-        /// that we can show it in alphabetical order in the list, and also 
-        /// show the modified peptides right below the unmodified versions. 
-        /// Here's an example:
-        /// DEYACR+
-        /// DEYAC[+57.0]R+
-        /// DEYACR++
-        /// DEYAC[+57.0]R++
-        /// </summary>
-        private class PepInfoComparer : IComparer<ViewLibraryPepInfo>
-        {
-            private readonly List<byte> _lookupPool;
-
-            // Constructs a comparer using the specified CompareOptions.
-            public PepInfoComparer(List<byte> lookupPool)
-            {
-                _lookupPool = lookupPool;
-            }
-
-            // Compares peptides in PeptideInfo according to the CompareOptions
-            // specified in the constructor.
-            public int Compare(ViewLibraryPepInfo p1, ViewLibraryPepInfo p2)
-            {
-                return ViewLibraryPepInfo.Compare(p1, p2, _lookupPool);
-            }
-        }
-
-        /// <summary>
-        /// Data structure to store a range of indices of peptides found in 
-        /// the peptides array matching the sequence typed in by the user.
-        /// </summary>
-        private class Range
-        {
-            public Range(int start, int end)
-            {
-                StartIndex = start;
-                EndIndex = end;
-            }
-
-            public Range(Range rangeIn)
-            {
-                StartIndex = rangeIn.StartIndex;
-                EndIndex = rangeIn.EndIndex;
-            }
-
-            public int StartIndex { get; set; }
-            public int EndIndex { get; set; }
-            public int Count
-            {
-                get
-                {
-                    if ((StartIndex != -1) && (EndIndex != -1))
-                    {
-                        return (EndIndex + 1) - StartIndex;
-                    }
-                    return 0;
-                }
-            }
-        }
-
-        /// <summary>
         /// If the library has a HUGE number of peptides, it may not be
         /// performant to show them all at once in the peptides list box.
         /// We use paging and show 100 peptides at a time. This data structure
@@ -2094,13 +2121,13 @@ namespace pwiz.Skyline.SettingsUI
             public int PageSize { get { return _pageSize; } }
 
             // Range of indices of items to be shown from the peptides array
-            private Range _itemIndexRange;
-            public Range ItemIndexRange { set { _itemIndexRange = value; } }
+            private IReadOnlyList<ViewLibraryPepInfo> _itemIndexRange;
+            public IReadOnlyList<ViewLibraryPepInfo> ItemIndexRange { set { _itemIndexRange = value; } }
 
             // Total number of items to be show from the peptides array
             public int Items { get { return _itemIndexRange.Count; } }
 
-            public PageInfo(int pageSize, int currentPage, Range itemIndexRange)
+            public PageInfo(int pageSize, int currentPage, IReadOnlyList<ViewLibraryPepInfo> itemIndexRange)
             {
                 _pageSize = pageSize;
                 Page = currentPage;
@@ -2133,11 +2160,11 @@ namespace pwiz.Skyline.SettingsUI
                     {
                         if (Page > 0)
                         {
-                            start = _itemIndexRange.StartIndex + (Page - 1) * PageSize;
+                            start = (Page - 1) * PageSize;
                         }
                         else
                         {
-                            start = _itemIndexRange.StartIndex;
+                            start = 0;
                         }
                     }
                     return start;
@@ -2154,16 +2181,17 @@ namespace pwiz.Skyline.SettingsUI
                     {
                         if (Page == Pages)
                         {
-                            end = _itemIndexRange.EndIndex + 1;
+                            end = _itemIndexRange.Count;
                         }
                         else
                         {
-                            end = _itemIndexRange.StartIndex + (Page * PageSize);
+                            end = 0 + (Page * PageSize);
                         }
                     }
                     return end;
                 }
             }
+
         }
 
         /// <summary>
@@ -2195,26 +2223,75 @@ namespace pwiz.Skyline.SettingsUI
                 {
                     string libraryNamePrefix = LibraryName;
                     if (!string.IsNullOrEmpty(libraryNamePrefix))
-                        libraryNamePrefix += " - "; // Not L10N
-
-                    return !_key.IsPrecursorKey
-                        ? string.Format(Resources.ViewLibSpectrumGraphItem_Title__0__1__Charge__2__, libraryNamePrefix, TransitionGroup.Peptide.Sequence, TransitionGroup.PrecursorCharge)
-                        : string.Format(Resources.ViewLibSpectrumGraphItem_Title__0__1_, libraryNamePrefix, _key.PrecursorMz.GetValueOrDefault());
+                        libraryNamePrefix += @" - ";
+                    if (_key.IsPrecursorKey)
+                    {
+                        return string.Format(Resources.ViewLibSpectrumGraphItem_Title__0__1_, libraryNamePrefix, _key.PrecursorMz.GetValueOrDefault());
+                    }
+                    if (_key.IsSmallMoleculeKey)
+                    {
+                        return string.Format(@"{0}{1}{2}", libraryNamePrefix, TransitionGroup.Peptide.CustomMolecule.DisplayName, TransitionGroup.PrecursorAdduct);
+                    }
+                    return string.Format(Resources.ViewLibSpectrumGraphItem_Title__0__1__Charge__2__, libraryNamePrefix, TransitionGroup.Peptide.Target, TransitionGroup.PrecursorAdduct);
                 }
             }
         }
 
-        private class PeptideTipProvider : ITipProvider
+        public class PeptideTipProvider : ITipProvider
         {
             private ViewLibraryPepInfo _pepInfo;
-            private readonly byte[] _lookupPool;
             private readonly LibKeyModificationMatcher _matcher;
+            private readonly List<TextColor> _seqPartsToDraw;
+            private readonly List<TextColor> _mzRangePartsToDraw;
+            private readonly List<KeyValuePair<string, string>> _smallMoleculePartsToDraw;
+            private readonly SrmSettings _settings;
+            private readonly double _mz;
+            private readonly IonMobilityAndCCS _ionMobility;
 
-            public PeptideTipProvider(ViewLibraryPepInfo pepInfo, LibKeyModificationMatcher matcher, byte[] lookupPool)
+            public PeptideTipProvider(ViewLibraryPepInfo pepInfo, LibKeyModificationMatcher matcher,
+                Library selectedLibrary)
             {
+                ExplicitMods mods;
+                TransitionGroupDocNode transitionGroup;
                 _pepInfo = pepInfo;
-                _lookupPool = lookupPool;
                 _matcher = matcher;
+                GetPeptideInfo(_pepInfo, _matcher, out _settings, out transitionGroup, out mods);
+                // build seq parts to draw
+                _seqPartsToDraw = GetSequencePartsToDraw(mods);
+                // Get small molecule info if any
+                _smallMoleculePartsToDraw = null;
+                var smallMolInfo = _pepInfo.GetSmallMoleculeLibraryAttributes();
+                if (smallMolInfo != null && !smallMolInfo.IsEmpty)
+                {
+                    // Get a list of things like Name:caffeine, Formula:C8H10N4O2, InChIKey:RYYVLZVUVIJVGH-UHFFFAOYSA-N MoleculeIds: CAS:58-08-2\tKEGG:D00528
+                    _smallMoleculePartsToDraw = smallMolInfo.LocalizedKeyValuePairs;
+                }
+
+                if (_pepInfo.Target != null)
+                {
+                    // build mz range parts to draw
+                    var massH = _settings.GetPrecursorCalc(transitionGroup.TransitionGroup.LabelType, mods)
+                        .GetPrecursorMass(_pepInfo.Target);
+                    _mz = SequenceMassCalc.PersistentMZ(SequenceMassCalc.GetMZ(massH, transitionGroup.PrecursorAdduct));
+                    _mzRangePartsToDraw = GetMzRangeItemsToDraw(_mz);
+                }
+                else
+                {
+                    _mzRangePartsToDraw = new List<TextColor>();
+                    var precursorKey = _pepInfo.Key.LibraryKey as PrecursorLibraryKey;
+                    if (precursorKey != null)
+                    {
+                        _mz = precursorKey.Mz;
+                    }
+                }
+
+                // Ion mobility
+                var bestSpectrum = selectedLibrary.GetSpectra(_pepInfo.Key,
+                    IsotopeLabelType.light, LibraryRedundancy.best).FirstOrDefault();
+                if (bestSpectrum != null)
+                {
+                    _ionMobility = bestSpectrum.IonMobilityInfo;
+                }
             }
 
             public bool HasTip
@@ -2226,35 +2303,243 @@ namespace pwiz.Skyline.SettingsUI
             {
                 var table = new TableDesc();
                 var tableMz = new TableDesc();
-                SizeF size;
+                SizeF sizeSeq;
                 SizeF sizeMz;
+
                 using (RenderTools rt = new RenderTools())
                 {
-                    table.AddDetailRow(string.Empty, _pepInfo.DisplayString.Replace(".0]", "]"), rt); // Not L10N
-                    ExplicitMods mods;
-                    TransitionGroup transitionGroup;
-                    SrmSettings settings;
-                    GetPeptideInfo(_pepInfo, _matcher, _lookupPool, out settings, out transitionGroup, out mods);
-                    var pCalc = settings.GetPrecursorCalc(transitionGroup.LabelType, mods);
-                    var massH = pCalc.GetPrecursorMass(_pepInfo.Sequence);
-                    double mz = SequenceMassCalc.PersistentMZ(SequenceMassCalc.GetMZ(massH, transitionGroup.PrecursorCharge));
-                    size = table.CalcDimensions(g);
-                    tableMz.AddDetailRow(Resources.PeptideTipProvider_RenderTip_Precursor_m_z, string.Format("{0:F04}", mz), rt); // Not L10N
+                    // Draw sequence
+                    sizeSeq = DrawTextParts(g, 0, 0, _seqPartsToDraw, rt);
+
+                    // Draw small mol info
+                    if (_smallMoleculePartsToDraw != null)
+                    {
+                        foreach (var item in _smallMoleculePartsToDraw)
+                        {
+                            tableMz.AddDetailRow(item.Key, item.Value, rt);
+                        }
+                    }
+                    var heightSmallMol = tableMz.CalcDimensions(g).Height;
+                    
+                    // Draw mz
+                    tableMz.AddDetailRow(Resources.PeptideTipProvider_RenderTip_Precursor_m_z, string.Format(@"{0:F04}", _mz), rt);
+
+                    // Draw ion mobility
+                    if (!IonMobilityAndCCS.IsNullOrEmpty(_ionMobility))
+                    {
+                        if (_ionMobility.HasIonMobilityValue)
+                        {
+                            var details = string.Format(@"{0:F04} {1}", _ionMobility.IonMobility.Mobility.Value,
+                                _ionMobility.IonMobility.UnitsString);
+                            tableMz.AddDetailRow(Resources.PeptideTipProvider_RenderTip_Ion_Mobility, details, rt);
+                        }
+                        if (_ionMobility.HasCollisionalCrossSection)
+                        { 
+                            var details = string.Format(@"{0:F04}", _ionMobility.CollisionalCrossSectionSqA.Value);
+                            tableMz.AddDetailRow(Resources.PeptideTipProvider_RenderTip_CCS, details, rt);
+                        }
+                    }
+
                     sizeMz = tableMz.CalcDimensions(g);
-                    size.Height += 2;    // Spacing between details and fragments
+                    sizeSeq.Height += 2;    // Spacing between details and fragments
+
+                    // Draw mz range out of bounds
+                    if (_mzRangePartsToDraw.Count > 0)
+                        sizeMz.Width = DrawTextParts(g, sizeMz.Width, sizeSeq.Height + heightSmallMol, _mzRangePartsToDraw, rt).Width;
+
                     if (draw)
                     {
                         table.Draw(g);
-                        g.TranslateTransform(0, size.Height);
-
+                        g.TranslateTransform(0, sizeSeq.Height);
                         tableMz.Draw(g);
-                        g.TranslateTransform(0, -size.Height);
+                        g.TranslateTransform(0, -sizeSeq.Height);
                     }
                 }
 
-                int width = (int)Math.Round(Math.Max(sizeMz.Width, size.Width));
-                int height = (int)Math.Round(sizeMz.Height + size.Height);
-                return new Size(width + 2, height + 2);
+                int width = (int)Math.Round(Math.Max(sizeMz.Width, sizeSeq.Width));
+                int height = (int)Math.Round(sizeMz.Height + sizeSeq.Height);
+                return new Size(width + 8, height + 4); // +8 width, +4 height padding
+            }
+
+            private List<TextColor> GetMzRangeItemsToDraw(double mz)
+            {
+                var toDrawItems = new List<TextColor>();
+                var maxMz = _settings.TransitionSettings.Instrument.MaxMz;
+                var minMz = _settings.TransitionSettings.Instrument.MinMz;
+                if (mz > maxMz)
+                {
+                    toDrawItems.Add(new TextColor(@" > [" + minMz + @"-"));
+                    toDrawItems.Add(new TextColor(maxMz.ToString(), Brushes.Red));
+                    toDrawItems.Add(new TextColor(@"]"));
+                }
+                else if (mz < minMz)
+                {
+                    toDrawItems.Add(new TextColor(@" < ["));
+                    toDrawItems.Add(new TextColor(minMz.ToString(), Brushes.Red));
+                    toDrawItems.Add(new TextColor(@"-" + maxMz + @"]"));
+                }
+                return toDrawItems;
+            }
+
+            private List<TextColor> GetSequencePartsToDraw(ExplicitMods mods)
+            {
+                var toDrawParts = new List<TextColor>();
+                if (!_pepInfo.Key.HasModifications)
+                {
+                    toDrawParts.Add(new TextColor(_pepInfo.Key.Sequence));
+                }
+                else
+                {
+                    var splitMods = SplitModifications(_pepInfo.Key.Sequence);
+                    for (var i = 0; i < splitMods.Count; i++)
+                    {
+                        var piece = splitMods[i];
+                        string drawStr = piece.Item1.ToString();
+                        var drawColor = Brushes.Black;
+                        if (piece.Item2 != null) // if is modified AA
+                        {
+                            drawStr += piece.Item2;
+                            var currentMod = GetCurrentMod(mods, i, piece);
+                            if (!IsMatched(currentMod, piece)) // not match if color is red
+                            {
+                                drawStr = drawStr.Replace(@"]", @"?]");
+                                drawColor = Brushes.Red;
+                            }
+                        }
+                        toDrawParts.Add(new TextColor(drawStr, drawColor));
+                    }
+                }
+                return toDrawParts;
+            }
+
+            private bool IsMatched(ExplicitMod currentMod, Tuple<char, string> piece)
+            {
+                if (currentMod == null)
+                    return false;
+                if (_matcher.MatcherPepMods == null)
+                    return false;
+
+                foreach (var mod in _matcher.MatcherPepMods.StaticModifications)
+                {
+                    if (mod.Terminus == ModTerminus.N && currentMod.IndexAA != 0)
+                    {
+                        continue;
+                    }
+                    if (mod.Terminus == ModTerminus.C &&
+                        _pepInfo.PeptideNode != null &&
+                        currentMod.IndexAA != _pepInfo.PeptideNode.Peptide.Sequence.Length - 1)
+                    {
+                        continue;
+                    }
+                    if (!MatchesAAsAndMass(piece.Item1.ToString(), currentMod.Modification.MonoisotopicMass, mod))
+                        continue;
+
+                    return true;
+                }
+                return false;
+            }
+
+            private ExplicitMod GetCurrentMod(ExplicitMods mods, int staticModIndex, Tuple<char, string> piece)
+            {
+                ExplicitMod currentMod = null;
+                if (mods != null && mods.StaticModifications != null)
+                {
+                    currentMod = mods.StaticModifications.FirstOrDefault(m => staticModIndex == m.IndexAA);
+                }
+                if (currentMod == null) // If not in docnode.staticmodifications then check implicit mods in settings
+                {
+                    double mass;
+                    if (double.TryParse(piece.Item2.Replace(@"[", string.Empty).Replace(@"]", string.Empty),
+                        NumberStyles.Float, CultureInfo.InvariantCulture, out mass))
+                    {
+                        foreach (var mod in _settings.PeptideSettings.Modifications.StaticModifications)
+                        {
+                            if (MatchesAAsAndMass(piece.Item1.ToString(), mass, mod))
+                                currentMod = new ExplicitMod(staticModIndex, mod);
+                        }
+                    }
+                }
+                return currentMod;
+            }
+
+            private static bool MatchesAAsAndMass(string aa, double? mass, StaticMod mod)
+            {
+                if (aa != null && mod.AAs != null)
+                {
+                    var AAs = mod.AAs.Split(',').Select(p => p.Trim()).ToArray();
+                    if (Array.IndexOf(AAs, aa) == -1)
+                        return false;
+                }
+                if (mass.HasValue && mod.MonoisotopicMass.HasValue)
+                {
+                    // CONSIDER: Hard coded tolerance may need to be reconsidered
+                    if (Math.Abs(mass.Value - mod.MonoisotopicMass.Value) > .05)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
+            private List<Tuple<char, string>> SplitModifications(string modifiedSequence)
+            {
+                var result = new List<Tuple<char, string>>();
+                for (int ich = 0; ich < modifiedSequence.Length; ich++)
+                {
+                    char ch = modifiedSequence[ich];
+                    if (ich == modifiedSequence.Length - 1 || modifiedSequence[ich + 1] != '[')
+                    {
+                        result.Add(Tuple.Create(ch, (string) null));
+                    }
+                    else
+                    {
+                        int ichEndBracket = modifiedSequence.IndexOf(']', ich + 1);
+                        if (ichEndBracket == -1)
+                            ichEndBracket = modifiedSequence.Length;
+                        int ichStart = ich + 1;
+                        string modText = ichStart < ichEndBracket
+                            ? modifiedSequence.Substring(ich + 1, ichEndBracket - ich)
+                            : null;
+                        result.Add(Tuple.Create(ch, modText));
+                        ich = ichEndBracket;
+                    }
+                }
+                return result;
+            }
+
+            // draws text at a start (x,y) and returns the end (x,y) of the drawn text
+            // takes a list of <string, color> so that we can draw segments of different colors
+            private SizeF DrawTextParts(Graphics g, float startX, float startY, List<TextColor> parts, RenderTools rt)
+            {
+                var size = new SizeF(startX, startY);
+                float height = 0;
+                foreach (var part in parts)
+                {
+                    g.DrawString(part.Text, rt.FontNormal, part.Color, new PointF(size.Width, size.Height));
+                    size.Width += g.MeasureString(part.Text, rt.FontNormal).Width - 3;
+                    height = g.MeasureString(part.Text, rt.FontNormal).Height;
+                }
+                size.Height = height;
+                return size;
+            }
+
+            #region Test support
+
+            public List<TextColor> GetSeqParts() { return _seqPartsToDraw; }
+            public List<TextColor> GetMzParts() { return _mzRangePartsToDraw; }
+
+            #endregion
+
+            public struct TextColor
+            {
+                public TextColor(string text, Brush color = null) : this()
+                {
+                    Text = text;
+                    Color = color ?? Brushes.Black;
+                }
+
+                public string Text { get; private set; }
+                public Brush Color { get; private set; }
             }
         }
 

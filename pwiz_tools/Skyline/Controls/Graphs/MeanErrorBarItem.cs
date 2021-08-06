@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Nick Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -24,16 +24,11 @@ using pwiz.Common.Graph;
 namespace pwiz.Skyline.Controls.Graphs
 {
     /// <summary>
-    /// BarItem with an error bar at the top indicating meand and standard deviation.
+    /// BarItem with an error bar at the top indicating mean and standard deviation.
     /// </summary>
     [CurveDataHandler(typeof(MeanErrorBarDataHandler))]
     public class MeanErrorBarItem : BarItem
     {
-        public static bool IsMeanErrorList(PointPairList pointPairList)
-        {
-            return pointPairList.Count > 0 && pointPairList[0].Tag is ErrorTag;
-        }
-
         public static PointPair MakePointPair(double xValue, double yValue, double errorValue)
         {
             if (double.IsNaN(errorValue))
@@ -161,7 +156,7 @@ namespace pwiz.Skyline.Controls.Graphs
         }
     }
 
-    internal class ErrorTag
+    public class ErrorTag
     {
         public ErrorTag(double error)
         {
@@ -192,7 +187,7 @@ namespace pwiz.Skyline.Controls.Graphs
                     errors[i] = errorTag.Error;
                 }
             }
-            dataFrameBuilder = dataFrameBuilder.AddColumn(new DataColumn<double?>("StdErr", errors)); // Not L10N
+            dataFrameBuilder = dataFrameBuilder.AddColumn(new DataColumn<double?>(@"StdErr", errors));
             return dataFrameBuilder;
         }
     }

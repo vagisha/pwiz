@@ -17,17 +17,21 @@
  * limitations under the License.
  */
 
+using System.Linq;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Controls.SeqNode;
+using pwiz.Skyline.Model;
 using pwiz.SkylineTestUtil;
 
 namespace pwiz.SkylineTestFunctional
 {
     [TestClass]
-    public class MultiSelectPeakAreaGraphTest : AbstractFunctionalTest
+    public class MultiSelectPeakAreaGraphTest : AbstractFunctionalTestEx
     {
+        private bool _asSmallMolecules;
+
         [TestMethod]
         public void TestMultiSelectPeakAreaGraph()
         {
@@ -35,17 +39,37 @@ namespace pwiz.SkylineTestFunctional
             RunFunctionalTest();
         }
 
+        [TestMethod]
+        public void TestMultiSelectPeakAreaGraphAsSmallMolecules()
+        {
+            if (!RunSmallMoleculeTestVersions)
+            {
+                System.Console.Write(MSG_SKIPPING_SMALLMOLECULE_TEST_VERSION);
+                return;
+            } 
+            TestFilesZip = @"TestFunctional\MultiSelectPeakAreaGraphTest.zip";
+            _asSmallMolecules = true;
+            RunFunctionalTest();
+        }
+
         protected override void DoTest()
         {
             RunUI(() => SkylineWindow.OpenFile(TestFilesDir.GetTestPath("ABSciex4000_Study9-1_Site19_CalCurves only.sky")));
+            if (_asSmallMolecules)
+            {
+                ConvertDocumentToSmallMolecules(RefinementSettings.ConvertToSmallMoleculesMode.formulas,
+                    RefinementSettings.ConvertToSmallMoleculesChargesMode.none, true);
+            }
             // Test select all
             RunUI(() =>
             {
                 SkylineWindow.SelectAll();
+                Assert.AreEqual(6, SkylineWindow.SelectedNodes.Count(node => node is PeptideTreeNode));
                 SkylineWindow.ShowGraphPeakArea(true);
             });
             WaitForGraphs();
-            Assert.AreEqual(6, SkylineWindow.GraphPeakArea.CurveCount);
+            TryWaitForConditionUI(() => 6 == SkylineWindow.GraphPeakArea.CurveCount);   // Improve information from failing test
+            RunUI(() => Assert.AreEqual(6, SkylineWindow.GraphPeakArea.CurveCount));
 
             // Test selecting each node down to the peptide/precursor level
             foreach (var node in SkylineWindow.SequenceTree.Nodes)
@@ -64,15 +88,18 @@ namespace pwiz.SkylineTestFunctional
                         curveCount = 1;
                         break;
                 }
-                Assert.AreEqual(curveCount, SkylineWindow.GraphPeakArea.CurveCount);
-                SummaryReplicateGraphPane pane;
-                Assert.IsTrue(SkylineWindow.GraphPeakArea.TryGetGraphPane(out pane));
-                Assert.IsFalse(pane.Legend.IsVisible);
+                RunUI(() =>
+                {
+                    Assert.AreEqual(curveCount, SkylineWindow.GraphPeakArea.CurveCount);
+                    SummaryReplicateGraphPane pane;
+                    Assert.IsTrue(SkylineWindow.GraphPeakArea.TryGetGraphPane(out pane));
+                    Assert.IsFalse(pane.Legend.IsVisible);
+                });
                 // Select indavidual peptides
                 foreach (TreeNode peptide in peptideGroupTreeNode.Nodes)
                 {
                     SelectNode(peptide);
-                    Assert.AreNotEqual(0, SkylineWindow.GraphRetentionTime.CurveCount);
+                    RunUI(() => Assert.AreNotEqual(0, SkylineWindow.GraphRetentionTime.CurveCount));
                 }
             }
         }

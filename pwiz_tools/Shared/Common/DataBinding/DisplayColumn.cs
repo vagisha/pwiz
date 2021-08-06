@@ -20,7 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Text;
+using pwiz.Common.DataBinding.Attributes;
 using pwiz.Common.Properties;
 
 namespace pwiz.Common.DataBinding
@@ -42,22 +42,29 @@ namespace pwiz.Common.DataBinding
         public PropertyPath PropertyPath { get { return ColumnSpec.PropertyPath; } }
         public ColumnDescriptor ColumnDescriptor { get; private set; }
         public ColumnDescriptor CollectionColumn { get; private set; }
-        public string GetColumnCaption(PivotKey pivotKey, ColumnCaptionType columnCaptionType)
+        public IColumnCaption GetColumnCaption(PivotKey pivotKey)
         {
-            string columnCaption;
+            IColumnCaption columnCaption;
             if (null != ColumnSpec.Caption)
             {
-                columnCaption = ColumnSpec.Caption;
+                columnCaption = ColumnCaption.UnlocalizableCaption(ColumnSpec.Caption);
             }
             else if (null == ColumnDescriptor)
             {
-                columnCaption = PropertyPath.ToString();
+                columnCaption = ColumnCaption.UnlocalizableCaption(PropertyPath.ToString());
             }
             else
             {
-                columnCaption = DataSchema.GetColumnCaption(DataSchema.GetColumnCaption(ColumnDescriptor), columnCaptionType);
+                columnCaption = DataSchema.GetColumnCaption(ColumnDescriptor);
             }
             return QualifyColumnCaption(pivotKey, columnCaption);
+        }
+
+        public string GetColumnCaption(PivotKey pivotKey, ColumnCaptionType captionType)
+        {
+            return GetColumnCaption(pivotKey).GetCaption(captionType == ColumnCaptionType.invariant
+                ? DataSchemaLocalizer.INVARIANT
+                : DataSchema.DataSchemaLocalizer);
         }
 
         public string GetColumnDescription(PivotKey pivotKey)
@@ -69,26 +76,18 @@ namespace pwiz.Common.DataBinding
             return DataSchema.GetColumnDescription(ColumnDescriptor);
         }
 
-        public static string QualifyColumnCaption(PivotKey pivotKey, string columnCaption)
+        public static IColumnCaption QualifyColumnCaption(PivotKey pivotKey, IColumnCaption columnCaption)
         {
             if (null == pivotKey)
             {
                 return columnCaption;
             }
-            StringBuilder prefix = new StringBuilder();
-            foreach (var kvp in pivotKey.KeyPairs)
-            {
-                if (prefix.Length > 0)
-                {
-                    prefix.Append(" "); // Not L10N
-                }
-                prefix.Append(kvp.Value ?? string.Empty);
-            }
-            if (prefix.Length == 0)
-            {
-                return columnCaption;
-            }
-            return prefix + " " + columnCaption; // Not L10N
+            return QualifyColumnCaption(pivotKey.KeyPairs.Select(pair => pair.Value), columnCaption);
+        }
+
+        public static IColumnCaption QualifyColumnCaption(IEnumerable<object> values, IColumnCaption columnCaption)
+        {
+            return CaptionComponentList.SpaceSeparate(values.Concat(new[] {columnCaption}));
         }
 
         public object GetValue(RowItem rowItem, PivotKey pivotKey)
@@ -99,7 +98,7 @@ namespace pwiz.Common.DataBinding
             }
             if (ColumnDescriptor == null)
             {
-                return "#COLUMN " + PropertyPath + " NOT FOUND#"; // Not L10N
+                return @"#COLUMN " + PropertyPath + @" NOT FOUND#";
             }
             return ColumnDescriptor.GetPropertyValue(rowItem, pivotKey);
         }
@@ -137,8 +136,14 @@ namespace pwiz.Common.DataBinding
             {
                 return new Attribute[0];
             }
-            var overrideAttributes = new Attribute[] {new DisplayNameAttribute(GetColumnCaption(pivotKey, ColumnCaptionType.localized))};
-            var mergedAttributes = AttributeCollection.FromExisting(new AttributeCollection(ColumnDescriptor.GetAttributes().ToArray()), overrideAttributes);
+            var columnCaption = GetColumnCaption(pivotKey);
+            var overrideAttributes = new List<Attribute>{new DisplayNameAttribute(columnCaption.GetCaption(DataSchema.DataSchemaLocalizer)),
+                new ColumnCaptionAttribute(columnCaption)};
+            if (ColumnDescriptor.IsExpensive)
+            {
+                overrideAttributes.Add(new ExpensiveAttribute());
+            }
+            var mergedAttributes = AttributeCollection.FromExisting(new AttributeCollection(ColumnDescriptor.GetAttributes().ToArray()), overrideAttributes.ToArray());
             return mergedAttributes.Cast<Attribute>();
         }
     }

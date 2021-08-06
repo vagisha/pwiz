@@ -35,7 +35,6 @@ using System.Windows.Forms;
 using System.Threading;
 using DigitalRune.Windows.Docking;
 using NHibernate.Linq;
-using NHibernate.Util;
 using BrightIdeasSoftware;
 using PopupControl;
 using IDPicker.DataModel;
@@ -261,15 +260,18 @@ namespace IDPicker.Forms
 
             public static NHibernate.IQuery GetQuery(NHibernate.ISession session, DataFilter dataFilter)
             {
-                if (dataFilter.Spectrum != null && dataFilter.Spectrum.Count == 1 ||
-                    dataFilter.Peptide != null && dataFilter.Peptide.Count == 1 ||
-                    dataFilter.DistinctMatchKey != null && dataFilter.DistinctMatchKey.Count == 1)
+                if (dataFilter.Spectrum?.Any() == true ||
+                    dataFilter.Peptide?.Any() == true ||
+                    dataFilter.DistinctMatchKey?.Any() == true)
                 {
                     var basicFilter = new DataFilter(dataFilter)
                     {
                         AminoAcidOffset = null,
                         Cluster = null,
-                        Protein = null
+                        Protein = null,
+                        ProteinGroup = null,
+                        Gene = null,
+                        GeneGroup = null
                     };
 
                     if (dataFilter.Spectrum != null)
@@ -307,7 +309,9 @@ namespace IDPicker.Forms
 
             public static int GetQueryCount(NHibernate.ISession session, DataFilter dataFilter)
             {
-                if (dataFilter.Spectrum != null && dataFilter.Spectrum.Count == 1)
+                if (dataFilter.Spectrum?.Any() == true ||
+                    dataFilter.Peptide?.Any() == true ||
+                    dataFilter.DistinctMatchKey?.Any() == true)
                 {
                     dataFilter = new DataFilter(dataFilter)
                     {
@@ -315,7 +319,10 @@ namespace IDPicker.Forms
                         Modifications = null,
                         ModifiedSite = null,
                         Cluster = null,
-                        Protein = null
+                        Protein = null,
+                        ProteinGroup = null,
+                        Gene = null,
+                        GeneGroup = null
                     };
                 }
 
@@ -358,8 +365,8 @@ namespace IDPicker.Forms
                 if (!String.IsNullOrEmpty(modificationString) && modificationString.Contains('@'))
                 {
                     // build modified sequence
-                    var modifications = modificationString.Split(' ').Last()
-                                                          .Split(',')
+                    var modifications = modificationString.Split(' ').Last().Replace(",", Properties.Settings.Default.GroupConcatSeparator)
+                                                          .Split(Properties.Settings.Default.GroupConcatSeparator[0])
                                                           .Select(o => o.Split('@'))
                                                           .Select(o => new { Offset = Convert.ToInt32(o[1]), DeltaMass = Convert.ToDouble(o[0]) })
                                                           .OrderByDescending(o => o.Offset);
@@ -712,13 +719,13 @@ namespace IDPicker.Forms
 
         public event EventHandler<ViewFilterEventArgs> SpectrumViewFilter;
         public event EventHandler<SpectrumViewVisualizeEventArgs> SpectrumViewVisualize;
+        public event EventHandler SourceGroupingChanged;
+        public event EventHandler IsobaricMappingChanged;
 
         private TotalCounts totalCounts, basicTotalCounts;
         private Dictionary<DataFilterKey, List<Row>> rowsBySource, basicRowsBySource;
 
         DataGridViewColumn[] aggregateColumns, psmColumns;
-
-        List<DataGridViewTextBoxColumn> iTRAQ_ReporterIonColumns, TMT_ReporterIonColumns;
 
         public SpectrumTableForm()
         {
@@ -729,33 +736,6 @@ namespace IDPicker.Forms
 
             Text = TabText = "Spectrum View";
             Icon = Properties.Resources.SpectrumViewIcon;
-
-            iTRAQ_ReporterIonColumns = new List<DataGridViewTextBoxColumn>();
-            TMT_ReporterIonColumns = new List<DataGridViewTextBoxColumn>();
-
-            foreach (int ion in new int[] { 113, 114, 115, 116, 117, 118, 119, 121 })
-            {
-                var column = new DataGridViewTextBoxColumn
-                {
-                    HeaderText = "iTRAQ-" + ion.ToString(),
-                    Name = "iTRAQ-" + ion.ToString() + "Column",
-                    ReadOnly = true,
-                    Width = 100
-                };
-                iTRAQ_ReporterIonColumns.Add(column);
-            }
-
-            foreach (int ion in new int[] { 126, 127, 128, 129, 130, 131 })
-            {
-                var column = new DataGridViewTextBoxColumn
-                {
-                    HeaderText = "TMT-" + ion.ToString(),
-                    Name = "TMT-" + ion.ToString() + "Column",
-                    ReadOnly = true,
-                    Width = 100
-                };
-                TMT_ReporterIonColumns.Add(column);
-            }
 
             treeDataGridView.Columns.AddRange(iTRAQ_ReporterIonColumns.ToArray());
             treeDataGridView.Columns.AddRange(TMT_ReporterIonColumns.ToArray());
@@ -788,6 +768,14 @@ namespace IDPicker.Forms
             };
             editSourceGroupsButton.Click += editGroupsButton_Click;
             toolStrip.Items.Add(editSourceGroupsButton);
+
+            var editIsobaricSampleMappingButton = new ToolStripButton()
+            {
+                Text = "Isobaric Sample Mapping",
+                Alignment = ToolStripItemAlignment.Right
+            };
+            editIsobaricSampleMappingButton.Click += editMappingButton_Click;
+            toolStrip.Items.Add(editIsobaricSampleMappingButton);
 
             pivotSetupButton.Visible = false;
 
@@ -1453,11 +1441,26 @@ namespace IDPicker.Forms
                     basicRowsBySource = rowsBySource;
 
                     SetData(session, viewFilter);
-                    //(this.ParentForm as IDPickerForm).ApplyBasicFilter();
-                }
-                //TODO- Find a better way of doing this
-            }
 
+                    if (SourceGroupingChanged != null)
+                        SourceGroupingChanged(this, EventArgs.Empty);
+                }
+                //TODO- Find a better way of doing this (i.e. need to refresh protein and peptide tables too if they are pivoted)
+            }
+        }
+
+        private void editMappingButton_Click(object sender, EventArgs e)
+        {
+            if (session != null)
+            {
+                var imf = new IsobaricMappingForm(session.SessionFactory);
+
+                if (imf.ShowDialog() != DialogResult.OK)
+                    return;
+
+                if (IsobaricMappingChanged != null)
+                    IsobaricMappingChanged(this, EventArgs.Empty);
+            }
         }
 
         private void groupingSetupControl_GroupingChanging(object sender, GroupingChangingEventArgs<GroupBy> e)
@@ -1498,22 +1501,25 @@ namespace IDPicker.Forms
                         columnsIrrelevantForGrouping.Add(distinctAnalysesColumn);
                     }
 
-                    var quantitationMethods = new Set<QuantitationMethod>(session.Query<SpectrumSource>().Select(o => o.QuantitationMethod).Distinct());
-                    if (!quantitationMethods.Contains(QuantitationMethod.ITRAQ4plex) &&
-                        !quantitationMethods.Contains(QuantitationMethod.ITRAQ8plex))
-                        // hide all iTRAQ columns
-                        iTRAQ_ReporterIonColumns.ForEach(o => columnsIrrelevantForGrouping.Add(o));
-                    else if (!quantitationMethods.Contains(QuantitationMethod.ITRAQ8plex))
-                        // hide iTRAQ8plex-only columns
-                        iTRAQ_ReporterIonColumns.Except(iTRAQ_ReporterIonColumns.GetRange(1, 4)).ForEach(o => columnsIrrelevantForGrouping.Add(o));
+                    iTRAQ_ReporterIonColumns.ForEach(o => columnsIrrelevantForGrouping.Add(o));
+                    TMT_ReporterIonColumns.ForEach(o => columnsIrrelevantForGrouping.Add(o));
 
-                    if (!quantitationMethods.Contains(QuantitationMethod.TMT2plex) &&
-                        !quantitationMethods.Contains(QuantitationMethod.TMT6plex))
-                        // hide all TMT columns
-                        TMT_ReporterIonColumns.ForEach(o => columnsIrrelevantForGrouping.Add(o));
-                    else if (!quantitationMethods.Contains(QuantitationMethod.TMT6plex))
-                        // hide TMT6plex-only columns
-                        TMT_ReporterIonColumns.GetRange(2, 4).ForEach(o => columnsIrrelevantForGrouping.Add(o));
+                    var quantitationMethods = new Set<QuantitationMethod>(session.Query<SpectrumSource>().Select(o => o.QuantitationMethod).Distinct());
+                    if (quantitationMethods.Contains(QuantitationMethod.ITRAQ8plex))
+                        iTRAQ_ReporterIonColumns.ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                    else if (quantitationMethods.Contains(QuantitationMethod.ITRAQ4plex))
+                        iTRAQ_ReporterIonColumns.GetRange(1, 4).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+
+                    if (quantitationMethods.Contains(QuantitationMethod.TMTpro16plex))
+                        TMT_ReporterIonColumns.ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                    else if (quantitationMethods.Contains(QuantitationMethod.TMT11plex))
+                        TMT_ReporterIonColumns.GetRange(0, 11).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                    else if (quantitationMethods.Contains(QuantitationMethod.TMT10plex))
+                        TMT_ReporterIonColumns.GetRange(0, 10).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                    else if (quantitationMethods.Contains(QuantitationMethod.TMT6plex))
+                        TMT_ReporterIonColumns.Where(o => new List<int> { 0, 1, 4, 5, 8, 9 }.Contains((int)o.Tag)).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
+                    else if (quantitationMethods.Contains(QuantitationMethod.TMT2plex))
+                        TMT_ReporterIonColumns.Where(o => new List<int> { 0, 2 }.Contains((int)o.Tag)).ForEach(o => columnsIrrelevantForGrouping.Remove(o));
                 }
 
             if (checkedGroupings.IsNullOrEmpty())

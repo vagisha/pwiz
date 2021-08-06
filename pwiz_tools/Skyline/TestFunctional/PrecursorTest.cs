@@ -23,6 +23,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.SettingsUI;
 using pwiz.Skyline.Util;
 using pwiz.SkylineTestUtil;
 
@@ -48,12 +49,18 @@ namespace pwiz.SkylineTestFunctional
         /// </summary>
         protected override void DoTest()
         {
-            // The transition list produced by the special test nodes doesn't parse as peptides, which this test expects
-            TestSmallMolecules = false;
-
             // Open the .sky file
             string documentPath = TestFilesDir.GetTestPath(DOCUMENT_NAME);
             RunUI(() => SkylineWindow.OpenFile(documentPath));
+            WaitForDocumentLoaded();
+
+            // SCIEX parameter equations changed in 4.1.1
+            RunDlg<TransitionSettingsUI>(() => SkylineWindow.ShowTransitionSettingsUI(), tranSettings =>
+                {
+                    tranSettings.RegressionCEName = "SCIEX";
+                    tranSettings.RegressionDPName = "SCIEX";
+                    tranSettings.OkDialog();
+                });
 
             // Delete the last protein because its peptide has an explicit modification
             // which just gets in the way for this test.
@@ -71,7 +78,7 @@ namespace pwiz.SkylineTestFunctional
             RunUI(() => Assert.AreEqual(ionCount + 1, SkylineWindow.GraphSpectrum.PeaksMatchedCount));
 
             string precursorPrefix = IonType.precursor.GetLocalizedString();
-            string precursorLabel = precursorPrefix + Transition.GetChargeIndicator(2);
+            string precursorLabel = precursorPrefix + Transition.GetChargeIndicator(Adduct.FromChargeProtonated(2));
 
             SrmDocument docCurrent = SkylineWindow.Document;
             var pickList0 = ShowDialog<PopupPickList>(SkylineWindow.ShowPickChildrenInTest);
@@ -105,6 +112,7 @@ namespace pwiz.SkylineTestFunctional
             RunUI(() => SkylineWindow.SaveDocument());
             RunUI(SkylineWindow.NewDocument);
             RunUI(() => SkylineWindow.OpenFile(documentPath));
+            WaitForDocumentLoaded();
             Assert.AreEqual(2, GetPrecursorTranstionCount());
 
             // Export a transition list
@@ -131,8 +139,8 @@ namespace pwiz.SkylineTestFunctional
 
             // Paste the transition list
             SetClipboardTextUI(File.ReadAllText(tranListPath));
-            RunUI(() => SkylineWindow.Paste());
-
+            PasteTransitionListSkipColumnSelect();
+            WaitForCondition(() => 0 != SkylineWindow.Document.MoleculeCount);
             Assert.AreEqual(2, GetPrecursorTranstionCount());
             Assert.AreEqual(docCurrent.PeptideTransitionCount, SkylineWindow.Document.PeptideTransitionCount);
             Assert.AreEqual(IonType.precursor, new List<TransitionDocNode>(docCurrent.PeptideTransitions)[0].Transition.IonType,

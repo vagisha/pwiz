@@ -18,16 +18,19 @@
  */
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Windows.Forms;
 using NHibernate;
 using pwiz.Common.Controls;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
+using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
@@ -37,7 +40,7 @@ using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.FileUI
 {
-    public sealed partial class ExportMethodDlg : FormEx, IMultipleViewProvider
+    public sealed partial class ExportMethodDlg : CreateHandleDebugBase, IMultipleViewProvider
     {
         public static string TRANS_PER_SAMPLE_INJ_TXT { get { return Resources.ExportMethodDlg_TRANS_PER_SAMPLE_INJ_TXT; } }
         public static string CONCUR_TRANS_TXT { get { return Resources.ExportMethodDlg_CONCUR_TRANS_TXT; } }
@@ -54,11 +57,14 @@ namespace pwiz.Skyline.FileUI
 
         private readonly ExportDlgProperties _exportProperties;
 
+        private CancellationTokenSource _cancellationTokenSource;
+
         public ExportMethodDlg(SrmDocument document, ExportFileType fileType)
         {
             InitializeComponent();
 
-            _exportProperties = new ExportDlgProperties(this);
+            _cancellationTokenSource = new CancellationTokenSource();
+            _exportProperties = new ExportDlgProperties(this, _cancellationTokenSource.Token);
 
             _document = document;
             _fileType = fileType;
@@ -83,7 +89,7 @@ namespace pwiz.Skyline.FileUI
                 btnBrowseTemplate.Visible = false;
                 labelTemplateFile.Visible = false;
                 textTemplateFile.Visible = false;
-                Height -= textTemplateFile.Bottom - comboTargetType.Bottom;
+                Height -= textTemplateFile.Bottom - btnGraph.Bottom;
             }
 
             comboInstrument.Items.Clear();
@@ -93,7 +99,8 @@ namespace pwiz.Skyline.FileUI
             // Init dialog values from settings.
             ExportStrategy = Helpers.ParseEnum(Settings.Default.ExportMethodStrategy, ExportStrategy.Single);
 
-            IgnoreProteins = !Equals(ExportStrategy, ExportStrategy.Buckets) ? Settings.Default.ExportIgnoreProteins : true;
+            SortByMz = Settings.Default.ExportSortByMz;
+            IgnoreProteins = Equals(ExportStrategy, ExportStrategy.Buckets) || Settings.Default.ExportIgnoreProteins;
 
             // Start with method type as Standard until after instrument type is set
             comboTargetType.Items.Add(ExportMethodType.Standard.GetLocalizedString());
@@ -109,31 +116,38 @@ namespace pwiz.Skyline.FileUI
             comboOptimizing.SelectedIndex = 0;
 
             // Set instrument type based on CE regression name for the document.
-            string instrumentTypeName = document.Settings.TransitionSettings.Prediction.CollisionEnergy.Name;
-            if (instrumentTypeName != null)
+            string cePredictorName = document.Settings.TransitionSettings.Prediction.CollisionEnergy.Name;
+            if (cePredictorName != null)
             {
                 // Look for the first instrument type with the same prefix as the CE name
-                string instrumentTypePrefix = instrumentTypeName.Split(' ')[0];
-                // We still have some CE regressions that begin with ABI, while all instruments
-                // have been changed to AB SCIEX
-                if (Equals("ABI", instrumentTypePrefix)) // Not L10N
-                    instrumentTypePrefix = "AB"; // Not L10N
+                string cePredictorPrefix = cePredictorName.Split(' ')[0];
+                // We still may see some CE regressions that begin with ABI or AB, while all instruments
+                // have been changed to start with SCIEX
+                if (Equals(@"ABI", cePredictorPrefix) || Equals(@"AB", cePredictorPrefix))
+                    cePredictorPrefix = ExportInstrumentType.ABI;
                 int i = -1;
                 if (document.Settings.TransitionSettings.FullScan.IsEnabled)
                 {
-                    i = listTypes.IndexOf(typeName => typeName.StartsWith(instrumentTypePrefix) &&
+                    i = listTypes.IndexOf(typeName => typeName.StartsWith(cePredictorPrefix) &&
                         ExportInstrumentType.IsFullScanInstrumentType(typeName));
                 }
                 if (i == -1)
                 {
-                    i = listTypes.IndexOf(typeName => typeName.StartsWith(instrumentTypePrefix));
+                    i = listTypes.IndexOf(typeName => typeName.StartsWith(cePredictorPrefix));
                 }
                 if (i != -1)
                     InstrumentType = listTypes[i];
             }
             // If nothing found based on CE regression name, just use the first instrument in the list
             if (InstrumentType == null)
-                InstrumentType = listTypes[0];
+            {
+                var instrumentTypeFirst = listTypes[0];
+                // Avoid defaulting to Agilent for DIA when we know it is not supported.
+                if (IsDiaFullScan && Equals(instrumentTypeFirst, ExportInstrumentType.AGILENT_TOF) && listTypes.Length > 1)
+                    InstrumentType = listTypes[1];
+                else
+                    InstrumentType = instrumentTypeFirst;
+            }
 
             // Reset method type based on what was used last and what the chosen instrument is capable of
             ExportMethodType mType = Helpers.ParseEnum(Settings.Default.ExportMethodType, ExportMethodType.Standard);
@@ -149,6 +163,8 @@ namespace pwiz.Skyline.FileUI
 
             DwellTime = Settings.Default.ExportMethodDwellTime;
             RunLength = Settings.Default.ExportMethodRunLength;
+
+            Helpers.PeptideToMoleculeTextMapper.TranslateForm(this, document.DocumentType); // Use terminology like "Molecule List" instead of "Protein" if appropriate to document
 
             // For documents with mixed polarity, offer to emit two different lists or just one polarity
             var isMixedPolarity = document.IsMixedPolarity();
@@ -186,13 +202,21 @@ namespace pwiz.Skyline.FileUI
             cbExportMultiQuant.Checked = Settings.Default.ExportMultiQuant;
             cbExportEdcMass.Checked = Settings.Default.ExportEdcMass;
             textPrimaryCount.Text = Settings.Default.PrimaryTransitionCount.ToString(LocalizationHelper.CurrentCulture);
+            textMs1RepetitionTime.Text = Settings.Default.ExportMs1RepetitionTime.ToString(LocalizationHelper.CurrentCulture);
             // Reposition from design layout
+            cbSlens.Top = textMaxTransitions.Bottom;
+            cbWriteCoV.Top = cbSlens.Bottom;
             panelThermoColumns.Top = labelDwellTime.Top;
+            var panelOffset = panelThermoColumns.Controls.Cast<Control>().Min(c => c.Left);
+            foreach (var control in panelThermoColumns.Controls.Cast<Control>())
+                control.Left -= panelOffset;
             panelThermoRt.Top = panelThermoColumns.Top - (int)(panelThermoRt.Height*0.8);
             panelAbSciexTOF.Top = textDwellTime.Top + (textDwellTime.Height - panelAbSciexTOF.Height)/2;
             panelTriggered.Top = textDwellTime.Top + (textDwellTime.Height - panelTriggered.Height)/2;
+            panelTuneColumns.Top = comboTargetType.Top + (comboTargetType.Height - panelTuneColumns.Height)/2;
             panelSciexTune.Top = labelOptimizing.Top;
             panelWaters.Top = labelDwellTime.Top - panelWaters.Height;
+            panelBrukerTimsTof.Top = labelOptimizing.Top;
 
             foreach (string tuneType in ExportOptimize.CompensationVoltageTuneTypes)
                 comboTuning.Items.Add(tuneType);
@@ -217,6 +241,13 @@ namespace pwiz.Skyline.FileUI
             CalcMethodCount();
 
             base.OnHandleCreated(e);
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            _cancellationTokenSource.Cancel();
+
+            base.OnClosing(e);
         }
 
         public string InstrumentType
@@ -259,9 +290,11 @@ namespace pwiz.Skyline.FileUI
         {
             return Equals(type, ExportInstrumentType.AGILENT_TOF) ||
                    Equals(type, ExportInstrumentType.BRUKER_TOF) ||
+                   Equals(type, ExportInstrumentType.BRUKER_TIMSTOF) ||
                    Equals(type, ExportInstrumentType.SHIMADZU) ||
                    Equals(type, ExportInstrumentType.THERMO) ||
                    Equals(type, ExportInstrumentType.THERMO_QUANTIVA) ||
+                   Equals(type, ExportInstrumentType.THERMO_ALTIS) ||
                    Equals(type, ExportInstrumentType.THERMO_ENDURA) ||
                    Equals(type, ExportInstrumentType.THERMO_FUSION) ||
                    Equals(type, ExportInstrumentType.THERMO_TSQ) ||
@@ -290,6 +323,7 @@ namespace pwiz.Skyline.FileUI
                 return Equals(type, ExportInstrumentType.SHIMADZU) ||
                        Equals(type, ExportInstrumentType.THERMO_TSQ) ||
                        Equals(type, ExportInstrumentType.THERMO_QUANTIVA) ||
+                       Equals(type, ExportInstrumentType.THERMO_ALTIS) ||
                        Equals(type, ExportInstrumentType.THERMO_ENDURA) ||
                        Equals(type, ExportInstrumentType.WATERS) ||
                        Equals(type, ExportInstrumentType.WATERS_SYNAPT_TRAP) ||
@@ -298,6 +332,7 @@ namespace pwiz.Skyline.FileUI
                        Equals(type, ExportInstrumentType.WATERS_XEVO_QTOF) ||
                        Equals(type, ExportInstrumentType.WATERS_QUATTRO_PREMIER) ||
                        Equals(type, ExportInstrumentType.BRUKER_TOF) ||
+                       Equals(type, ExportInstrumentType.BRUKER_TIMSTOF) ||
                        // LTQ can only schedule for inclusion lists, but then it always
                        // requires start and stop times.
                        Equals(type, ExportInstrumentType.THERMO_LTQ);
@@ -385,7 +420,7 @@ namespace pwiz.Skyline.FileUI
                 {
                     comboOptimizing.SelectedItem = value;
                 }
-                _exportProperties.OptimizeType = value;
+                _exportProperties.OptimizeType = Equals(ExportOptimize.NONE, value) ? null : value;
             }
         }
 
@@ -405,6 +440,12 @@ namespace pwiz.Skyline.FileUI
             {
                 _exportProperties.OptimizeStepCount = value;
             }
+        }
+
+        public bool SortByMz
+        {
+            get { return _exportProperties.SortByMz; }
+            set { _exportProperties.SortByMz = cbSortByMz.Checked = value; }
         }
 
         public bool IgnoreProteins
@@ -433,6 +474,12 @@ namespace pwiz.Skyline.FileUI
             {
                 _exportProperties.UseSlens = cbSlens.Checked = value;
             }
+        }
+
+        public bool WriteCompensationVoltages
+        {
+            get { return _exportProperties.WriteCompensationVoltages; }
+            set { _exportProperties.WriteCompensationVoltages = cbWriteCoV.Checked = value; }
         }
 
         public ExportPolarity PolarityFilter
@@ -499,10 +546,18 @@ namespace pwiz.Skyline.FileUI
             }
         }
 
+        private void UpdateBrukerTimsTofControls()
+        {
+            panelBrukerTimsTof.Visible = Equals(InstrumentType, ExportInstrumentType.BRUKER_TIMSTOF);
+        }
+
         private void UpdateCovControls()
         {
             bool covInList = comboOptimizing.Items.Contains(ExportOptimize.COV);
-            bool canOptimizeCov = InstrumentType.Contains("SCIEX") && _document.Settings.TransitionSettings.Prediction.CompensationVoltage != null; // Not L10N
+            bool canOptimizeCov = _document.Settings.TransitionSettings.Prediction.CompensationVoltage != null &&
+                (InstrumentType.Contains(@"SCIEX") ||
+                 InstrumentType.Equals(ExportInstrumentType.THERMO_QUANTIVA) ||
+                 InstrumentType.Equals(ExportInstrumentType.THERMO_ALTIS));
             if (covInList && !canOptimizeCov)
             {
                 if (comboOptimizing.SelectedItem.ToString().Equals(ExportOptimize.COV))
@@ -521,6 +576,7 @@ namespace pwiz.Skyline.FileUI
         {
             panelThermoRt.Visible =
                 InstrumentType == ExportInstrumentType.THERMO_QUANTIVA ||
+                InstrumentType == ExportInstrumentType.THERMO_ALTIS ||
                 (targetType != ExportMethodType.Standard && InstrumentType == ExportInstrumentType.THERMO);
             if (panelThermoColumns.Visible)
             {
@@ -538,7 +594,27 @@ namespace pwiz.Skyline.FileUI
         {
             cbSlens.Visible = cbSlens.Enabled =
                 InstrumentType == ExportInstrumentType.THERMO_QUANTIVA ||
+                InstrumentType == ExportInstrumentType.THERMO_ALTIS ||
                 InstrumentType == ExportInstrumentType.THERMO;  // TODO bspratt is this specific enough?
+        }
+
+        private void UpdateThermoFaimsCvControl()
+        {
+            cbWriteCoV.Visible = cbWriteCoV.Enabled =
+                InstrumentType == ExportInstrumentType.THERMO_QUANTIVA ||
+                InstrumentType == ExportInstrumentType.THERMO_FUSION ||
+                InstrumentType == ExportInstrumentType.THERMO_ALTIS;
+            var optimizing = comboOptimizing.SelectedItem;
+            if (optimizing != null && Equals(optimizing.ToString(), ExportOptimize.COV))
+            {
+                cbWriteCoV.Checked = true;
+                cbWriteCoV.Enabled = false;
+            }
+        }
+
+        private void UpdateThermoTuneControls()
+        {
+            panelTuneColumns.Visible = InstrumentType == ExportInstrumentType.THERMO_FUSION;
         }
 
         private void UpdateMaxTransitions()
@@ -641,7 +717,7 @@ namespace pwiz.Skyline.FileUI
                 if (IsDia)
                 {
                     if (Equals(InstrumentType, ExportInstrumentType.AGILENT_TOF) ||
-                        Equals(InstrumentType, ExportInstrumentType.ABI_TOF) ||
+                        Equals(InstrumentType, ExportInstrumentType.ABI_TOF) || // CONSIDER: Should be possible, but we haven't done methods yet
                         Equals(InstrumentType, ExportInstrumentType.THERMO_LTQ))
                     {
                         helper.ShowTextBoxError(textTemplateFile, Resources.ExportMethodDlg_OkDialog_Export_of_DIA_method_is_not_supported_for__0__, InstrumentType);
@@ -684,35 +760,39 @@ namespace pwiz.Skyline.FileUI
                 Equals(InstrumentType, ExportInstrumentType.ABI_TOF))
             {
                 // Check that mass analyzer settings are set to TOF.
-                if (documentExport.Settings.TransitionSettings.FullScan.IsEnabledMs && 
-                    documentExport.Settings.TransitionSettings.FullScan.PrecursorMassAnalyzer != FullScanMassAnalyzerType.tof)
+                if (!CheckAnalyzer(documentExport.Settings.TransitionSettings.FullScan.IsEnabledMs, 
+                                   documentExport.Settings.TransitionSettings.FullScan.PrecursorMassAnalyzer,
+                                   FullScanMassAnalyzerType.tof))
                 {
                     MessageDlg.Show(this, string.Format(Resources.ExportMethodDlg_OkDialog_The_precursor_mass_analyzer_type_is_not_set_to__0__in_Transition_Settings_under_the_Full_Scan_tab, Resources.ExportMethodDlg_OkDialog_TOF));
                     return;
                 }
-                if (documentExport.Settings.TransitionSettings.FullScan.IsEnabledMsMs &&
-                    documentExport.Settings.TransitionSettings.FullScan.ProductMassAnalyzer != FullScanMassAnalyzerType.tof)
+                if (!CheckAnalyzer(documentExport.Settings.TransitionSettings.FullScan.IsEnabledMsMs,
+                                   documentExport.Settings.TransitionSettings.FullScan.ProductMassAnalyzer,
+                                   FullScanMassAnalyzerType.tof))
                 {
                     MessageDlg.Show(this, string.Format(Resources.ExportMethodDlg_OkDialog_The_product_mass_analyzer_type_is_not_set_to__0__in_Transition_Settings_under_the_Full_Scan_tab, Resources.ExportMethodDlg_OkDialog_TOF));
                     return;
-                }                    
+                }
             }
 
             if (Equals(InstrumentType, ExportInstrumentType.THERMO_Q_EXACTIVE))
             {
                 // Check that mass analyzer settings are set to Orbitrap.
-                if (documentExport.Settings.TransitionSettings.FullScan.IsEnabledMs &&
-                    documentExport.Settings.TransitionSettings.FullScan.PrecursorMassAnalyzer != FullScanMassAnalyzerType.orbitrap)
+                if (!CheckAnalyzer(documentExport.Settings.TransitionSettings.FullScan.IsEnabledMs,
+                                   documentExport.Settings.TransitionSettings.FullScan.PrecursorMassAnalyzer,
+                                   FullScanMassAnalyzerType.orbitrap))
                 {
                     MessageDlg.Show(this, string.Format(Resources.ExportMethodDlg_OkDialog_The_precursor_mass_analyzer_type_is_not_set_to__0__in_Transition_Settings_under_the_Full_Scan_tab, Resources.ExportMethodDlg_OkDialog_Orbitrap));
                     return;
                 }
-                if (documentExport.Settings.TransitionSettings.FullScan.IsEnabledMsMs &&
-                    documentExport.Settings.TransitionSettings.FullScan.ProductMassAnalyzer != FullScanMassAnalyzerType.orbitrap)
+                if (!CheckAnalyzer(documentExport.Settings.TransitionSettings.FullScan.IsEnabledMsMs,
+                                   documentExport.Settings.TransitionSettings.FullScan.ProductMassAnalyzer,
+                                   FullScanMassAnalyzerType.orbitrap))
                 {
                     MessageDlg.Show(this, string.Format(Resources.ExportMethodDlg_OkDialog_The_product_mass_analyzer_type_is_not_set_to__0__in_Transition_Settings_under_the_Full_Scan_tab, Resources.ExportMethodDlg_OkDialog_Orbitrap));
                     return;
-                }                    
+                }
             }
 
             if (IsDia && _document.Settings.TransitionSettings.FullScan.IsolationScheme.FromResults)
@@ -739,6 +819,19 @@ namespace pwiz.Skyline.FileUI
                 return;
             }
 
+            if (Equals(InstrumentType, ExportInstrumentType.BRUKER_TIMSTOF))
+            {
+                var missingIonMobility = BrukerTimsTofMethodExporter.GetMissingIonMobility(documentExport, _exportProperties);
+                if (missingIonMobility.Length > 0)
+                {
+                    MessageDlg.Show(this,
+                        Resources.ExportMethodDlg_OkDialog_All_targets_must_have_an_ion_mobility_value__These_can_be_set_explicitly_or_contained_in_an_ion_mobility_library_or_spectral_library__The_following_ion_mobility_values_are_missing_ +
+                        Environment.NewLine + Environment.NewLine +
+                        TextUtil.LineSeparate(missingIonMobility.Select(k => k.ToString())));
+                    return;
+                }
+            }
+
             // Full-scan method building ignores CE and DP regression values
             if (!IsFullScanInstrument)
             {
@@ -747,19 +840,20 @@ namespace pwiz.Skyline.FileUI
                 var predict = documentExport.Settings.TransitionSettings.Prediction;
                 var ce = predict.CollisionEnergy;
                 string ceName = (ce != null ? ce.Name : null);
-                string ceNameDefault = _instrumentType;
-                if (ceNameDefault.IndexOf(' ') != -1)
-                    ceNameDefault = ceNameDefault.Substring(0, ceNameDefault.IndexOf(' '));
-                bool ceInSynch = ceName != null && ceName.StartsWith(ceNameDefault);
+                string ceNameDefault = _instrumentType.Split(' ')[0];
+
+                // CE prediction should be None for Bruker timsTOF, since the CE is populated by the instrument control software in the method.
+                if (Equals(_instrumentType, ExportInstrumentType.BRUKER_TIMSTOF))
+                    ceNameDefault = CollisionEnergyList.ELEMENT_NONE;
+
+                bool ceInSynch = IsInSynchPredictor(ceName, ceNameDefault);
 
                 var dp = predict.DeclusteringPotential;
                 string dpName = (dp != null ? dp.Name : null);
-                string dpNameDefault = _instrumentType;
-                if (dpNameDefault.IndexOf(' ') != -1)
-                    dpNameDefault = dpNameDefault.Substring(0, dpNameDefault.IndexOf(' '));
+                string dpNameDefault = _instrumentType.Split(' ')[0];
                 bool dpInSynch = true;
                 if (_instrumentType == ExportInstrumentType.ABI)
-                    dpInSynch = dpName != null && dpName.StartsWith(dpNameDefault);
+                    dpInSynch = IsInSynchPredictor(dpName, dpNameDefault);
                 else
                     dpNameDefault = null; // Ignored for all other types
 
@@ -790,54 +884,69 @@ namespace pwiz.Skyline.FileUI
                 }
             }
 
-            if (documentExport.Settings.TransitionSettings.Prediction.CompensationVoltage != null &&
-                !Equals(comboOptimizing.SelectedItem.ToString(), ExportOptimize.COV))
+            var covPrediction = documentExport.Settings.TransitionSettings.Prediction.CompensationVoltage != null;
+            var writeFaims = cbWriteCoV.Visible && cbWriteCoV.Checked;
+            if ((covPrediction || writeFaims) && !Equals(comboOptimizing.SelectedItem.ToString(), ExportOptimize.COV))
             {
                 // Show warning if we don't have results for the highest tune level
-                var highestCoV = documentExport.HighestCompensationVoltageTuning();
                 string message = null;
-                switch (highestCoV)
+                if (!writeFaims)
                 {
-                    case CompensationVoltageParameters.Tuning.fine:
-                        {
-                            var missing = documentExport.GetMissingCompensationVoltages(highestCoV).ToArray();
-                            if (missing.Any())
+                    var highestCoV = documentExport.HighestCompensationVoltageTuning();
+                    switch (highestCoV)
+                    {
+                        case CompensationVoltageParameters.Tuning.fine:
                             {
-                                message = TextUtil.LineSeparate(
-                                    Resources.ExportMethodDlg_OkDialog_You_are_missing_fine_tune_optimized_compensation_voltages_for_the_following_,
-                                    TextUtil.LineSeparate(missing));
+                                var missing = documentExport.GetMissingCompensationVoltages(highestCoV).ToArray();
+                                if (missing.Any())
+                                {
+                                    message = TextUtil.LineSeparate(
+                                        Resources.ExportMethodDlg_OkDialog_You_are_missing_fine_tune_optimized_compensation_voltages_for_the_following_,
+                                        TextUtil.LineSeparate(missing));
+                                }
+                                break;
                             }
-                            break;
-                        }
-                    case CompensationVoltageParameters.Tuning.medium:
-                        {
-                            message = Resources.ExportMethodDlg_OkDialog_You_are_missing_fine_tune_optimized_compensation_voltages_;
-                            var missing = documentExport.GetMissingCompensationVoltages(highestCoV).ToArray();
-                            if (missing.Any())
+                        case CompensationVoltageParameters.Tuning.medium:
                             {
-                                message = TextUtil.LineSeparate(message,
-                                    Resources.ExportMethodDlg_OkDialog_You_are_missing_medium_tune_optimized_compensation_voltages_for_the_following_,
-                                    TextUtil.LineSeparate(missing));
+                                message = Resources.ExportMethodDlg_OkDialog_You_are_missing_fine_tune_optimized_compensation_voltages_;
+                                var missing = documentExport.GetMissingCompensationVoltages(highestCoV).ToArray();
+                                if (missing.Any())
+                                {
+                                    message = TextUtil.LineSeparate(message,
+                                        Resources.ExportMethodDlg_OkDialog_You_are_missing_medium_tune_optimized_compensation_voltages_for_the_following_,
+                                        TextUtil.LineSeparate(missing));
+                                }
+                                break;
                             }
-                            break;
-                        }
-                    case CompensationVoltageParameters.Tuning.rough:
-                        {
-                            message = Resources.ExportMethodDlg_OkDialog_You_have_only_rough_tune_optimized_compensation_voltages_;
-                            var missing = documentExport.GetMissingCompensationVoltages(highestCoV).ToArray();
-                            if (missing.Any())
+                        case CompensationVoltageParameters.Tuning.rough:
                             {
-                                message = TextUtil.LineSeparate(message,
-                                    Resources.ExportMethodDlg_OkDialog_You_are_missing_any_optimized_compensation_voltages_for_the_following_,
-                                    TextUtil.LineSeparate(missing));
+                                message = Resources.ExportMethodDlg_OkDialog_You_have_only_rough_tune_optimized_compensation_voltages_;
+                                var missing = documentExport.GetMissingCompensationVoltages(highestCoV).ToArray();
+                                if (missing.Any())
+                                {
+                                    message = TextUtil.LineSeparate(message,
+                                        Resources.ExportMethodDlg_OkDialog_You_are_missing_any_optimized_compensation_voltages_for_the_following_,
+                                        TextUtil.LineSeparate(missing));
+                                }
+                                break;
                             }
-                            break;
-                        }
-                    case CompensationVoltageParameters.Tuning.none:
-                        {
-                            message = Resources.ExportMethodDlg_OkDialog_Your_document_does_not_contain_compensation_voltage_results__but_compensation_voltage_is_set_under_transition_settings_;
-                            break;
-                        }
+                        case CompensationVoltageParameters.Tuning.none:
+                            {
+                                message = Resources.ExportMethodDlg_OkDialog_Your_document_does_not_contain_compensation_voltage_results__but_compensation_voltage_is_set_under_transition_settings_;
+                                break;
+                            }
+                    }
+                }
+                else
+                {
+                    var missing = documentExport.GetMissingCompensationVoltages(CompensationVoltageParameters.Tuning.fine).ToArray();
+                    if (missing.Any())
+                    {
+                        message = TextUtil.LineSeparate(
+                            Resources.ExportMethodDlg_OkDialog_You_are_missing_compensation_voltages_for_the_following_,
+                            TextUtil.LineSeparate(missing),
+                            Resources.ExportMethodDlg_OkDialog_You_can_set_explicit_compensation_voltages_for_these__or_add_their_values_to_a_document_optimization_library_in_Transition_Settings_under_the_Prediction_tab_);
+                    }
                 }
 
                 if (message != null)
@@ -921,6 +1030,7 @@ namespace pwiz.Skyline.FileUI
             // Successfully completed dialog.  Store the values in settings.
             Settings.Default.ExportInstrumentType = _instrumentType;
             Settings.Default.ExportMethodStrategy = ExportStrategy.ToString();
+            Settings.Default.ExportSortByMz = SortByMz;
             Settings.Default.ExportIgnoreProteins = IgnoreProteins;
             if (IsFullScanInstrument)
             {
@@ -952,10 +1062,28 @@ namespace pwiz.Skyline.FileUI
                 Settings.Default.ExportEdcMass = ExportEdcMass;
             if (comboPolarityFilter.Enabled)
                 Settings.Default.ExportPolarityFilterEnum = TypeSafeEnum.ValidateOrDefault((ExportPolarity)comboPolarityFilter.SelectedIndex, ExportPolarity.all).ToString();
+            if (textMs1RepetitionTime.Visible)
+                Settings.Default.ExportMs1RepetitionTime = _exportProperties.Ms1RepetitionTime;
             DialogResult = DialogResult.OK;
             Close();
         }
 
+        private static bool IsInSynchPredictor(string name, string namePrefix)
+        {
+            if (name == null)
+                return false;
+            if (name.StartsWith(namePrefix))
+                return true;
+            // SCIEX has had many prefixes
+            if (namePrefix.Equals(ExportInstrumentType.ABI.Split(' ')[0]))
+                return IsInSynchPredictor(name, @"AB") || IsInSynchPredictor(name, @"ABI");
+            return false;
+        }
+
+        private static bool CheckAnalyzer(bool enabled, FullScanMassAnalyzerType analyzerType, params FullScanMassAnalyzerType[] analyzerTypesAccepted)
+        {
+            return !enabled || analyzerType == FullScanMassAnalyzerType.centroided || analyzerTypesAccepted.Contains(analyzerType);
+        }
 
         /// <summary>
         /// This function will validate all the settings required for exporting a method,
@@ -974,11 +1102,14 @@ namespace pwiz.Skyline.FileUI
                 _exportProperties.ExportStrategy = ExportStrategy.Buckets;
             // ReSharper restore ConvertIfStatementToConditionalTernaryExpression
 
+            _exportProperties.SortByMz = cbSortByMz.Checked;
             _exportProperties.IgnoreProteins = cbIgnoreProteins.Checked;
             _exportProperties.FullScans = _document.Settings.TransitionSettings.FullScan.IsEnabledMsMs;
             _exportProperties.AddEnergyRamp = panelThermoColumns.Visible && cbEnergyRamp.Checked;
             _exportProperties.UseSlens = cbSlens.Checked;
+            _exportProperties.WriteCompensationVoltages = cbWriteCoV.Checked;
             _exportProperties.AddTriggerReference = panelThermoColumns.Visible && cbTriggerRefColumns.Checked;
+            _exportProperties.Tune3 = panelTuneColumns.Visible && cbTune3.Checked;
 
             _exportProperties.ExportMultiQuant = panelAbSciexTOF.Visible && cbExportMultiQuant.Checked;
 
@@ -998,7 +1129,15 @@ namespace pwiz.Skyline.FileUI
                 TransitionFullScan.MassAnalyzerToString(
                     _document.Settings.TransitionSettings.FullScan.ProductMassAnalyzer);
 
-            _exportProperties.OptimizeType = comboOptimizing.SelectedItem == null ? ExportOptimize.NONE : comboOptimizing.SelectedItem.ToString();
+            _exportProperties.PrimaryTransitionCount = 0;
+
+            _exportProperties.OptimizeType = null;
+            if (comboOptimizing.SelectedItem != null)
+            {
+                var optimizeTypeCombo = comboOptimizing.SelectedItem.ToString();
+                if (!Equals(optimizeTypeCombo, ExportOptimize.NONE))
+                    _exportProperties.OptimizeType = optimizeTypeCombo;
+            }
             var prediction = _document.Settings.TransitionSettings.Prediction;
             if (Equals(_exportProperties.OptimizeType, ExportOptimize.CE))
             {
@@ -1051,7 +1190,7 @@ namespace pwiz.Skyline.FileUI
             else
             {
                 _exportProperties.OptimizeType = null;
-                _exportProperties.OptimizeStepSize = _exportProperties.OptimizeStepCount = _exportProperties.PrimaryTransitionCount = 0;
+                _exportProperties.OptimizeStepSize = _exportProperties.OptimizeStepCount = 0;
             }
 
             string maxTran = textMaxTransitions.Text;
@@ -1106,10 +1245,18 @@ namespace pwiz.Skyline.FileUI
             if (textRunLength.Visible)
             {
                 double runLength;
-                if (!helper.ValidateDecimalTextBox(textRunLength, AbstractMassListExporter.RUN_LENGTH_MIN, AbstractMassListExporter.RUN_LENGTH_MAX, out runLength))
+                if (!helper.ValidateDecimalTextBox(textRunLength, AbstractMassListExporter.RUN_LENGTH_MIN, AbstractMassListExporter.RUN_LENGTH_MAX, out runLength, false))
                     return false;
 
                 _exportProperties.RunLength = runLength;
+            }
+
+            if (textMs1RepetitionTime.Visible)
+            {
+                if (!helper.ValidateDecimalTextBox(textMs1RepetitionTime, 0, null, out var ms1RepetitionTime))
+                    return false;
+
+                _exportProperties.Ms1RepetitionTime = ms1RepetitionTime;
             }
 
             // If export method type is scheduled, and allows multiple scheduling options
@@ -1206,7 +1353,7 @@ namespace pwiz.Skyline.FileUI
                         string targetName = nodeGroup.TransitionGroup.Peptide.TextId;
 
                         MessageDlg.Show(this, string.Format(messageFormat,
-                            SequenceMassCalc.PersistentMZ(nodeGroup.PrecursorMz) + Transition.GetChargeIndicator(nodeGroup.TransitionGroup.PrecursorCharge),
+                            SequenceMassCalc.PersistentMZ(nodeGroup.PrecursorMz) + Transition.GetChargeIndicator(nodeGroup.TransitionGroup.PrecursorAdduct),
                             targetName,
                             tranRequired,
                             maxTransitions));
@@ -1282,8 +1429,15 @@ namespace pwiz.Skyline.FileUI
         {
             get
             {
-                return IsFullScanInstrument &&
-                    _document.Settings.TransitionSettings.FullScan.AcquisitionMethod == FullScanAcquisitionMethod.DIA;
+                return IsFullScanInstrument && IsDiaFullScan;
+            }
+        }
+
+        private bool IsDiaFullScan
+        {
+            get
+            {
+                return _document.Settings.TransitionSettings.FullScan.AcquisitionMethod == FullScanAcquisitionMethod.DIA;
             }
         }
 
@@ -1292,6 +1446,11 @@ namespace pwiz.Skyline.FileUI
             if (IsDia && !radioSingle.Checked)
             {
                 MessageDlg.Show(this, Resources.ExportMethodDlg_StrategyCheckChanged_Only_one_method_can_be_exported_in_DIA_mode);
+                radioSingle.Checked = true;
+            }
+            else if (Equals(InstrumentType, ExportInstrumentType.BRUKER_TIMSTOF) && radioBuckets.Checked)
+            {
+                MessageDlg.Show(this, string.Format(Resources.ExportMethodDlg_StrategyCheckChanged_Multiple_methods_is_not_yet_supported_for__0__, InstrumentType));
                 radioSingle.Checked = true;
             }
 
@@ -1389,7 +1548,9 @@ namespace pwiz.Skyline.FileUI
             bool standard = (targetType == ExportMethodType.Standard);
             bool triggered = (targetType == ExportMethodType.Triggered);
 
-            if (targetType != ExportMethodType.Standard && cbIgnoreProteins.Enabled)
+            btnGraph.Visible = !standard;
+
+            if (!standard && cbIgnoreProteins.Enabled)
             {
                 cbIgnoreProteins.Checked = true;
             }
@@ -1411,8 +1572,11 @@ namespace pwiz.Skyline.FileUI
             UpdateThermoColumns(targetType);
             UpdateAbSciexControls();
             UpdateWatersControls();
+            UpdateBrukerTimsTofControls();
             UpdateThermoRtControls(targetType);
             UpdateThermoSLensControl(targetType);
+            UpdateThermoFaimsCvControl();
+            UpdateThermoTuneControls();
             UpdateMaxLabel(standard);
         }
 
@@ -1543,19 +1707,24 @@ namespace pwiz.Skyline.FileUI
                 return;
             }
 
-// ReSharper disable LocalizableElement
-            labelMethodNum.Text = "..."; // Not L10N
-// ReSharper restore LocalizableElement
+            if (radioSingle.Checked)
+            {
+                labelMethodNum.Text = 1.ToString();
+                return;
+            }
+
+            labelMethodNum.Text = @"...";
 
             _recalcMethodCountStatus = RecalcMethodCountStatus.running;
 
-            var recalcMethodCount = new RecalcMethodCountCaller(RecalcMethodCount);
             string instrument = comboInstrument.SelectedItem.ToString();
-            recalcMethodCount.BeginInvoke(_exportProperties, instrument, _fileType, _document, null, null);
+//            var recalcMethodCount = new RecalcMethodCountCaller(RecalcMethodCount);
+//            recalcMethodCount.BeginInvoke(_exportProperties, instrument, _fileType, _document, recalcMethodCount.EndInvoke, null);
+            ActionUtil.RunAsync(() => RecalcMethodCount(_exportProperties, instrument, _fileType, _document), @"Method Counter");
         }
 
-        private delegate void RecalcMethodCountCaller(ExportDlgProperties exportProperties,
-            string instrument, ExportFileType fileType, SrmDocument document);
+//        private delegate void RecalcMethodCountCaller(ExportDlgProperties exportProperties,
+//            string instrument, ExportFileType fileType, SrmDocument document);
 
         private void RecalcMethodCount(ExportDlgProperties exportProperties,
             string instrument, ExportFileType fileType, SrmDocument document)
@@ -1573,12 +1742,12 @@ namespace pwiz.Skyline.FileUI
             }
 
             int? methodCount = null;
-            if (exporter != null)
+            if (exporter != null && exporter.MemoryOutput != null)
                 methodCount = exporter.MemoryOutput.Count;
             // Switch back to the UI thread to update the form
             try
             {
-                if (IsHandleCreated && !IsDisposed)
+                if (!_cancellationTokenSource.IsCancellationRequested)
                     Invoke(new Action<int?>(UpdateMethodCount), methodCount);
             }
 // ReSharper disable EmptyGeneralCatchClause
@@ -1619,7 +1788,9 @@ namespace pwiz.Skyline.FileUI
                 }
             }
             labelDwellTime.Visible = showDwell || showRunLength;
+            labelDwellTime.TabIndex = textRunLength.TabIndex-1;
             textDwellTime.Visible = showDwell;
+            textDwellTime.TabIndex = textRunLength.TabIndex;
             textRunLength.Visible = showRunLength;
         }
 
@@ -1688,6 +1859,10 @@ namespace pwiz.Skyline.FileUI
                 {
                     listFileTypes.Add(MethodFilter(ExportInstrumentType.EXT_AB_SCIEX));
                 }
+                else if (Equals(InstrumentType, ExportInstrumentType.BRUKER_TIMSTOF))
+                {
+                    listFileTypes.Add(MethodFilter(ExportInstrumentType.EXT_BRUKER_TIMSTOF));
+                }
                 else if (Equals(InstrumentType, ExportInstrumentType.SHIMADZU))
                 {
                     listFileTypes.Add(MethodFilter(ExportInstrumentType.EXT_SHIMADZU));
@@ -1732,6 +1907,32 @@ namespace pwiz.Skyline.FileUI
         {
             CalcMethodCount();
             panelSciexTune.Visible = comboOptimizing.SelectedItem.ToString().Equals(ExportOptimize.COV);
+            UpdateThermoFaimsCvControl();
+
+            // Set the tooltip
+            var tooltip = Resources.ExportMethodDlg_comboOptimizing_SelectedIndexChanged_Export_a_method_with_extra_transitions_for_finding_an_optimal_value_;
+            int? stepCount = null;
+            if (comboOptimizing.SelectedItem.ToString().Equals(ExportOptimize.CE))
+            {
+                stepCount = _document.Settings.TransitionSettings.Prediction.CollisionEnergy.StepCount;
+            }
+            else if (comboOptimizing.SelectedItem.ToString().Equals(ExportOptimize.DP))
+            {
+                stepCount = _document.Settings.TransitionSettings.Prediction.DeclusteringPotential.StepCount;
+            }
+            else if (comboOptimizing.SelectedItem.ToString().Equals(ExportOptimize.COV))
+            {
+                stepCount = _document.Settings.TransitionSettings.Prediction.CompensationVoltage.StepCount;
+            }
+
+            if (stepCount.HasValue)
+            {
+                tooltip = TextUtil.LineSeparate(tooltip,
+                    string.Format(
+                        Resources.ExportMethodDlg_comboOptimizing_SelectedIndexChanged_Optimizing_for__0__will_produce_an_additional__1__transitions_per_transition_,
+                        comboOptimizing.SelectedItem, stepCount * 2));
+            }
+            helpTip.SetToolTip(comboOptimizing, tooltip);
         }
 
         private void cbIgnoreProteins_CheckedChanged(object sender, EventArgs e)
@@ -1740,6 +1941,50 @@ namespace pwiz.Skyline.FileUI
             {
                 cbIgnoreProteins.Checked = true;
                 MessageDlg.Show(this, Resources.ExportMethodDlg_cbIgnoreProteins_CheckedChanged_Grouping_peptides_by_protein_has_not_yet_been_implemented_for_scheduled_methods_);
+            }
+        }
+        
+        private void btnGraph_Click(object sender, EventArgs e)
+        {
+            ShowSchedulingGraph();
+        }
+
+        public void ShowSchedulingGraph()
+        {
+            var brukerTemplate = Equals(InstrumentType, ExportInstrumentType.BRUKER_TIMSTOF)
+                ? textTemplateFile.Text
+                : null;
+            BrukerTimsTofMethodExporter.Metrics brukerMetrics = null;
+
+            if (!string.IsNullOrEmpty(brukerTemplate))
+            {
+                if (!File.Exists(brukerTemplate))
+                {
+                    MessageDlg.Show(this,
+                        string.Format(Resources.ExportMethodDlg_OkDialog_The_template_file__0__does_not_exist,
+                            brukerTemplate));
+                    return;
+                }
+
+                using (var longWait = new LongWaitDlg())
+                {
+                    longWait.PerformWork(this, 800, progress =>
+                    {
+                        var exportProperties = new ExportDlgProperties(this, new CancellationToken());
+                        exportProperties.MethodType = ExportMethodType.Scheduled;
+                        brukerMetrics = BrukerTimsTofMethodExporter.GetSchedulingMetrics(_document, exportProperties, brukerTemplate, progress);
+                    });
+                }
+            }
+            
+            using (var dlg = new ExportMethodScheduleGraph(_document, brukerTemplate, brukerMetrics))
+            {
+                if (dlg.Exception != null)
+                {
+                    MessageDlg.ShowWithException(this, Resources.ExportMethodDlg_btnGraph_Click_An_error_occurred_, dlg.Exception);
+                    return;
+                }
+                dlg.ShowDialog(this);
             }
         }
 
@@ -1765,9 +2010,11 @@ namespace pwiz.Skyline.FileUI
             }
         }
 
-        public void SetTemplateFile(string templateFile)
+        public void SetTemplateFile(string templateFile, bool setEndCaret = false)
         {
             textTemplateFile.Text = templateFile;
+            if (setEndCaret)
+                textTemplateFile.Select(templateFile.Length, 0);
         }
 
         public void SetInstrument(string instrument)
@@ -1846,13 +2093,15 @@ namespace pwiz.Skyline.FileUI
         #endregion
     }
 
-    public class ExportDlgProperties : ExportProperties
+    public class ExportDlgProperties : ExportProperties, IProgressMonitor
     {
         private readonly ExportMethodDlg _dialog;
+        private readonly CancellationToken _cancellation;
 
-        public ExportDlgProperties(ExportMethodDlg dialog)
+        public ExportDlgProperties(ExportMethodDlg dialog, CancellationToken cancellationToken)
         {
             _dialog = dialog;
+            _cancellation = cancellationToken;
         }
 
         public bool ShowMessages { get; set; }
@@ -1861,7 +2110,7 @@ namespace pwiz.Skyline.FileUI
         {
             if (!ShowMessages)
             {
-                performExport(new SilentProgressMonitor());
+                performExport(this);
                 return;
             }
 
@@ -1882,6 +2131,21 @@ namespace pwiz.Skyline.FileUI
                                                                    x.Message), x);
                 }
             }
+        }
+
+        public bool IsCanceled
+        {
+            get { return _cancellation.IsCancellationRequested; }
+        }
+
+        public UpdateProgressResponse UpdateProgress(IProgressStatus status)
+        {
+            return UpdateProgressResponse.normal;
+        }
+
+        public bool HasUI
+        {
+            get { return false; }
         }
     }
 }

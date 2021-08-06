@@ -18,6 +18,7 @@
  */
 
 using System;
+using System.Threading;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.Results;
 
@@ -40,14 +41,19 @@ namespace pwiz.Skyline.Util.Extensions
         /// For methods with arguments, use a lambda:  ActionUtil.RunAsync(() => MyMethodWithArgs(1, true));
         /// </summary>
         /// <param name="action">Action to be executed on a thread from the thread pool</param>
-        public static void RunAsyncNoExceptionHandling(Action action)
+        public static Thread RunAsyncNoExceptionHandling(Action action)
         {
-            action.BeginInvoke(action.EndInvoke, null);
+//            action.BeginInvoke(action.EndInvoke, null);
+            // Method invoking in the thread pool turned out to cause unpredictable impacts on memory use in nightly tests
+            // Avoiding thread pool use may have performance impacts, but in may cases this is just fine.
+            var thread = new Thread(() => action());
+            thread.Start();
+            return thread;
         }
 
-        public static void RunAsync(Action action, string threadName = null)
+        public static Thread RunAsync(Action action, string threadName = null)
         {
-            RunAsyncNoExceptionHandling(() =>
+            return RunAsyncNoExceptionHandling(() =>
             {
                 try
                 {

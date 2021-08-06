@@ -51,16 +51,19 @@ ProteinPilotReader::ProteinPilotReader(
   probCutOff_(getScoreThreshold(PROT_PILOT)),
   skipMods_(true),
   skipNTermMods_(false),
-  skipCTermMods_(false)
+  skipCTermMods_(false),
+  lastFilePosition_(0)
 {
     this->setFileName(xmlFileName); // this is done for the saxhandler
     curPSM_ = NULL;
     curSpec_ = NULL;
     lookUpBy_ = NAME_ID;
-
+    initializeMod();
     // point to self as spec reader
     delete specReader_;
     specReader_ = this;
+
+    initReadAddProgress();
 }
 
 ProteinPilotReader::~ProteinPilotReader()
@@ -80,8 +83,19 @@ bool ProteinPilotReader::parseFile()
 {
     string filename = getFileName();
     setSpecFileName(filename.c_str());
-    Verbosity::debug("ProteinPilotReader is parsing %s.", filename.c_str());
+    int filesize = bfs::file_size(filename) / 1000ull;
+    readSpecProgress_ = new ProgressIndicator(filesize);
+
+    Verbosity::debug("ProteinPilotReader is parsing %s (%d kb).", filename.c_str(), filesize);
     bool success = parse();
+    if (success)
+    {
+        Verbosity::debug("ProteinPilotReader finished parsing %s.", filename.c_str());
+    }
+    else
+    {
+        Verbosity::debug("ProteinPilotReader failed to parse %s.", filename.c_str());
+    }
 
     if( ! success ){
         return success;
@@ -184,6 +198,12 @@ void ProteinPilotReader::endElement(const XML_Char* name)
         //cerr << "ending spectrum" << endl;
         saveMatch();
         state_ = ROOT_STATE;
+
+        int position = getCurrentByteIndex() / 1000ull;
+        int progress = position - lastFilePosition_;
+        lastFilePosition_ = position;
+        readSpecProgress_->add(progress);
+
     } else if (isElement("MATCH", name)) {
         //cerr << "ending match" << endl;
         state_ = SPECTRUM_STATE;
@@ -200,6 +220,7 @@ void ProteinPilotReader::parseSearchID(const XML_Char** attr){
 
 void ProteinPilotReader::parseSpectrumFilename(const XML_Char** attr){
     string filename = getRequiredAttrValue("originalfilename", attr);
+
     searchIdFileMap_[curSearchID_] = filename;
 }
 
@@ -261,6 +282,8 @@ void ProteinPilotReader::parseMatchElement(const XML_Char** attr)
     skipMods_ = false;
     skipNTermMods_ = ( strcmp(getAttrValue("nt", attr), "") == 0) ;
     skipCTermMods_ = ( strcmp(getAttrValue("ct", attr), "") == 0) ;
+    
+    // Verbosity::debug("Parsed spectrum %s match %s", curPSM_->specName.c_str(), curPSM_->unmodSeq.c_str());
 }
 
 void ProteinPilotReader::saveMatch(){
@@ -471,20 +494,24 @@ void ProteinPilotReader::addElement(double& mass, string element, int count){
     mass += (count * newMass);
 }
 
+void ProteinPilotReader::initializeMod() {
+    curMod_.name.clear();
+    curMod_.deltaMass = 0;
+}
+
 void ProteinPilotReader::addMod(){
     // first check to see if we already have one for this mod
     map<string, double>::iterator found = modTable_.find(curMod_.name);
     if( found != modTable_.end() && //if it was found and has different mass
-        found->second != modTable_[curMod_.name] ){
+        found->second != curMod_.deltaMass ){
         throw BlibException(false, "Two entries for a modification named %s,"
-                            "one with delta mass %d and one with %d.",
-                            found->second, modTable_[curMod_.name]);
+                            "one with delta mass %f and one with %f.",
+                            curMod_.name, found->second, modTable_[curMod_.name]);
     }
 
     // else add it
     modTable_[curMod_.name] = curMod_.deltaMass;
-    curMod_.name.clear();
-    curMod_.deltaMass = 0;
+    initializeMod();
 }
 
 // SpecFileReader functions

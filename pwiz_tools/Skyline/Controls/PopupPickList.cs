@@ -64,7 +64,7 @@ namespace pwiz.Skyline.Controls
             cbItems.Text = childHeading;
 
             _modFonts = new ModFontHolder(pickListMulti);
-            _nodeTip = new NodeTip(this);
+            _nodeTip = new NodeTip(this) {Parent = this};
 
             _picker = picker;
             _chosenAtStart = new List<DocNode>(picker.Chosen);
@@ -73,7 +73,7 @@ namespace pwiz.Skyline.Controls
             bool filter = tbbFilter.Checked = _picker.Filtered;
             var choices = picker.GetChoices(filter).ToArray();            
             if (choices.Length != choices.Select(c => c.Id.GlobalIndex).Distinct().Count())
-                throw new ArgumentException("Choices must be unique"); // Not L10N
+                throw new ArgumentException(@"Choices must be unique");
 
             if (filter)
             {
@@ -204,7 +204,7 @@ namespace pwiz.Skyline.Controls
                 string.Format(Resources.PopupPickList_UpdateAutoManageUI_Auto_select_filtered__0_,
                               words[words.Length - 1].ToLower());
             if (!_autoManageChildren)
-                tbbAutoManageChildren.ToolTipText += String.Format(" ({0})", // Not L10N
+                tbbAutoManageChildren.ToolTipText += String.Format(@" ({0})",
                                                                    Resources.PopupPickList_UpdateAutoManageUI_off);
         }
 
@@ -309,6 +309,10 @@ namespace pwiz.Skyline.Controls
 
         private void pickListMulti_KeyDown(object sender, KeyEventArgs e)
         {
+            // Ignore keys if already closing or in test mode
+            if (_closing || !_okOnDeactivate)
+                return;
+
             switch (e.KeyCode)
             {
                 case Keys.F:
@@ -322,8 +326,14 @@ namespace pwiz.Skyline.Controls
                     OnOk();
                     break;
                 case Keys.Space:
-                    ToggleItem(pickListMulti.SelectedIndex);
+                {
+                    int i = pickListMulti.SelectedIndex;
+                    if (i >= 0)
+                    {
+                        ToggleItem(pickListMulti.SelectedIndex);
+                    }
                     break;
+                }
             }
         }
 

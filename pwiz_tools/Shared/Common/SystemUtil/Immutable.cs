@@ -19,6 +19,7 @@
 
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using JetBrains.Annotations;
 using pwiz.Common.Collections;
 
 namespace pwiz.Common.SystemUtil
@@ -83,7 +84,15 @@ namespace pwiz.Common.SystemUtil
         protected static TIm ImClone<TIm>(TIm immutable)
             where TIm : Immutable
         {
-            return (TIm)immutable.MemberwiseClone();
+            return (TIm)immutable.ImmutableClone();
+        }
+
+        /// <summary>
+        /// Returns a MemberwiseClone, but could be overwritten if special handling is needed.
+        /// </summary>
+        protected virtual object ImmutableClone()
+        {
+            return MemberwiseClone();
         }
 
         /// <summary>
@@ -182,7 +191,7 @@ namespace pwiz.Common.SystemUtil
         /// <param name="immutable">A cloned node on which to set the property</param>
         /// <param name="set">The delegate used to set the property (usually a lambda experssion)</param>
         /// <returns>The modified clone instance</returns>
-        protected static TIm ChangeProp<TIm>(TIm immutable, SetLambda<TIm> set)
+        protected static TIm ChangeProp<TIm>(TIm immutable, [InstantHandle] SetLambda<TIm> set)
             where TIm : Immutable
         {
             // ReSharper disable SuspiciousTypeConversion.Global

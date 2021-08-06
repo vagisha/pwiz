@@ -87,6 +87,7 @@
             dataGridViewCellStyle2.SelectionForeColor = System.Drawing.SystemColors.HighlightText;
             dataGridViewCellStyle2.WrapMode = System.Windows.Forms.DataGridViewTriState.False;
             this.dataGridView1.DefaultCellStyle = dataGridViewCellStyle2;
+            this.dataGridView1.MaximumColumnCount = 2000;
             this.dataGridView1.Name = "dataGridView1";
             dataGridViewCellStyle3.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
             dataGridViewCellStyle3.BackColor = System.Drawing.SystemColors.Control;
@@ -101,12 +102,14 @@
             // 
             // PeptideIncludedColumn
             // 
+            this.PeptideIncludedColumn.FillWeight = 1F;
             resources.ApplyResources(this.PeptideIncludedColumn, "PeptideIncludedColumn");
             this.PeptideIncludedColumn.Name = "PeptideIncludedColumn";
             this.PeptideIncludedColumn.SortMode = System.Windows.Forms.DataGridViewColumnSortMode.Automatic;
             // 
             // PeptideColumn
             // 
+            this.PeptideColumn.FillWeight = 1F;
             resources.ApplyResources(this.PeptideColumn, "PeptideColumn");
             this.PeptideColumn.Name = "PeptideColumn";
             // 
@@ -301,10 +304,10 @@
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator2;
         private System.Windows.Forms.ToolStripMenuItem includeAllToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem excludeAllToolStripMenuItem;
-        private System.Windows.Forms.DataGridViewCheckBoxColumn PeptideIncludedColumn;
-        private System.Windows.Forms.DataGridViewTextBoxColumn PeptideColumn;
         private System.Windows.Forms.ToolStripMenuItem uniqueProteinsToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem uniqueGenesToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem uniqueSpeciesToolStripMenuItem;
+        private System.Windows.Forms.DataGridViewCheckBoxColumn PeptideIncludedColumn;
+        private System.Windows.Forms.DataGridViewTextBoxColumn PeptideColumn;
     }
 }

@@ -79,7 +79,7 @@ namespace pwiz.SkylineTestFunctional
                 var allPeptides = new Peptides(new SkylineDataSchema(SkylineWindow, DataSchemaLocalizer.INVARIANT), new []{IdentityPath.ROOT});
                 var ratioIndex = modifications.InternalStandardTypes.IndexOf(isotopeLabel);
                 Assert.IsTrue(ratioIndex >= 0);
-                foreach (var peptide in allPeptides)
+                foreach (var peptide in allPeptides.GetItems().OfType<Peptide>())
                 {
                     var peptidePath = peptide.IdentityPath;
                     bool hasMatchingPrecursorResult =
@@ -94,7 +94,7 @@ namespace pwiz.SkylineTestFunctional
             );
             RunUI(() => documentGrid.ChooseView(Resources.SkylineViewContext_GetDocumentGridRowSources_Precursors));
             WaitForConditionUI(() => documentGrid.IsComplete);
-            Assert.AreEqual(12 + (TestSmallMolecules ? 1 : 0), documentGrid.RowCount);
+            Assert.AreEqual(12, documentGrid.RowCount);
             {
                 var quickFilterForm = ShowDialog<QuickFilterForm>(() =>
                 {

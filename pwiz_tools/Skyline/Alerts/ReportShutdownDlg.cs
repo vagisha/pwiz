@@ -33,7 +33,7 @@ namespace pwiz.Skyline.Alerts
     /// </summary>
     public class ReportShutdownDlg : ReportErrorDlg
     {
-        private const string EXCEPTION_FILE = "SkylineException.txt";   // Not L10N
+        private const string EXCEPTION_FILE = "SkylineException.txt";
 
         public ReportShutdownDlg()
         {
@@ -55,7 +55,7 @@ namespace pwiz.Skyline.Alerts
             var stackTraceText = new StringBuilder();
             for (int i = 2; i < lines.Length; i++)
             {
-                if (lines[i] == "Stack trace:")  // Not L10N
+                if (lines[i] == @"Stack trace:")
                 {
                     while (++i < lines.Length)
                         stackTraceText.AppendLine(lines[i]);
@@ -94,7 +94,7 @@ namespace pwiz.Skyline.Alerts
                 var exceptionInfo2 = new StringBuilder();
                 exceptionInfo2.AppendLine(exception.GetType().FullName);
                 exceptionInfo2.AppendLine(exception.Message);
-                exceptionInfo2.AppendLine(ExceptionUtil.GetStackTraceText(exception));
+                exceptionInfo2.AppendLine(ExceptionUtil.GetExceptionText(exception, null));
                 File.WriteAllText(GetExceptionFile(), exceptionInfo2.ToString());
             }
         }
@@ -124,7 +124,7 @@ namespace pwiz.Skyline.Alerts
         /// </summary>
         protected override string PostTitle
         {
-            get { return "SHUTDOWN: " + base.PostTitle; }  // Not L10N
+            get { return @"SHUTDOWN: " + base.PostTitle; }
         }
 
         private static string GetExceptionFile()

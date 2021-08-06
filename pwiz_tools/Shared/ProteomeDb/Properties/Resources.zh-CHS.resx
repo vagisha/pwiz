@@ -104,7 +104,7 @@
     <value xml:space="preserve">已完成导入 {0} 个蛋白质</value>
   </data>
   <data name="ProteomeDb_Digest_Listing_existing_peptides" xml:space="preserve">
-    <value xml:space="preserve">列出现有的肽</value>
+    <value xml:space="preserve">列出现有的肽段</value>
   </data>
   <data name="ProteomeDb_Digest_Listing_proteins" xml:space="preserve">
     <value xml:space="preserve">列出蛋白质</value>
@@ -113,13 +113,7 @@
     <value xml:space="preserve">消化 {0} 个蛋白质</value>
   </data>
   <data name="ProteomeDb_Digest_Digested__0__proteins_into__1__unique_peptides" xml:space="preserve">
-    <value xml:space="preserve">将 {0} 个蛋白质消化成 {1} 个序列特异的肽段</value>
-  </data>
-  <data name="SessionWithLock_SessionWithLock_Cant_acquire_write_lock_while_holding_read_lock" xml:space="preserve">
-    <value xml:space="preserve">无法在保持读取锁定的同时获取写入锁定。</value>
-  </data>
-  <data name="SessionWithLock_EnsureWriteLock_Must_have_write_lock" xml:space="preserve">
-    <value xml:space="preserve">必须具备写入锁定</value>
+    <value xml:space="preserve">将 {0} 个蛋白质酶解成 {1} 个序列特异的肽段</value>
   </data>
     <data name="ProteomeDb_AddFastaFile_Saving_changes" xml:space="preserve">
     <value>保存更改</value>
@@ -149,7 +143,7 @@
     <value>物种：{0} </value>
   </data>
   <data name="ProteinMetadata_DisplayText_Searched__" xml:space="preserve">
-    <value>已搜索的： </value>
+    <value>已搜索的：</value>
   </data>
   <data name="ProteinMetadata_DisplayText_" xml:space="preserve">
     <value>
@@ -163,5 +157,8 @@
   </data>
   <data name="ProteomeDb_DigestProteins_Analyzing_protein_sequences" xml:space="preserve">
     <value>分析蛋白质序列</value>
+  </data>
+  <data name="WebEnabledFastaImporter_ValidateProteinSequence_A_protein_sequence_cannot_contain_the_character___0___at_line__1_" xml:space="preserve">
+    <value>蛋白质序列不能在第 {1} 行包含字符“{0}”</value>
   </data>
 </root>

@@ -23,7 +23,17 @@ Expected outputs
 Most tests produce a file.  This file should match one of the files in
 tests/reference/.  The comparison is done as part of the test.  If the
 BiblioSpec code changes such that the output changes, simply update
-the appropriate file in tests/reference/.
+the appropriate file in tests/reference/. The observed output will
+be left in tests/output/<testname>.blib.observed and you can just
+copy it to tests/reference/<testname>.check
+
+Negative Tests
+
+In some cases we want to check that bad inputs are refused. For this,
+use the "-e <fragment of expected failure message>" option to BlibBuild.
+Within the jamfile, this looks like -e_<fragment of expected failure message>
+and the _ indicates an associated argment (so "-e_foo" gets pass to BlibBuild
+as "-e foo").
 
 Invocations (Jamfile.jam)
 
@@ -124,7 +134,7 @@ before passing them to the BiblioSpec tool.
 
 CompareLibraryContents has this usage statement:
 
-CompareLibraryContents <library> <expected output> [<skip>]
+CompareLibraryContents <library> <expected output> [<skip lines>]
 
 It requires a BiblioSpec library and a file with what the library
 should contain (files in tests/reference/).  There is an optional file
@@ -135,7 +145,8 @@ CompareDetails: 4       0.00005
 
 Which would mean that if the value in column 4 is not the same between the
 library and the reference file, call it the same if it differs by no
-more than 0.00005.
+more than 0.00005. Column "-1" means all numeric columns are treated with 
+this tolerance value. Column number is zero-based.
 
 The final test source is CompareTextFiles.cpp
 
@@ -157,7 +168,8 @@ observed file.  The next line following that containing "Library" will
 be skipped.
 
 The skip file may also begin with "CompareDetails" and information
-about accepted tolerance of a column.
+about accepted tolerance of a single column, or all columns if -1 is 
+given as the column index, as described above.
 
 
-Last updated May 4, 2012
+Last updated Oct 25 2017

@@ -18,30 +18,39 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using System.Collections;
 using System.ComponentModel;
-using System.Threading.Tasks;
+using System.Threading;
 using System.Windows.Forms;
+using pwiz.Common.DataBinding.Clustering;
 using pwiz.Common.DataBinding.Internal;
+using pwiz.Common.DataBinding.Layout;
 
 namespace pwiz.Common.DataBinding.Controls
 {
     public class BindingListSource : BindingSource
     {
-        public BindingListSource(IContainer container) : this(TaskScheduler.FromCurrentSynchronizationContext())
+        public BindingListSource(IContainer container) : this(new EventTaskScheduler())
         {
             container.Add(this);
         }
-        public BindingListSource() : this((TaskScheduler) null)
+        public BindingListSource() : this((EventTaskScheduler) null)
         {
         }
 
-        private BindingListSource(TaskScheduler taskScheduler)
+        public BindingListSource(CancellationToken cancellationToken) : this()
+        {
+            QueryLock = new QueryLock(cancellationToken);
+        }
+
+        private BindingListSource(EventTaskScheduler taskScheduler)
         {
             base.DataSource = BindingListView = new BindingListView(taskScheduler);
             BindingListView.UnhandledExceptionEvent += BindingListViewOnUnhandledException;
             BindingListView.AllRowsChanged += BindingListViewOnAllRowsChanged;
+            
+            ColumnFormats = new ColumnFormats();
         }
 
         private void BindingListViewOnAllRowsChanged(object sender, EventArgs eventArgs)
@@ -63,10 +72,11 @@ namespace pwiz.Common.DataBinding.Controls
         }
 
         internal BindingListView BindingListView { get; private set; }
-        public IEnumerable RowSource
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public IRowSource RowSource
         {
             get { return BindingListView.RowSource; }
-            set { BindingListView.RowSource = value; }
+            set { SetView(ViewInfo, value); }
         }
 
         [Browsable(false)]
@@ -75,8 +85,29 @@ namespace pwiz.Common.DataBinding.Controls
             get { return base.DataSource; }
         }
 
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public QueryLock QueryLock 
+        { 
+            get { return BindingListView.QueryLock; } 
+            set { BindingListView.QueryLock = value; }
+        }
+
         public IViewContext ViewContext { get; private set; }
         public void SetViewContext(IViewContext viewContext, ViewInfo viewInfo)
+        {
+            ViewLayout viewLayout = null;
+            if (null != viewInfo && viewContext != null && viewInfo.ViewGroup != null)
+            {
+                var viewLayoutList = viewContext.GetViewLayoutList(viewInfo.ViewGroup.Id.ViewName(viewInfo.Name));
+                if (null != viewLayoutList)
+                {
+                    viewLayout = viewLayoutList.FindLayout(viewLayoutList.DefaultLayoutName);
+                }
+            }
+            SetViewContext(viewContext, viewInfo, viewLayout);
+        }
+
+        public void SetViewContext(IViewContext viewContext, ViewInfo viewInfo, ViewLayout viewLayout)
         {
             ViewContext = viewContext;
             if (null == viewInfo)
@@ -85,21 +116,41 @@ namespace pwiz.Common.DataBinding.Controls
             }
             else
             {
-                IEnumerable rowSource = null;
+                IRowSource rowSource = null;
+                bool viewChanged = true;
                 if (null != ViewInfo)
                 {
                     if (ViewInfo.RowSourceName == viewInfo.RowSourceName)
                     {
                         rowSource = RowSource;
+                        if (ViewInfo.Name == viewInfo.Name)
+                        {
+                            viewChanged = false;
+                        }
                     }
                 }
                 rowSource = rowSource ?? viewContext.GetRowSource(viewInfo);
                 BindingListView.SetViewAndRows(viewInfo, rowSource);
+                if (viewChanged)
+                {
+                    BindingListView.ClearTransformStack();
+                }
+
+                if (viewLayout != null)
+                {
+                    ApplyLayout(viewLayout);
+                }
             }
             OnListChanged(new ListChangedEventArgs(ListChangedType.Reset, -1));
         }
 
-        public void SetView(ViewInfo viewInfo, IEnumerable rows)
+        public void SetViewContext(IViewContext viewContext, ViewGroup viewGroup, ViewSpecLayout viewSpecLayout)
+        {
+            var viewInfo = viewContext.GetViewInfo(viewGroup, viewSpecLayout.ViewSpec);
+            SetViewContext(viewContext, viewInfo, viewSpecLayout.DefaultViewLayout);
+        }
+
+        public void SetView(ViewInfo viewInfo, IRowSource rows)
         {
             BindingListView.SetViewAndRows(viewInfo, rows);
         }
@@ -149,5 +200,106 @@ namespace pwiz.Common.DataBinding.Controls
         /// current cell in the DataGridView to the beginning of the row.
         /// </summary>
         public event EventHandler AllRowsChanged;
+
+        public ColumnFormats ColumnFormats
+        {
+            get; private set;
+        }
+
+        public ItemProperties ItemProperties { get { return BindingListView.ItemProperties; } }
+
+        public DataPropertyDescriptor FindDataProperty(string dataPropertyName)
+        {
+            int index = BindingListView.ItemProperties.IndexOfName(dataPropertyName);
+            if (index < 0)
+            {
+                return null;
+            }
+
+            return ItemProperties[index];
+        }
+
+        public ReportResults ReportResults
+        {
+            get { return BindingListView.ReportResults; }
+        }
+
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public ClusteringSpec ClusteringSpec
+        {
+            get { return BindingListView.ClusteringSpec; }
+            set
+            {
+                BindingListView.ClusteringSpec = value;
+            }
+        }
+
+        public void ApplyLayout(ViewLayout viewLayout)
+        {
+            BindingListView.TransformStack = new TransformStack(viewLayout.RowTransforms, 0);
+            foreach (var format in viewLayout.ColumnFormats)
+            {
+                ColumnFormats.SetFormat(format.Item1, format.Item2);
+            }
+            ClusteringSpec = viewLayout.ClusterSpec;
+        }
+
+        public INewRowHandler NewRowHandler
+        {
+            get { return BindingListView.NewRowHandler; }
+            set { BindingListView.NewRowHandler = value; }
+        }
+
+        protected override void OnListChanged(ListChangedEventArgs e)
+        {
+            base.OnListChanged(e);
+            if (BindingListView != null && CurrencyManager != null)
+            {
+                var newRowPos = BindingListView.NewRowPos;
+                if (newRowPos.HasValue)
+                {
+                    CurrencyManager.Position = newRowPos.Value;
+                }
+            }
+        }
+
+        public bool ValidateRow(int rowIndex, out bool cancelRowEdit)
+        {
+            bool result= BindingListView.ValidateRow(rowIndex, out cancelRowEdit);
+            if (cancelRowEdit)
+            {
+                ((ICancelAddNew)this).CancelNew(rowIndex);
+            }
+            return result;
+        }
+
+        public IEnumerable<ColumnDescriptor> FindColumnDescriptorsWithType<T>()
+        {
+            var propertyPaths = new HashSet<PropertyPath>();
+            foreach (var dataPropertyDescriptor in ItemProperties)
+            {
+                var columnPropertyDescriptor = dataPropertyDescriptor as ColumnPropertyDescriptor;
+                if (columnPropertyDescriptor == null)
+                {
+                    continue;
+                }
+
+                var columnDescriptor = columnPropertyDescriptor.DisplayColumn.ColumnDescriptor;
+                while (columnDescriptor != null)
+                {
+                    if (!propertyPaths.Add(columnDescriptor.PropertyPath))
+                    {
+                        break;
+                    }
+
+                    if (typeof(T).IsAssignableFrom(columnDescriptor.PropertyType))
+                    {
+                        yield return columnDescriptor;
+                    }
+
+                    columnDescriptor = columnDescriptor.Parent;
+                }
+            }
+        }
     }
 }

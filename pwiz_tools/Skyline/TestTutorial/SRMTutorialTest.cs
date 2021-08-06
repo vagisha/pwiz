@@ -42,13 +42,14 @@ namespace pwiz.SkylineTestTutorial
     public class SrmTutorialTest : AbstractFunctionalTestEx
     {
         [TestMethod]
-        public void TestSrmTutorial()
+        [Timeout(60*60*1000)]  // These can take a long time in code coverage mode (1 hour)
+        public void TestSrmTutorialLegacy()
         {
             //Set true to look at tutorial screenshots
             //IsPauseForScreenShots = true;
             TestFilesZipPaths = new[]
             {
-                @"http://targetedproteomics.ethz.ch/tutorials2014/USB.zip",
+                @"https://skyline.gs.washington.edu/tutorials/SrmTutorialTest.zip",
                 @"TestTutorial\SRMViews.zip"
             };
             RunFunctionalTest();
@@ -138,14 +139,9 @@ namespace pwiz.SkylineTestTutorial
             RunUI(() => pepSettings.SelectedTab = PeptideSettingsUI.TABS.Modifications);
             PauseForScreenShot("Modifications tab", 4);
 
+            var docBeforePeptideSettings = SkylineWindow.Document;
             OkDialog(pepSettings, pepSettings.OkDialog);
-
-            WaitForConditionUI(
-                () => SkylineWindow.StatusContains(Resources.BackgroundProteomeManager_LoadBackground_Resolving_protein_details_for__0__proteome) ||
-                      SkylineWindow.StatusContains(ProteomeDatabase.Properties.Resources.ProteomeDb_LookupProteinMetadata_Retrieving_details_for__0__proteins));
-            WaitForConditionUI(() => SkylineWindow.StatusContains(Resources.SkylineWindow_UpdateProgressUI_Ready));
-            WaitForBackgroundProteomeLoaderCompleted();
-            WaitForDocumentLoaded();
+            WaitForDocumentChangeLoaded(docBeforePeptideSettings);
 
             var transitionDlg = ShowDialog<TransitionSettingsUI>(SkylineWindow.ShowTransitionSettingsUI);
             RunUI(() =>
@@ -153,7 +149,7 @@ namespace pwiz.SkylineTestTutorial
                 transitionDlg.SelectedTab = TransitionSettingsUI.TABS.Prediction;
                 transitionDlg.PrecursorMassType = MassType.Monoisotopic;
                 transitionDlg.FragmentMassType = MassType.Monoisotopic;
-                transitionDlg.RegressionCEName = "ABI 5500 QTrap";
+                transitionDlg.RegressionCEName = "SCIEX";
             });
 
             RunUI(() =>
@@ -193,7 +189,9 @@ namespace pwiz.SkylineTestTutorial
             PauseForScreenShot("Library Tab", 7);
             RunUI(() => transitionDlg.SelectedTab = TransitionSettingsUI.TABS.Instrument);
             PauseForScreenShot("Instrument Tab", 7);
+            var docBeforeTransitionSettings = SkylineWindow.Document;
             OkDialog(transitionDlg, transitionDlg.OkDialog);
+            WaitForDocumentChangeLoaded(docBeforeTransitionSettings);
             RunUI(() => SkylineWindow.SaveDocument(GetTestPath("Tutorial-1_Settings\\SRMcourse_20140210_Settings.sky")));
 
 
@@ -221,6 +219,35 @@ namespace pwiz.SkylineTestTutorial
                 SkylineWindow.SequenceTree.SelectedNode = SkylineWindow.SequenceTree.Nodes[0].FirstNode.FirstNode;
             });
             PauseForScreenShot("Skyline Window", 2);
+
+            // Test min ion count setting
+            RunDlg<TransitionSettingsUI>(SkylineWindow.ShowTransitionSettingsUI, dlg =>
+            {
+                dlg.MinIonCount = 3;
+                dlg.OkDialog();
+            });
+            var docMinIons = WaitForDocumentChange(docAfterPaste);
+            AssertEx.IsDocumentState(docMinIons, null, 10, 30, 66, 320);
+            RunUI(() => SkylineWindow.Undo());
+            docMinIons = WaitForDocumentChange(docMinIons);
+            RunDlg<TransitionSettingsUI>(SkylineWindow.ShowTransitionSettingsUI, dlg =>
+            {
+                dlg.MinIonCount = 4;
+                dlg.OkDialog();
+            });
+            docMinIons = WaitForDocumentChange(docMinIons);
+            AssertEx.IsDocumentState(docMinIons, null, 10, 30, 64, 314);
+            RunUI(() => SkylineWindow.Undo());
+            docMinIons = WaitForDocumentChange(docMinIons);
+            RunDlg<TransitionSettingsUI>(SkylineWindow.ShowTransitionSettingsUI, dlg =>
+            {
+                dlg.MinIonCount = 5;
+                dlg.OkDialog();
+            });
+            docMinIons = WaitForDocumentChange(docMinIons);
+            AssertEx.IsDocumentState(docMinIons, null, 10, 30, 58, 290);
+            RunUI(() => SkylineWindow.Undo());
+            WaitForDocumentChange(docMinIons);
 
             var exportDlg = ShowDialog<ExportMethodDlg>(SkylineWindow.ShowExportTransitionListDlg);
             RunUI(() =>
@@ -357,7 +384,7 @@ namespace pwiz.SkylineTestTutorial
             RunUI(() =>
             {
                 SkylineWindow.ShowAllTransitions();
-                SkylineWindow.NormalizeAreaGraphTo(AreaNormalizeToView.area_maximum_view);
+                SkylineWindow.NormalizeAreaGraphTo(NormalizeOption.MAXIMUM);
             });
             RestoreViewOnScreen(44);
             PauseForScreenShot("Skyline Window", 4);

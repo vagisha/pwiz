@@ -181,7 +181,7 @@
     <value>13, 33</value>
   </data>
   <data name="textPeptides.MaxLength" type="System.Int32, mscorlib">
-    <value>1000000</value>
+    <value>10000000</value>
   </data>
   <data name="textPeptides.Multiline" type="System.Boolean, mscorlib">
     <value>True</value>
@@ -223,7 +223,7 @@
     <value>0</value>
   </data>
   <data name="label1.Text" xml:space="preserve">
-    <value>需要保留的肽(&amp;P)：</value>
+    <value>需要保留的肽段(&amp;P)：</value>
   </data>
   <data name="&gt;&gt;label1.Name" xml:space="preserve">
     <value>label1</value>

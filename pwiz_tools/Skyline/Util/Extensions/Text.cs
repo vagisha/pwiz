@@ -35,8 +35,8 @@ namespace pwiz.Skyline.Util.Extensions
     /// </summary>
     public static class TextUtil
     {
-        public const string EXT_CSV = ".csv"; // Not L10N
-        public const string EXT_TSV = ".tsv"; // Not L10N
+        public const string EXT_CSV = ".csv";
+        public const string EXT_TSV = ".tsv";
 
         public static string FILTER_CSV
         {
@@ -48,12 +48,13 @@ namespace pwiz.Skyline.Util.Extensions
             get { return FileDialogFilter(Resources.TextUtil_DESCRIPTION_TSV_TSV__Tab_delimited_, EXT_TSV); }
         }
 
-        public const char SEPARATOR_CSV = ','; // Not L10N
-        public const char SEPARATOR_CSV_INTL = ';'; // International CSV for comma-decimal locales // Not L10N
-        public const char SEPARATOR_TSV = '\t'; // Not L10N
-        public const char SEPARATOR_SPACE = ' '; // Not L10N
+        public const char SEPARATOR_CSV = ',';
+        public const char SEPARATOR_CSV_INTL = ';'; // International CSV for comma-decimal locales
+        public const char SEPARATOR_TSV = '\t';
+        public static readonly string SEPARATOR_TSV_STR = SEPARATOR_TSV.ToString(); 
+        public const char SEPARATOR_SPACE = ' ';
 
-        public const string EXCEL_NA = "#N/A"; // Not L10N
+        public const string EXCEL_NA = "#N/A";
 
         /// <summary>
         /// The CSV separator character for the current culture.  Like Excel, a comma
@@ -71,9 +72,14 @@ namespace pwiz.Skyline.Util.Extensions
         /// files to be imported directly into Excel on the same system.
         /// <param name="cultureInfo">The culture for which the separator is requested.</param>
         /// </summary>
-        public static char GetCsvSeparator(CultureInfo cultureInfo)
+        public static char GetCsvSeparator(IFormatProvider cultureInfo)
         {
-            return (Equals(SEPARATOR_CSV.ToString(CultureInfo.InvariantCulture), cultureInfo.NumberFormat.NumberDecimalSeparator) ? SEPARATOR_CSV_INTL : SEPARATOR_CSV);
+            var numberFormat = cultureInfo.GetFormat(typeof(NumberFormatInfo)) as NumberFormatInfo;
+            if (numberFormat != null && Equals(SEPARATOR_CSV.ToString(CultureInfo.InvariantCulture), numberFormat.NumberDecimalSeparator))
+            {
+                return SEPARATOR_CSV_INTL;
+            }
+            return SEPARATOR_CSV;
         }
 
         /// <summary>
@@ -99,12 +105,14 @@ namespace pwiz.Skyline.Util.Extensions
         {
             if (text == null)
                 return string.Empty;
-            var unwanted = new[] { '"', separator, '\r', '\n' }; // Not L10N
+            var unwanted = new[] { '"', separator, '\r', '\n' };
             if (text.IndexOfAny(unwanted) == -1) 
                 return text;
             if (!string.IsNullOrEmpty(replace))
                 return string.Join(replace, text.Split(unwanted));
-            return '"' + text.Replace("\"", "\"\"") + '"'; // Not L10N
+            // ReSharper disable LocalizableElement
+            return '"' + text.Replace("\"", "\"\"") + '"';
+            // ReSharper restore LocalizableElement
         }
 
         /// <summary>
@@ -147,6 +155,8 @@ namespace pwiz.Skyline.Util.Extensions
         /// <summary>
         /// Splits a line of text in delimiter-separated value format into an array of fields.
         /// The function correctly handles quotation marks.
+        /// (N.B. our quotation mark handling now differs from the (March 2018) behavior of Excel and Google Spreadsheets
+        /// when dealing with somewhat absurd uses of quotes as found in our tests, but that seems to be OK for  general use.
         /// </summary>
         /// <param name="line">The line to be split into fields</param>
         /// <param name="separator">The separator being used</param>
@@ -156,22 +166,51 @@ namespace pwiz.Skyline.Util.Extensions
             var listFields = new List<string>();
             var sbField = new StringBuilder();
             bool inQuotes = false;
-            char chLast = '\0';  // Not L10N
-            foreach (char ch in line)
+            for (var chIndex = 0; chIndex < line.Length; chIndex++)
             {
+                var ch = line[chIndex];
                 if (inQuotes)
                 {
                     if (ch == '"')
-                        inQuotes = false;
+                    {
+                        // Is this the closing quote, or is this an escaped quote?
+                        if (chIndex + 1 < line.Length && line[chIndex + 1] == '"')
+                        {
+                            sbField.Append(ch); // Treat "" as an escaped quote
+                            chIndex++; // Consume both quotes
+                        }
+                        else
+                        {
+                            inQuotes = false;
+                        }
+                    }
                     else
+                    {
                         sbField.Append(ch);
+                    }
                 }
-                else if (ch == '"')  // Not L10N
+                else if (ch == '"')
                 {
-                    inQuotes = true;
-                    // Add quote character, for "" inside quotes
-                    if (chLast == '"')  // Not L10N
-                        sbField.Append(ch);
+                    if (sbField.Length == 0) // Quote at start of field is special case
+                    {
+                        inQuotes = true;
+                    }
+                    else
+                    {
+                        if (chIndex + 1 < line.Length && line[chIndex + 1] == '"') 
+                        {
+                            sbField.Append(ch); // Treat "" as an escaped quote
+                            chIndex++; // Consume both quotes
+                        }
+                        else
+                        {
+                            // N.B. we effectively ignore a bare quote in an unquoted string. 
+                            // This is technically an undefined behavior, so that's probably OK.
+                            // Excel and Google sheets treat it as a literal quote, but that 
+                            // would be a change in our established behavior
+                            inQuotes = true;
+                        }
+                    }
                 }
                 else if (ch == separator)
                 {
@@ -182,11 +221,85 @@ namespace pwiz.Skyline.Util.Extensions
                 {
                     sbField.Append(ch);
                 }
-                chLast = ch;
             }
             listFields.Add(sbField.ToString());
             return listFields.ToArray();
         }
+
+        /// <summary>
+        /// Parses out a particular single DSV field from a line avoiding the expense of parsing all fields into an array
+        /// The function correctly handles quotation marks.
+        /// (N.B. our quotation mark handling now differs from the (March 2018) behavior of Excel and Google Spreadsheets
+        /// when dealing with somewhat absurd uses of quotes as found in our tests, but that seems to be OK for  general use.
+        /// </summary>
+        /// <param name="line">The line containing delimiter separated fields</param>
+        /// <param name="separator">The separator being used</param>
+        /// <param name="index">The index of the field</param>
+        /// <returns>An array of field strings</returns>
+        public static string ParseDsvField(this string line, char separator, int index)
+        {
+            var sbField = new StringBuilder();
+            bool inQuotes = false;
+            for (var chIndex = 0; chIndex < line.Length && index >= 0; chIndex++)
+            {
+                var ch = line[chIndex];
+                if (inQuotes)
+                {
+                    if (ch == '"')
+                    {
+                        // Is this the closing quote, or is this an escaped quote?
+                        if (chIndex + 1 < line.Length && line[chIndex + 1] == '"')
+                        {
+                            if (index == 0)
+                                sbField.Append(ch); // Treat "" as an escaped quote
+                            chIndex++; // Consume both quotes
+                        }
+                        else
+                        {
+                            inQuotes = false;
+                        }
+                    }
+                    else if (index == 0)
+                    {
+                        sbField.Append(ch);
+                    }
+                }
+                else if (ch == '"')
+                {
+                    if (sbField.Length == 0) // Quote at start of field is special case
+                    {
+                        inQuotes = true;
+                    }
+                    else
+                    {
+                        if (chIndex + 1 < line.Length && line[chIndex + 1] == '"')
+                        {
+                            if (index == 0)
+                                sbField.Append(ch); // Treat "" as an escaped quote
+                            chIndex++; // Consume both quotes
+                        }
+                        else
+                        {
+                            // N.B. we effectively ignore a bare quote in an unquoted string. 
+                            // This is technically an undefined behavior, so that's probably OK.
+                            // Excel and Google sheets treat it as a literal quote, but that 
+                            // would be a change in our established behavior
+                            inQuotes = true;
+                        }
+                    }
+                }
+                else if (ch == separator)
+                {
+                    index--;
+                }
+                else if (index == 0)
+                {
+                    sbField.Append(ch);
+                }
+            }
+            return sbField.ToString();
+        }
+
 
         /// <summary>
         /// Converts an invariant format DSV file to a locale-specific DSV file
@@ -238,7 +351,15 @@ namespace pwiz.Skyline.Util.Extensions
         /// </summary>
         public static int[] ParseInts(string s)
         {
-            return ArrayUtil.Parse(s, Convert.ToInt32, SEPARATOR_CSV, new int[0]);
+            return ArrayUtil.Parse(s, Convert.ToInt32, SEPARATOR_CSV);
+        }
+
+        /// <summary>
+        /// Puts quotation marks before and after the text passed in
+        /// </summary>
+        public static string Quote(this string text)
+        {
+            return '"' + text + '"';
         }
 
         /// <summary>
@@ -286,6 +407,26 @@ namespace pwiz.Skyline.Util.Extensions
         }
 
         /// <summary>
+        /// Like SpaceSeparate but allows arbitrary separator, and ignores empty strings
+        /// </summary>
+        public static string TextSeparate(string sep, params string[] values)
+        {
+            var sb = new StringBuilder();
+            foreach (var value in values)
+            {
+                if (!string.IsNullOrEmpty(value))
+                {
+                    if (sb.Length > 0)
+                    {
+                        sb.Append(sep);
+                    }
+                    sb.Append(value);
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// This function can be used as a replacement for String.Join(" ", ...)
         /// </summary>
         /// <param name="values">A set of strings to be separated by spaces</param>
@@ -293,6 +434,105 @@ namespace pwiz.Skyline.Util.Extensions
         public static string SpaceSeparate(params string[] values)
         {
             return SpaceSeparate(values.AsEnumerable());
+        }
+
+        /// <summary>
+        /// Convert a collection of strings to a TSV line for serialization purposes,
+        /// watching out for tabs, CRLF, and existing escapes
+        /// </summary>
+        public static string ToEscapedTSV(IEnumerable<string> strings)
+        {
+            return string.Join(SEPARATOR_TSV_STR, strings.Select(s => s.EscapeTabAndCrLf()));
+        }
+
+        /// <summary>
+        /// Create a collection of strings from a TSV line for deserialization purposes,
+        /// watching out for tabs, CRLF, and existing escapes
+        /// </summary>
+        public static string[] FromEscapedTSV(this string str)
+        {
+            var strings = str.Split(SEPARATOR_TSV).Select(s => s.UnescapeTabAndCrLf());
+            return strings.ToArray();
+        }
+
+        /// <summary>
+        /// Convert tab and/or CRLF characters to printable form for serialization purposes
+        /// </summary>
+        public static string EscapeTabAndCrLf(this string str)
+        {
+            var sb = new StringBuilder();
+            var len = str.Length;
+            for (int pos = 0; pos < len; pos++)
+            {
+                var c = str[pos];
+                switch (c)
+                {
+                    case '\\': // Take care to preserve "c:\tmp" as "c:\\tmp" so it roundtrips properly
+                        sb.Append(c);
+                        sb.Append(c);
+                        break;
+                    case SEPARATOR_TSV:
+                        sb.Append('\\');
+                        sb.Append('t');
+                        break;
+                    case '\n': 
+                        sb.Append('\\');
+                        sb.Append('n');
+                        break;
+                    case '\r': 
+                        sb.Append('\\');
+                        sb.Append('r');
+                        break;
+                    default:
+                        sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Convert tab and/or CRLF characters from printable form for deserialization purposes
+        /// </summary>
+        public static string UnescapeTabAndCrLf(this string str)
+        {
+            var sb = new StringBuilder();
+            var len = str.Length;
+            for (int pos = 0; pos < len; pos++)
+            {
+                var c = str[pos];
+                if (c == '\\' && pos < (len-1))
+                {
+                    var cc = str[pos+1];
+                    switch (cc)
+                    {
+                        case '\\':
+                            sb.Append(c);
+                            pos++;
+                            break;
+                        case 't':
+                            sb.Append(SEPARATOR_TSV);
+                            pos++;
+                            break;
+                        case 'n':
+                            sb.Append('\n');
+                            pos++;
+                            break;
+                        case 'r':
+                            sb.Append('\r');
+                            pos++;
+                            break;
+                        default:
+                            sb.Append(c);
+                            break;
+                    }
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+            return sb.ToString();
         }
 
         /// <summary>
@@ -309,7 +549,7 @@ namespace pwiz.Skyline.Util.Extensions
                     sb.Append(';');
                 sb.Append('*').Append(ext);
             }
-            return string.Format("{0} ({1})|{1}", description, sb); // Not L10N
+            return string.Format(@"{0} ({1})|{1}", description, sb);
         }
 
         /// <summary>
@@ -330,7 +570,7 @@ namespace pwiz.Skyline.Util.Extensions
         /// <param name="filters">Filters to be joined</param>
         public static string FileDialogFilters(params string[] filters)
         {
-            return string.Join("|", filters); // Not L10N
+            return string.Join(@"|", filters);
         }
 
         /// <summary>
@@ -341,8 +581,8 @@ namespace pwiz.Skyline.Util.Extensions
         public static string FileDialogFiltersAll(params string[] filters)
         {
             var listFilters = filters.ToList();
-            listFilters.Add(FileDialogFilter(Resources.TextUtil_FileDialogFiltersAll_All_Files, ".*")); // Not L10N
-            return string.Join("|", listFilters); // Not L10N
+            listFilters.Add(FileDialogFilter(Resources.TextUtil_FileDialogFiltersAll_All_Files, @".*"));
+            return string.Join(@"|", listFilters);
         }
 
         /// <summary>
@@ -358,6 +598,58 @@ namespace pwiz.Skyline.Util.Extensions
         public static string DecryptString(string str)
         {
             return Encoding.UTF8.GetString(ProtectedData.Unprotect(Convert.FromBase64String(str), null, DataProtectionScope.CurrentUser));
+        }
+
+        /// <summary>
+        /// Get a common prefix, if any, among a set of strings.
+        /// </summary>
+        /// <param name="values">The set of strings to test for a common prefix</param>
+        /// <param name="minLen">Minimum length of the prefix below which empty string will be returned</param>
+        /// <returns>The common prefix or empty string if none is found</returns>
+        public static string GetCommonPrefix(this IEnumerable<string> values, int minLen = 1)
+        {
+            return values.GetCommonFix(minLen, (s, i) => s[i], (s, i) => s.Substring(0, i));
+        }
+
+        /// <summary>
+        /// Get a common suffix, if any, among a set of strings.
+        /// </summary>
+        /// <param name="values">The set of strings to test for a common suffix</param>
+        /// <param name="minLen">Minimum length of the suffix below which empty string will be returned</param>
+        /// <returns>The common suffix or empty string if none is found</returns>
+        public static string GetCommonSuffix(this IEnumerable<string> values, int minLen = 1)
+        {
+            return values.GetCommonFix(minLen, (s, i) => s[s.Length - i - 1], (s, i) => s.Substring(s.Length - i));
+        }
+
+        private static string GetCommonFix(this IEnumerable<string> values,
+                                            int minLen,
+                                            Func<string, int, char> getChar,
+                                            Func<string, int, string> getSubString)
+        {
+            string commonFix = null;
+            foreach (string value in values)
+            {
+                if (commonFix == null)
+                {
+                    commonFix = value;
+                    continue;
+                }
+                if (commonFix == string.Empty)
+                {
+                    break;
+                }
+
+                for (int i = 0; i < commonFix.Length; i++)
+                {
+                    if (i >= value.Length || getChar(commonFix, i) != getChar(value, i))
+                    {
+                        commonFix = getSubString(commonFix, i);
+                        break;
+                    }
+                }
+            }
+            return commonFix != null && commonFix.Length >= minLen ? commonFix : String.Empty;
         }
     }
 
@@ -406,7 +698,12 @@ namespace pwiz.Skyline.Util.Extensions
             Initialize(reader, separator, hasHeaders);
         }
 
-        public void Initialize(TextReader reader, char separator, bool hasHeaders = true)
+        public DsvFileReader(TextReader reader, char separator, IReadOnlyDictionary<string, string> headerSynonyms)
+        {
+            Initialize(reader, separator, true, headerSynonyms);
+        }
+
+        public void Initialize(TextReader reader, char separator, bool hasHeaders = true, IReadOnlyDictionary<string, string> headerSynonyms = null)
         {
             _separator = separator;
             _reader = reader;
@@ -422,13 +719,28 @@ namespace pwiz.Skyline.Util.Extensions
                 // replace with made up column names
                 for (int i = 0; i < fields.Length; ++i)
                 {
-                    fields[i] = string.Format("{0}", i ); // Not L10N
+                    fields[i] = string.Format(@"{0}", i );
                 }
             }
             for (int i = 0; i < fields.Length; ++i)
             {
-                FieldNames.Add(fields[i]);
-                FieldDict[fields[i]] = i;
+                var fieldName = fields[i].Trim();
+                FieldNames.Add(fieldName);
+                FieldDict[fieldName] = i;
+                // Check to see if the given column name is actually a synonym for the internal canonical (no spaces, serialized) name
+                if (headerSynonyms != null)
+                {
+                    var key = headerSynonyms.Keys.FirstOrDefault(k => string.Compare(k, fieldName, StringComparison.OrdinalIgnoreCase)==0); // Case insensitive
+                    if (!string.IsNullOrEmpty(key))
+                    {
+                        var syn = headerSynonyms[key];
+                        if (!FieldDict.ContainsKey(syn))
+                        {
+                            // Note the internal name for this field
+                            FieldDict.Add(syn, i);
+                        }
+                    }
+                }
             }
         }
 
@@ -436,7 +748,7 @@ namespace pwiz.Skyline.Util.Extensions
         /// Read a line of text, storing the fields by name for retrieval using GetFieldByName.
         /// Outputs a list of fields (not indexed by name)
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Array of fields for the next line</returns>
         public string[] ReadLine()
         {
             var line = _rereadTitleLine?_titleLine:_reader.ReadLine(); // re-use title line on first read if it wasn't actually header info
@@ -457,7 +769,7 @@ namespace pwiz.Skyline.Util.Extensions
         /// there is no such field name.
         /// </summary>
         /// <param name="fieldName">Title of the column for which to get current line data</param>
-        /// <returns></returns>
+        /// <returns>Field value</returns>
         public string GetFieldByName(string fieldName)
         {
             int fieldIndex = GetFieldIndex(fieldName);
@@ -468,7 +780,7 @@ namespace pwiz.Skyline.Util.Extensions
         /// For the current line, outputs the field numbered fieldIndex
         /// </summary>
         /// <param name="fieldIndex">Index of the field on the current line to be output</param>
-        /// <returns></returns>
+        /// <returns>Field value</returns>
         public string GetFieldByIndex(int fieldIndex)
         {
             return -1 < fieldIndex && fieldIndex < _currentFields.Length ?_currentFields[fieldIndex] : null;
@@ -478,7 +790,7 @@ namespace pwiz.Skyline.Util.Extensions
         /// Get the index of the field corresponding to the column title fieldName
         /// </summary>
         /// <param name="fieldName">Column title.</param>
-        /// <returns></returns>
+        /// <returns>Field index</returns>
         public int GetFieldIndex(string fieldName)
         {
             if (!FieldDict.ContainsKey(fieldName))

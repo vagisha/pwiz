@@ -17,11 +17,13 @@
  * limitations under the License.
  */
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
+using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
@@ -50,7 +52,6 @@ namespace pwiz.SkylineTestFunctional
 
         protected override void DoTest()
         {
-
             CreateDummyRTRegression();
 
             ThermoTsqTest();
@@ -62,14 +63,15 @@ namespace pwiz.SkylineTestFunctional
             AbiTofTest();
 
             // Avoid "The current document contains peptides without enough information to rank transitions for triggered acquisition."
-            var save = TestSmallMolecules;
-            TestSmallMolecules = false;
             AgilentThermoABSciexTriggeredTest();
 
+            Assert.IsFalse(IsTriggeredRecordMode);  // Make sure no commits with this set to true
+
             BrukerTOFMethodTest();
-            TestSmallMolecules = save;
 
             ABSciexShortNameTest();
+
+            SortByMzTest();
         }
 
         private static void ThermoTsqTest()
@@ -132,7 +134,11 @@ namespace pwiz.SkylineTestFunctional
                         Assert.IsFalse(exportMethodDlg.IsRunLengthVisible);
                         Assert.IsFalse(exportMethodDlg.IsDwellTimeVisible);
                     });
-
+                var exportMethodScheduleGraph =
+                    ShowDialog<ExportMethodScheduleGraph>(exportMethodDlg.ShowSchedulingGraph);
+                WaitForConditionUI(() => exportMethodScheduleGraph.GraphControl.GraphPane.CurveList.Count > 0);
+                OkDialog(exportMethodScheduleGraph, exportMethodScheduleGraph.Close);
+                
                 RunDlg<MessageDlg>(() => exportMethodDlg.MethodType = ExportMethodType.Triggered,
                     dlg =>
                     {
@@ -405,6 +411,11 @@ namespace pwiz.SkylineTestFunctional
 
         }
 
+        /// <summary>
+        /// Change to true to write *.csv test files
+        /// </summary>
+        private bool IsTriggeredRecordMode { get { return false; } }
+
         private void AgilentThermoABSciexTriggeredTest()
         {
             // Failure trying to export to file with a peptide lacking results or library match
@@ -434,11 +445,12 @@ namespace pwiz.SkylineTestFunctional
             // a peptide without results
             RunUI(() => SkylineWindow.OpenFile(TestFilesDir.GetTestPath("Bovine_std_curated_seq_small2-trigger.sky")));
             string agilentExpected = TestFilesDir.GetTestPath("TranListTriggered.csv");
-            string agilentActual = TestFilesDir.GetTestPath("TranListTriggered-actual.csv");
+            string agilentActual = IsTriggeredRecordMode ? agilentExpected : TestFilesDir.GetTestPath("TranListTriggered-actual.csv");
             string thermoExpected = TestFilesDir.GetTestPath("TranListIsrm.csv");
-            string thermoActual = TestFilesDir.GetTestPath("TranListIsrm-actual.csv");
+            string thermoActualTemp = TestFilesDir.GetTestPath("TranListIsrm-actual.csv");
+            string thermoActual = IsTriggeredRecordMode ? thermoExpected : thermoActualTemp;
             string abSciexExpected = TestFilesDir.GetTestPath("TranListAbSciexTriggered.csv");
-            string abSciexActual = TestFilesDir.GetTestPath("TranListAbSciexTriggered-actual.csv");
+            string abSciexActual = IsTriggeredRecordMode ? abSciexExpected : TestFilesDir.GetTestPath("TranListAbSciexTriggered-actual.csv");
             string agilentActualMeth = TestFilesDir.GetTestPath("TranListTriggered-actual.m");
             string agilentTemplateMeth = TestFilesDir.GetTestPath("cm-HSA-2_1mm-tMRM-TH100B.m");
             // Agilent transition list
@@ -484,9 +496,11 @@ namespace pwiz.SkylineTestFunctional
             AssertEx.NoDiff(File.ReadAllText(abSciexExpected), File.ReadAllText(abSciexActual));
 
             // Thermo transition list
+            string thermoExpectedText = null;
             for (var with_slens = 0; with_slens < 2; with_slens++)
             {
                 var slens = with_slens > 0;
+                string thermoActualPath = thermoActual;
                 RunDlg<ExportMethodDlg>(() => SkylineWindow.ShowExportMethodDialog(ExportFileType.List),
                     exportMethodDlg =>
                     {
@@ -499,18 +513,22 @@ namespace pwiz.SkylineTestFunctional
                         exportMethodDlg.IsThermoStartAndEndTime = true;
                         Assert.IsTrue(exportMethodDlg.IsPrimaryCountVisible);
                         Assert.IsFalse(exportMethodDlg.IsOptimizeTypeEnabled);
-                        exportMethodDlg.OkDialog(thermoActual);
+                        exportMethodDlg.OkDialog(thermoActualPath);
                     });
-                var expected = File.ReadAllText(thermoExpected);
-                if (slens)
-                {
-                    expected = expected.Replace(",1,1", ",50,1,1"); // Additional column for slens value of 50
-                }
-                AssertEx.NoDiff(expected, File.ReadAllText(thermoActual));
+                if (thermoExpectedText == null)
+                    thermoExpectedText = File.ReadAllText(thermoExpected);
+                else
+                    thermoExpectedText = thermoExpectedText.Replace(",1,1", ",50,1,1"); // Additional column for slens value of 50
+
+                AssertEx.NoDiff(thermoExpectedText, File.ReadAllText(thermoActual));
+
+                // Avoid overwriting base file with s-lens version
+                if (thermoExpected == thermoActual)
+                    thermoActual = thermoActualTemp;
             }
 
 
-            ExportWithExplicitCollisionEnergyValues(thermoActual);
+            ExportWithExplicitCollisionEnergyValues(TestFilesDirs[0].FullPath, thermoActual);
 
             // Agilent method
             {
@@ -536,7 +554,7 @@ namespace pwiz.SkylineTestFunctional
 
             // AB Sciex transition list with previous results
             string abSciexWithResultsExpected = TestFilesDir.GetTestPath("TranListAbSciexWithResultsTriggered.csv");
-            string abSciexWithResultsActual = TestFilesDir.GetTestPath("TranListAbSciexWithResultsTriggered-actual.csv");
+            string abSciexWithResultsActual = IsTriggeredRecordMode ? abSciexWithResultsExpected : TestFilesDir.GetTestPath("TranListAbSciexWithResultsTriggered-actual.csv");
             RunUI(() => SkylineWindow.OpenFile(TestFilesDir.GetTestPath("MRM Triggered MRM data imported.sky")));
             WaitForDocumentLoaded();
             {
@@ -567,12 +585,48 @@ namespace pwiz.SkylineTestFunctional
             string brukerTemplateMeth = TestFilesDir.GetTestPath("Bruker Template Scheduled Precursor List.m");
             WaitForDocumentLoaded();
 
+            // Test order by m/z
+            {
+                var exportFile = TestFilesDir.GetTestPath("export-order-by-mz.txt");
+
+                RunDlg<ExportMethodDlg>(() => SkylineWindow.ShowExportMethodDialog(ExportFileType.List),
+                    exportMethodDlg =>
+                    {
+                        exportMethodDlg.SortByMz = true;
+                        exportMethodDlg.OkDialog(exportFile);
+                    });
+
+                using (var reader = new StreamReader(exportFile))
+                {
+                    double prevPrecursor = 0;
+                    double prevProduct = 0;
+                    while (!reader.EndOfStream)
+                    {
+                        var line = reader.ReadLine();
+                        Assert.IsNotNull(line);
+                        var values = line.Split(',');
+                        Assert.IsTrue(values.Length >= 2);
+                        Assert.IsTrue(double.TryParse(values[0], NumberStyles.Any, CultureInfo.InvariantCulture, out var precursor));
+                        Assert.IsTrue(double.TryParse(values[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var product));
+                        Assert.IsTrue(prevPrecursor <= precursor);
+                        if (prevPrecursor != precursor)
+                        {
+                            prevProduct = 0;
+                        }
+                        Assert.IsTrue(prevProduct <= product);
+                        prevPrecursor = precursor;
+                        prevProduct = product;
+                    }
+                }
+            }
+
             // Export PRM method unscheduled
             RunDlg<ExportMethodDlg>(() => SkylineWindow.ShowExportMethodDialog(ExportFileType.Method),
                     exportMethodDlg =>
                     {
                         exportMethodDlg.InstrumentType = ExportInstrumentType.BRUKER_TOF;
                         exportMethodDlg.ExportStrategy = ExportStrategy.Single;
+                        exportMethodDlg.SortByMz = false;
                         exportMethodDlg.SetTemplateFile(brukerTemplateMeth);
                         exportMethodDlg.MethodType = ExportMethodType.Standard;
                         Assert.IsTrue(exportMethodDlg.IsRunLengthVisible);
@@ -682,6 +736,49 @@ namespace pwiz.SkylineTestFunctional
             }
         }
 
+        private void SortByMzTest()
+        {
+            RunUI(() => SkylineWindow.OpenFile(TestFilesDir.GetTestPath("AA-oxylipin-mixture-optimazation_with_sample.sky")));
+            WaitForDocumentLoaded();
+
+            // Test order by m/z, including multiple precursors with same m/z
+            {
+                var exportFile = TestFilesDir.GetTestPath("export-order-by-mz.txt");
+
+                RunDlg<ExportMethodDlg>(() => SkylineWindow.ShowExportMethodDialog(ExportFileType.List),
+                    exportMethodDlg =>
+                    {
+                        exportMethodDlg.InstrumentType = ExportInstrumentType.ABI;
+                        exportMethodDlg.SortByMz = true;
+                        exportMethodDlg.OptimizeType = ExportOptimize.CE;
+                        exportMethodDlg.OkDialog(exportFile);
+                    });
+
+                using (var reader = new StreamReader(exportFile))
+                {
+                    double prevPrecursor = 0;
+                    double prevProduct = 0;
+                    while (!reader.EndOfStream)
+                    {
+                        var line = reader.ReadLine();
+                        Assert.IsNotNull(line);
+                        var values = line.Split(',');
+                        Assert.IsTrue(values.Length >= 2);
+                        Assert.IsTrue(double.TryParse(values[0], NumberStyles.Any, CultureInfo.InvariantCulture, out var precursor));
+                        Assert.IsTrue(double.TryParse(values[1], NumberStyles.Any, CultureInfo.InvariantCulture, out var product));
+                        Assert.IsTrue(prevPrecursor <= precursor);
+                        if (prevPrecursor != precursor)
+                        {
+                            prevProduct = 0;
+                        }
+                        Assert.IsTrue(prevProduct <= product);
+                        prevPrecursor = precursor;
+                        prevProduct = product;
+                    }
+                }
+            }
+        }
+
         private void ABSciexShortNameTest()
         {
             // Failure trying to export to file with a peptide lacking results or library match 
@@ -691,7 +788,7 @@ namespace pwiz.SkylineTestFunctional
 
             ExportAbTransitionList(modsShortNameActual);
 
-            AssertEx.NoDiff(File.ReadAllText(modsShortNameExpected), ReadAllNonSmallMoleculeText(modsShortNameActual));
+            AssertEx.NoDiff(File.ReadAllText(modsShortNameExpected), File.ReadAllText(modsShortNameActual));
 
             // Test fix for explicit and variable modifications
             RunUI(() => SkylineWindow.OpenFile(TestFilesDir.GetTestPath("shortnames_4peptide.sky")));
@@ -700,7 +797,7 @@ namespace pwiz.SkylineTestFunctional
             RunUI(() => SkylineWindow.OpenFile(TestFilesDir.GetTestPath("shortnames_4peptide-var.sky")));
             string modsShortNameVariable = TestFilesDir.GetTestPath("ModShortName-Variable.csv");
             ExportAbTransitionList(modsShortNameVariable);
-            AssertEx.NoDiff(File.ReadAllText(modsShortNameExplicit), ReadAllNonSmallMoleculeText(modsShortNameVariable));
+            AssertEx.NoDiff(File.ReadAllText(modsShortNameExplicit), File.ReadAllText(modsShortNameVariable));
 
             string[] expectedPeptides = {"L[1Ac]VNELTEFAK", "S[1Ac]LNC[CAM]TLR", "L[1Ac]TWASHEK", "PSCVPLMR"};
             foreach (var line in File.ReadAllLines(modsShortNameExplicit))
@@ -724,11 +821,12 @@ namespace pwiz.SkylineTestFunctional
             WaitForClosedForm(exportMethodDlg);
         }
 
-        private void ExportWithExplicitCollisionEnergyValues(string pathList)
+        private void ExportWithExplicitCollisionEnergyValues(string pathForSmallMoleculeLibs, string pathList)
         {
             var original = SkylineWindow.Document;
             var refine = new RefinementSettings();
-            var document = refine.ConvertToSmallMolecules(original);
+            var document = refine.ConvertToSmallMolecules(original, pathForSmallMoleculeLibs);
+            int expectedTrans = document.MoleculeTransitionCount*11 + 1;
             for (var loop = 0; loop < 2; loop++)
             {
                 SkylineWindow.SetDocument(document, SkylineWindow.Document);
@@ -745,15 +843,16 @@ namespace pwiz.SkylineTestFunctional
                 if (loop == 1)
                 {
                     // Explicit CE values
-                    Assert.AreEqual(document.MoleculeTransitionCount+1, actual.Length); // Should be just one line per transition, and a header
+                    Assert.AreEqual(expectedTrans, actual.Length); // Should still contain steps based on the explicit values
                     break;
                 }
                 else
                 {
-                    Assert.AreEqual(document.MoleculeTransitionCount*11 + 1, actual.Length); // Multiple steps, and a header
+                    Assert.AreEqual(expectedTrans, actual.Length); // Multiple steps, and a header
                 }
                 // Change the current document to use explicit CE values, verify that this changes the output
-                var ce = 1;
+                var ce = 1; // Starting at 1 means some transitions will not have all CE steps
+                expectedTrans = 1;
                 for (bool changing = true; changing; )
                 {
                     changing = false;
@@ -765,15 +864,25 @@ namespace pwiz.SkylineTestFunctional
                             var pepPath = new IdentityPath(pepGroupPath, nodePep.Id);
                             foreach (var nodeTransitionGroup in nodePep.TransitionGroups)
                             {
-                                if (!nodeTransitionGroup.ExplicitValues.CollisionEnergy.HasValue)
+                                var tgPath = new IdentityPath(pepPath, nodeTransitionGroup.Id);
+                                foreach (var nodeTransition in nodeTransitionGroup.Transitions)
                                 {
-                                    var tgPath = new IdentityPath(pepPath, nodeTransitionGroup.Id);
-                                    document = (SrmDocument)document.ReplaceChild(tgPath.Parent,
-                                        nodeTransitionGroup.ChangeExplicitValues(nodeTransitionGroup.ExplicitValues.ChangeCollisionEnergy(ce++)));
-                                    changing = true;
-                                    break;
+                                    if (!nodeTransition.ExplicitValues.CollisionEnergy.HasValue)
+                                    {
+                                        var tranPath = new IdentityPath(tgPath, nodeTransition.Id);
+                                        document = (SrmDocument)document.ReplaceChild(tranPath.Parent,
+                                            nodeTransition.ChangeExplicitValues(nodeTransition.ExplicitValues.ChangeCollisionEnergy(ce++)));
+                                        changing = true;
+                                        // Add to expected transition count, limiting to account for CE <= 0 while CE space is explored
+                                        expectedTrans += Math.Min(ce - 2, 5) + 6;
+                                        break;
+                                    }
                                 }
+                                if (changing)
+                                    break;
                             }
+                            if (changing)
+                                break;
                         }
                         if (changing)
                             break;
@@ -781,17 +890,6 @@ namespace pwiz.SkylineTestFunctional
                 }
             }
             SkylineWindow.SetDocument(original, SkylineWindow.Document);
-        }
-
-        private string ReadAllNonSmallMoleculeText(string pathList)
-        {
-            var actual = File.ReadAllText(pathList);
-            if (TestSmallMolecules)
-            {
-                for (int i = 0; i++ < 4; )
-                    actual = actual.Substring(0, actual.LastIndexOf('\n') - 1); // Trim test molecule related lines
-            }
-            return actual;
         }
 
         private static void CreateDummyRTRegression()

@@ -78,7 +78,7 @@ namespace pwiz.SkylineTestFunctional
             {
                 var importResultsDlg = ShowDialog<ImportResultsDlg>(SkylineWindow.ImportResults);
                 var openDataSourceDialog = ShowDialog<OpenDataSourceDialog>(importResultsDlg.OkDialog);
-                RunUI(() => openDataSourceDialog.SelectFile(TestFilesDir.GetTestPath("Replicate1.mz5")));
+                RunUI(() => openDataSourceDialog.SelectFile(TestFilesDir.GetTestPath("Replicate1" + ExtensionTestContext.ExtMz5)));
                 OkDialog(openDataSourceDialog, openDataSourceDialog.Open);
             }
             WaitForResultsImport();
@@ -94,7 +94,7 @@ namespace pwiz.SkylineTestFunctional
             {
                 var importResultsDlg = ShowDialog<ImportResultsDlg>(SkylineWindow.ImportResults);
                 var openDataSourceDialog = ShowDialog<OpenDataSourceDialog>(importResultsDlg.OkDialog);
-                RunUI(() => openDataSourceDialog.SelectFile(TestFilesDir.GetTestPath("Replicate2.mz5")));
+                RunUI(() => openDataSourceDialog.SelectFile(TestFilesDir.GetTestPath("Replicate2" + ExtensionTestContext.ExtMz5)));
                 OkDialog(openDataSourceDialog, openDataSourceDialog.Open);
             }
             WaitForResultsImport();
@@ -102,7 +102,7 @@ namespace pwiz.SkylineTestFunctional
 
             // The DocumentGrid which is showing "PeptideReplicates" should be showing the Cartesian product 
             // of peptides and replicates
-            AssertRowCount(SkylineWindow.Document.PeptideCount * 2 + (TestSmallMolecules ? 1 : 0), peptideReplicatesForm);
+            AssertRowCount(SkylineWindow.Document.PeptideCount * 2, peptideReplicatesForm);
 
             // The Results Grid should show the two replicates
             WaitForConditionUI(() => liveResultsGrid.IsComplete);
@@ -122,7 +122,7 @@ namespace pwiz.SkylineTestFunctional
 
         private void AssertRowCount(int expectedRowCount, DataboundGridForm databoundGridForm)
         {
-            if (!TryWaitForCondition(() =>databoundGridForm.IsComplete && (expectedRowCount == databoundGridForm.BindingListSource.Count)))
+            if (!TryWaitForConditionUI(() =>databoundGridForm.IsComplete && (expectedRowCount == databoundGridForm.BindingListSource.Count)))
                 Assert.AreEqual(expectedRowCount, databoundGridForm.BindingListSource.Count, "wrong row count in databoundGridForm");
         }
     }

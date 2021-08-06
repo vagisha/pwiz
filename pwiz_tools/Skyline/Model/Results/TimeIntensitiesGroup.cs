@@ -77,7 +77,7 @@ namespace pwiz.Skyline.Model.Results
         public abstract TimeIntensitiesGroup Truncate(float newStartTime, float newEndTime);
         public abstract TimeIntensitiesGroup RetainTransitionIndexes(ISet<int> transitionIndexes);
         public abstract void WriteToStream(Stream stream);
-        public abstract int NumPoints { get; }
+        public abstract int NumInterpolatedPoints { get; }
 
         private class SingletonImpl : TimeIntensitiesGroup
         {
@@ -100,7 +100,7 @@ namespace pwiz.Skyline.Model.Results
                 throw new NotSupportedException();
             }
 
-            public override int NumPoints
+            public override int NumInterpolatedPoints
             {
                 get { return TransitionTimeIntensities.First().NumPoints; }
             }
@@ -128,7 +128,7 @@ namespace pwiz.Skyline.Model.Results
                 throw new NotSupportedException();
             }
 
-            public override int NumPoints
+            public override int NumInterpolatedPoints
             {
                 get { return 0; }
             }
@@ -272,7 +272,7 @@ namespace pwiz.Skyline.Model.Results
             return new InterpolatedTimeIntensities(newIndexes.Select(i=>TransitionTimeIntensities[i]), newIndexes.Select(i=>TransitionChromSources[i]));
         }
 
-        public override int NumPoints { get { return TransitionTimeIntensities.First().NumPoints; } }
+        public override int NumInterpolatedPoints { get { return TransitionTimeIntensities.First().NumPoints; } }
     }
 
     public class RawTimeIntensities : TimeIntensitiesGroup
@@ -283,6 +283,12 @@ namespace pwiz.Skyline.Model.Results
             InterpolationParams = interpolationParams;
         }
 
+        public TimeIntervals TimeIntervals { get; private set; }
+
+        public RawTimeIntensities ChangeTimeIntervals(TimeIntervals timeIntervals)
+        {
+            return ChangeProp(ImClone(this), im => im.TimeIntervals = timeIntervals);
+        }
         public InterpolationParams InterpolationParams { get; private set; }
         public bool InferZeroes { get { return InterpolationParams != null && InterpolationParams.InferZeroes; } }
         public InterpolatedTimeIntensities Interpolate(IEnumerable<ChromSource> chromSources)
@@ -357,6 +363,13 @@ namespace pwiz.Skyline.Model.Results
                 chromatogramGroupData.InterpolatedDelta = InterpolationParams.IntervalDelta;
                 chromatogramGroupData.InferZeroes = InterpolationParams.InferZeroes;
             }
+
+            if (TimeIntervals != null)
+            {
+                chromatogramGroupData.TimeIntervals = new ChromatogramGroupData.Types.TimeIntervals();
+                chromatogramGroupData.TimeIntervals.StartTimes.AddRange(TimeIntervals.Starts);
+                chromatogramGroupData.TimeIntervals.EndTimes.AddRange(TimeIntervals.Ends);
+            }
             return chromatogramGroupData;
         }
 
@@ -393,7 +406,18 @@ namespace pwiz.Skyline.Model.Results
                 interpolationParams = new InterpolationParams(chromatogramGroupData.InterpolatedStartTime, chromatogramGroupData.InterpolatedEndTime, chromatogramGroupData.InterpolatedNumPoints, chromatogramGroupData.InterpolatedDelta)
                     .ChangeInferZeroes(chromatogramGroupData.InferZeroes);
             }
-            return new RawTimeIntensities(timeIntensitiesList, interpolationParams);
+            var rawTimeIntensities = new RawTimeIntensities(timeIntensitiesList, interpolationParams);
+            if (chromatogramGroupData.TimeIntervals != null)
+            {
+                var startTimes = chromatogramGroupData.TimeIntervals.StartTimes;
+                var endTimes = chromatogramGroupData.TimeIntervals.EndTimes;
+
+                var timeIntervals = TimeIntervals.FromIntervals(Enumerable.Range(0, startTimes.Count)
+                    .Select(i => new KeyValuePair<float, float>(startTimes[i], endTimes[i])));
+                rawTimeIntensities = rawTimeIntensities.ChangeTimeIntervals(timeIntervals);
+            }
+
+            return rawTimeIntensities;
         }
 
         public static RawTimeIntensities ReadFromStream(Stream stream)
@@ -445,11 +469,15 @@ namespace pwiz.Skyline.Model.Results
             return new RawTimeIntensities(newIndexes.Select(i => TransitionTimeIntensities[i]), InterpolationParams);
         }
 
-        public override int NumPoints
+        public override int NumInterpolatedPoints
         {
             get
             {
-                return TransitionTimeIntensities.SelectMany(timeIntensities => timeIntensities.Times).Distinct().Count();
+                if (null == InterpolationParams)
+                {
+                    return 0;
+                }
+                return InterpolationParams.NumPoints;
             }
         }
     }

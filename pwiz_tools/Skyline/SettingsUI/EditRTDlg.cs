@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using pwiz.Common.Collections;
+using pwiz.Common.DataAnalysis;
 using pwiz.Common.DataBinding;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
@@ -44,8 +46,6 @@ namespace pwiz.Skyline.SettingsUI
         private RetentionTimeRegression _regression;
         private readonly IEnumerable<RetentionTimeRegression> _existing;
         private RetentionTimeStatistics _statistics;
-
-        public const double DEFAULT_RT_WINDOW = 10.0;
 
         public EditRTDlg(IEnumerable<RetentionTimeRegression> existing)
         {
@@ -84,8 +84,13 @@ namespace pwiz.Skyline.SettingsUI
                     if (pepTimes.Count > 0)
                     {
                         ShowPeptides(true);
-                        foreach (var pepTime in pepTimes)
-                            Peptides.Add(new MeasuredPeptide(pepTime.PeptideSequence, pepTime.RetentionTime));
+
+                        var previous = Peptides.RaiseListChangedEvents;
+                        Peptides.RaiseListChangedEvents = false;
+                        Peptides.AddRange(pepTimes.Select(pepTime => new MeasuredPeptide(pepTime.PeptideSequence, pepTime.RetentionTime)));
+                        Peptides.RaiseListChangedEvents = previous;
+                        if (previous)
+                            Peptides.ResetBindings();
 
                         // Get statistics
                         RecalcRegression(_driverCalculators.SelectedItem, _regression.PeptideTimes.ToList());
@@ -110,7 +115,7 @@ namespace pwiz.Skyline.SettingsUI
                                 regressionLine.Intercept.ToString(LocalizationHelper.CurrentCulture);
                         }
                     }
-                    textTimeWindow.Text = string.Format("{0:F04}", _regression.TimeWindow); // Not L10N
+                    textTimeWindow.Text = string.Format(@"{0:F04}", _regression.TimeWindow);
                 }
             }
         }
@@ -157,8 +162,7 @@ namespace pwiz.Skyline.SettingsUI
 
             if (comboCalculator.SelectedIndex == -1)
             {
-                MessageBox.Show(this, Resources.EditRTDlg_OkDialog_Retention_time_prediction_requires_a_calculator_algorithm,
-                                Program.Name);
+                MessageDlg.Show(this, Resources.EditRTDlg_OkDialog_Retention_time_prediction_requires_a_calculator_algorithm);
                 comboCalculator.Focus();
                 return;
             }
@@ -191,7 +195,8 @@ namespace pwiz.Skyline.SettingsUI
             }
 
             Point ptCorner = new Point(ctlCorner.Right, ctlCorner.Bottom + yExtra);
-            ptCorner = PointToScreen(ptCorner);
+            // A Windows 10 update caused using PointToScreen to leak GDI handles
+//            ptCorner = PointToScreen(ptCorner);
             ptCorner.Offset(20, 20);
 
             if (!visible)
@@ -202,7 +207,9 @@ namespace pwiz.Skyline.SettingsUI
                 btnShowGraph.Anchor |= AnchorStyles.Top;
                 btnShowGraph.Anchor &= ~AnchorStyles.Bottom;
                 FormBorderStyle = FormBorderStyle.FixedDialog;
-                Height = ptCorner.Y - Top;
+                // Adjust form size without knowing the screen rectangle to avoid leaking
+//                Height = ptCorner.Y - Top;
+                Height -= ClientRectangle.Bottom - ptCorner.Y;
             }
 
             labelPeptides.Visible = visible;
@@ -214,7 +221,9 @@ namespace pwiz.Skyline.SettingsUI
 
             if (visible)
             {
-                Height = ptCorner.Y - Top;
+                // Adjust form size without knowing the screen rectangle to avoid leaking
+//                Height = ptCorner.Y - Top;
+                Height -= ClientRectangle.Bottom - ptCorner.Y;
                 FormBorderStyle = FormBorderStyle.Sizable;
                 btnUseCurrent.Anchor |= AnchorStyles.Bottom;
                 btnUseCurrent.Anchor &= ~AnchorStyles.Top;
@@ -247,7 +256,7 @@ namespace pwiz.Skyline.SettingsUI
                     if (string.IsNullOrEmpty(textSlope.Text) && string.IsNullOrEmpty(textIntercept.Text))
                         cbAutoCalc.Checked = true;
                     if (string.IsNullOrEmpty(textTimeWindow.Text))
-                        textTimeWindow.Text = DEFAULT_RT_WINDOW.ToString(LocalizationHelper.CurrentCulture);
+                        textTimeWindow.Text = ImportPeptideSearch.DEFAULT_RT_WINDOW.ToString(LocalizationHelper.CurrentCulture);
                 }
 
                 try
@@ -284,7 +293,7 @@ namespace pwiz.Skyline.SettingsUI
                                           values =>
                                           measuredPeptidesNew.Add(new MeasuredPeptide
                                           {
-                                              Sequence = values[0],
+                                              Target = new Target(values[0]),  // CONSIDER(bspratt) small molecule equivalent?
                                               RetentionTime = double.Parse(values[1])
                                           }));
 
@@ -298,7 +307,7 @@ namespace pwiz.Skyline.SettingsUI
 
             private void SetTablePeptides(IList<MeasuredPeptide> tablePeps)
             {
-                string message = ValidateUniquePeptides(tablePeps.Select(p => p.Sequence), null, null);
+                string message = ValidateUniquePeptides(tablePeps.Select(p => p.Target), null, null);
                 if (message != null)
                 {
                     MessageDlg.Show(MessageParent, message);
@@ -311,13 +320,15 @@ namespace pwiz.Skyline.SettingsUI
             }
         }
 
+        public int PeptideCount { get { return Peptides.Count; } }
+
         private SortableBindingList<MeasuredPeptide> Peptides { get { return _gridViewDriver.Items; } }
 
         private IList<MeasuredRetentionTime> GetTablePeptides()
         {
             return (from p in Peptides
                     where p.Sequence != null
-                    select new MeasuredRetentionTime(p.Sequence, p.RetentionTime)).ToArray();
+                    select new MeasuredRetentionTime(p.Target, p.RetentionTime)).ToArray();
         }
 
         private void btnUseCurrent_Click(object sender, EventArgs e)
@@ -327,10 +338,9 @@ namespace pwiz.Skyline.SettingsUI
 
         public void AddResults()
         {
-            SetTablePeptides(GetDocumentPeptides().ToArray());
-            var regressionPeps = UpdateCalculator(null);
-            if (regressionPeps != null)
-                SetTablePeptides(regressionPeps);
+            var peps = GetDocumentPeptides().ToArray();
+            var regressionPeps = UpdateCalculator(null, peps);
+            SetTablePeptides(regressionPeps ?? peps);
         }
 
         public void SetTablePeptides(IList<MeasuredRetentionTime> tablePeps)
@@ -368,7 +378,7 @@ namespace pwiz.Skyline.SettingsUI
                         });
                         if (status.IsError)
                         {
-                            MessageBox.Show(this, status.ErrorException.Message, Program.Name);
+                            MessageDlg.Show(this, status.ErrorException.Message);
                             return;
                         }
                     }
@@ -398,8 +408,9 @@ namespace pwiz.Skyline.SettingsUI
 
             foreach (var measuredPeptide in Peptides)
             {
+                
                 times.Add(measuredPeptide.RetentionTime);
-                double? score = calc.ScoreSequence(measuredPeptide.Sequence);
+                double? score = calc.ScoreSequence(measuredPeptide.Target);
                 scores.Add(score ?? calc.UnknownScore);
             }
 
@@ -433,10 +444,10 @@ namespace pwiz.Skyline.SettingsUI
             if (!document.Settings.MeasuredResults.IsLoaded)
                 yield break;
 
-            var setPeps = new HashSet<string>();
-            foreach(var nodePep in document.Peptides)
+            var setPeps = new HashSet<Target>();
+            foreach(var nodePep in document.Molecules)
             {
-                string modSeq = document.Settings.GetModifiedSequence(nodePep);
+                var modSeq = document.Settings.GetModifiedSequence(nodePep);
                 // If a document contains the same peptide twice, make sure it
                 // only gets added once.
                 if (setPeps.Contains(modSeq))
@@ -460,11 +471,11 @@ namespace pwiz.Skyline.SettingsUI
 		/// Todo: split this function into one that chooses and returns the calculator and one that returns the peptides
 		/// todo: chosen by that calculator
         /// </summary>
-        private IList<MeasuredRetentionTime> UpdateCalculator(RetentionScoreCalculatorSpec calculator)
+        private IList<MeasuredRetentionTime> UpdateCalculator(RetentionScoreCalculatorSpec calculator, IList<MeasuredRetentionTime> activePeptides = null)
         {
             bool calcInitiallyNull = calculator == null;
 
-            var activePeptides = GetTablePeptides();
+            activePeptides = activePeptides ?? GetTablePeptides();
             if (activePeptides.Count == 0)
                 return null;
 
@@ -496,7 +507,7 @@ namespace pwiz.Skyline.SettingsUI
             }
 
             int minCount;
-            var usePeptides = new HashSet<string>(calculator.ChooseRegressionPeptides(
+            var usePeptides = new HashSet<Target>(calculator.ChooseRegressionPeptides(
                 activePeptides.Select(pep => pep.PeptideSequence), out minCount));
             //now go back and get the MeasuredPeptides corresponding to the strings chosen by the calculator
             var tablePeptides = activePeptides.Where(measuredRT =>
@@ -546,19 +557,16 @@ namespace pwiz.Skyline.SettingsUI
 
         private RetentionScoreCalculatorSpec RecalcRegression(IList<RetentionScoreCalculatorSpec> calculators, IList<MeasuredRetentionTime> peptidesTimes)
         {
-            RetentionScoreCalculatorSpec calculatorSpec;
-            RetentionTimeStatistics statistics;
-
-            var regression = RetentionTimeRegression.CalcRegression("Recalc", // Not L10N
-                                                                    calculators,
-                                                                    RegressionMethodRT.linear,
-                                                                    peptidesTimes,
-                                                                    out statistics);
+            var summary = RetentionTimeRegression.CalcBestRegressionLongOperationRunner(XmlNamedElement.NAME_INTERNAL, calculators, peptidesTimes,
+                null, false, RegressionMethodRT.linear, CustomCancellationToken.NONE);
+            var regression = summary.Best.Regression;
+            var statistics = summary.Best.Statistics;
+            var calculatorSpec = summary.Best.Calculator;
 
             double r = 0;
             if (regression == null)
             {
-                if (calculators.Count() > 1)
+                if (calculators.Count > 1)
                 {
                     textSlope.Text = string.Empty;
                     textIntercept.Text = string.Empty;
@@ -574,10 +582,10 @@ namespace pwiz.Skyline.SettingsUI
                 var regressionLine = regression.Conversion as RegressionLineElement;
                 if (regressionLine != null)
                 {
-                    textSlope.Text = string.Format("{0}", regressionLine.Slope); // Not L10N 
-                    textIntercept.Text = string.Format("{0}", regressionLine.Intercept); // Not L10N
+                    textSlope.Text = string.Format(@"{0}", regressionLine.Slope);
+                    textIntercept.Text = string.Format(@"{0}", regressionLine.Intercept);
                 }
-                textTimeWindow.Text = string.Format("{0:F01}", regression.TimeWindow); // Not L10N
+                textTimeWindow.Text = string.Format(@"{0:F01}", regression.TimeWindow);
 
                 // Select best calculator match.
                 calculatorSpec = regression.Calculator;
@@ -716,40 +724,5 @@ namespace pwiz.Skyline.SettingsUI
         }
 
         #endregion
-    }
-
-    public class MeasuredPeptide : IPeptideData
-    {
-        public MeasuredPeptide()
-        {
-        }
-
-        public MeasuredPeptide(string seq, double rt)
-        {
-            Sequence = seq;
-            RetentionTime = rt;
-        }
-
-        public string Sequence { get; set; }
-        public double RetentionTime { get; set; }
-
-        public static string ValidateSequence(string sequence)
-        {
-            if (sequence == null)
-                return Resources.MeasuredPeptide_ValidateSequence_A_modified_peptide_sequence_is_required_for_each_entry;
-            if (!FastaSequence.IsExSequence(sequence))
-                return string.Format(Resources.MeasuredPeptide_ValidateSequence_The_sequence__0__is_not_a_valid_modified_peptide_sequence, sequence);
-            return null;
-        }
-
-        public static string ValidateRetentionTime(string rtText, bool allowNegative)
-        {
-            double rtValue;
-            if (rtText == null || !double.TryParse(rtText, out rtValue))
-                return Resources.MeasuredPeptide_ValidateRetentionTime_Measured_retention_times_must_be_valid_decimal_numbers;
-            if (!allowNegative && rtValue <= 0)
-                return Resources.MeasuredPeptide_ValidateRetentionTime_Measured_retention_times_must_be_greater_than_zero;
-            return null;
-        }
     }
 }

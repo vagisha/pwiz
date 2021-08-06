@@ -43,11 +43,8 @@ namespace pwiz.SkylineTestFunctional
         // Verify proper peak selection when polarity information is present
         protected override void DoTest()
         {
-            TestSmallMolecules = false; // This is small molecule data, no need for extra nodes
-
-
             // CONSIDER: in this zip file is a tiny data set "134.sky" and "134.mzml" that demonstrate how we still don't
-            //           do a perfect job of handingling chromatograms with same Q1Q3 and overlapping RT ranges.  There
+            //           do a perfect job of handling chromatograms with same Q1Q3 and overlapping RT ranges.  There
             //           are two chromatograms in the mzml with Q1=134Q3=134 and similar time ranges.  We don't pick the best
             //           of the two so a would-be peak match gets missed.
 
@@ -73,33 +70,34 @@ namespace pwiz.SkylineTestFunctional
             var properList = new List<string>();
 
             var i = 0;
+            bool integrateAll = docProperPolarity.Settings.TransitionSettings.Integration.IsIntegrateAll;
             foreach (var nodeGroup in docProperPolarity.MoleculeTransitionGroups)
             {
                 foreach (var trans in nodeGroup.Transitions)
                 {
-                    if ((transProperPolarity[i].GetPeakCountRatio(0) ?? 0) >= 1)
+                    if ((transProperPolarity[i].GetPeakCountRatio(0, integrateAll) ?? 0) >= 1)
                     {
                         countPeaksProperPolarity++;
                         properList.Add(string.Format("{0} {1}", nodeGroup, trans.Transition));
                     }
-                    if ((transNoPolarity[i].GetPeakCountRatio(0) ?? 0) >= 1)
+                    if ((transNoPolarity[i].GetPeakCountRatio(0, integrateAll) ?? 0) >= 1)
                     {
                         countPeaksNoPolarity++;
                     }
-                    if ((transNegPolarity[i].GetPeakCountRatio(0) ?? 0) >= 1)
+                    if ((transNegPolarity[i].GetPeakCountRatio(0, integrateAll) ?? 0) >= 1)
                     {
                         countPeaksNegPolarity++;
                     }
                     i++;
                 }
             }
-            // There are 236 total transitions, 186 of which have decent peaks
-            Assert.AreEqual(186, countPeaksProperPolarity, "countPeaksProperPolarity: " + string.Join(", ",properList));
-            // 135 of them are positive, so will not match chromatograms artificially marked negative in the mzML
-            Assert.AreEqual(91, countPeaksNegPolarity, "countPeaksNegPolarity"); // Should probably be 93, see CONSIDER note above
-            // 131 are negative, so will not match chromatograms artificially marked positive in the mzML
-            Assert.AreEqual(94, countPeaksNoPolarity, "countPeaksNoPolarity");
-            // Note that 91+94 != 186 : as it happens there is a negative transition 136,136 that matches when it's faked up as postive
+            // There are 236 total transitions, 186 of which have decent peaks, but only 98 of those match given explicit retention times
+            Assert.AreEqual(98, countPeaksProperPolarity, "countPeaksProperPolarity: " + string.Join(", ",properList));
+            // 74 of them are positive, so will not match chromatograms artificially marked negative in the mzML
+            Assert.AreEqual(26, countPeaksNegPolarity, "countPeaksNegPolarity"); // Should probably be 93, see CONSIDER note above
+            // 26 are negative, so will not match chromatograms artificially marked positive in the mzML
+            Assert.AreEqual(74, countPeaksNoPolarity, "countPeaksNoPolarity");
+            // Note that 26+74 != 98 : as it happens there is a negative transition 136,136 that matches when it's faked up as positive
             testFilesDir.Dispose();
         }
 
@@ -119,15 +117,15 @@ namespace pwiz.SkylineTestFunctional
             // Class,Name,Pre charge,Pre,Prod,Prod charge,RT,window,CE
             var columnOrder =  new[]
                 {
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.moleculeGroup,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.namePrecursor,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.chargePrecursor,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.mzPrecursor,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.mzProduct,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.chargeProduct,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.rtPrecursor,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.rtWindowPrecursor,
-                    PasteDlg.SmallMoleculeTransitionListColumnHeaders.cePrecursor,
+                    SmallMoleculeTransitionListColumnHeaders.moleculeGroup,
+                    SmallMoleculeTransitionListColumnHeaders.namePrecursor,
+                    SmallMoleculeTransitionListColumnHeaders.chargePrecursor,
+                    SmallMoleculeTransitionListColumnHeaders.mzPrecursor,
+                    SmallMoleculeTransitionListColumnHeaders.mzProduct,
+                    SmallMoleculeTransitionListColumnHeaders.chargeProduct,
+                    SmallMoleculeTransitionListColumnHeaders.rtPrecursor,
+                    SmallMoleculeTransitionListColumnHeaders.rtWindowPrecursor,
+                    SmallMoleculeTransitionListColumnHeaders.cePrecursor,
                 };
             var pasteDlg = ShowDialog<PasteDlg>(SkylineWindow.ShowPasteTransitionListDlg);
             RunUI(() =>

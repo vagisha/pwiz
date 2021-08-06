@@ -6,22 +6,25 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline;
 using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Model.Results;
+using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.SkylineTestUtil
 {
-    public class PeakMatcherTestUtil
+    public static class PeakMatcherTestUtil
     {
-        public static void SelectAndApplyPeak(string modifiedSequence, double? precursorMz, string resultsName, bool subsequent, double rt)
+        public static void SelectAndApplyPeak(string modifiedSequence, double? precursorMz, string resultsName, bool subsequent, bool group, double rt)
         {
             bool found = false;
             var skylineWindow = Program.MainWindow;
             var doc = skylineWindow.Document;
             IdentityPath identityPath = null;
+            var libKeyToMatch = new PeptideLibraryKey(modifiedSequence, 0);
             foreach (PeptideGroupDocNode nodePepGroup in doc.MoleculeGroups)
             {
-                foreach (var nodePep in nodePepGroup.Peptides.Where(nodePep => nodePep.ModifiedSequence.Equals(modifiedSequence)))
+                foreach (var nodePep in nodePepGroup.Peptides.Where(nodePep => LibKeyIndex.KeysMatch(libKeyToMatch, nodePep.ModifiedTarget.GetLibKey(Adduct.EMPTY))))
                 {
                     var nodeTranGroup = precursorMz.HasValue
                         ? nodePep.TransitionGroups.First(tranGroup => Math.Abs(tranGroup.PrecursorMz - precursorMz.Value) < 0.01)
@@ -55,7 +58,7 @@ namespace pwiz.SkylineTestUtil
             {
                 Assert.Fail("Could not find results {0}", resultsName);
             }
-            skylineWindow.ApplyPeak(subsequent);
+            skylineWindow.ApplyPeak(subsequent, group);
         }
 
         public static void VerifyPeaks(IReadOnlyDictionary<string, double> expected)

@@ -209,7 +209,7 @@ namespace pwiz.Skyline.SettingsUI
         private void InvalidCell(DataGridViewCell cell,
             string message, params object[] args)
         {            
-            MessageBox.Show(string.Format(message, args));
+            MessageDlg.Show(FormUtil.FindTopLevelOwner(this),string.Format(message, args));
             gridRegression.Focus();
             gridRegression.ClearSelection();
             cell.Selected = true;
@@ -267,13 +267,13 @@ namespace pwiz.Skyline.SettingsUI
 
         public void UseCurrentData()
         {
-            CERegressionData[] arrayData = GetRegressionDatas();
+            var arrayData = GetRegressionDatas();
             if (arrayData == null)
                 return;
 
             bool hasRegressionLines = false;
-            var regressionLines = new RegressionLine[arrayData.Length];
-            for (int i = 0; i < arrayData.Length; i++)
+            var regressionLines = new AdductMap<RegressionLine>();
+            foreach (var i in arrayData.Keys)
             {
                 if (arrayData[i] == null)
                     continue;
@@ -289,16 +289,16 @@ namespace pwiz.Skyline.SettingsUI
             }
 
             gridRegression.Rows.Clear();
-            for (int i = 0; i < regressionLines.Length; i++)
+            foreach (var i in regressionLines.Keys)
             {
                 var regressionLine = regressionLines[i];
                 if (regressionLine == null)
                     continue;
                 gridRegression.Rows.Add(new object[]
                                             {
-                                                i.ToString(LocalizationHelper.CurrentCulture),
-                                                string.Format("{0:F04}", regressionLine.Slope), // Not L10N
-                                                string.Format("{0:F04}", regressionLine.Intercept) // Not L10N
+                                                i.AdductCharge.ToString(LocalizationHelper.CurrentCulture),
+                                                string.Format(@"{0:F04}", regressionLine.Slope),
+                                                string.Format(@"{0:F04}", regressionLine.Intercept)
                                             });
             }
         }
@@ -311,12 +311,12 @@ namespace pwiz.Skyline.SettingsUI
         public void ShowGraph()
         {
             CheckDisposed();
-            CERegressionData[] arrayData = GetRegressionDatas();
+            var arrayData = GetRegressionDatas();
             if (arrayData == null)
                 return;
 
             var listGraphData = new List<RegressionGraphData>();
-            for (int charge = 0; charge < arrayData.Length; charge++)
+            foreach (var charge in arrayData.Keys)
             {
                 var regressionData = arrayData[charge];
                 if (regressionData == null)
@@ -339,22 +339,21 @@ namespace pwiz.Skyline.SettingsUI
             }
         }
 
-        private CERegressionData[] GetRegressionDatas()
+        private AdductMap<CERegressionData> GetRegressionDatas()
         {
             var document = Program.ActiveDocumentUI;
             if (!document.Settings.HasResults)
                 return null;
             if (!document.Settings.MeasuredResults.IsLoaded)
             {
-                MessageBox.Show(this, Resources.EditCEDlg_GetRegressionDatas_Measured_results_must_be_completely_loaded_before_they_can_be_used_to_create_a_collision_energy_regression,
-                                Program.Name);
+                MessageDlg.Show(this, Resources.EditCEDlg_GetRegressionDatas_Measured_results_must_be_completely_loaded_before_they_can_be_used_to_create_a_collision_energy_regression);
                 return null;
             }
 
             var regressionCurrent = _regression ??
                 document.Settings.TransitionSettings.Prediction.CollisionEnergy;
 
-            var arrayData = new CERegressionData[TransitionGroup.MAX_PRECURSOR_CHARGE + 1];
+            var arrayData = new AdductMap<CERegressionData>();
             var chromatograms = document.Settings.MeasuredResults.Chromatograms;
             for (int i = 0; i < chromatograms.Count; i++)
             {
@@ -365,7 +364,7 @@ namespace pwiz.Skyline.SettingsUI
 
                 foreach (var nodeGroup in document.MoleculeTransitionGroups)
                 {
-                    int charge = nodeGroup.TransitionGroup.PrecursorCharge;
+                    var charge = nodeGroup.TransitionGroup.PrecursorAdduct;
                     if (arrayData[charge] == null)
                     {
                         var chargeRegression = (regressionCurrent != null ?
@@ -389,7 +388,7 @@ namespace pwiz.Skyline.SettingsUI
             protected override double GetValue(CollisionEnergyRegression regression,
                 TransitionGroupDocNode nodeGroup, int step)
             {
-                return regression.GetCollisionEnergy(nodeGroup.TransitionGroup.PrecursorCharge,
+                return regression.GetCollisionEnergy(nodeGroup.TransitionGroup.PrecursorAdduct,
                                                       nodeGroup.PrecursorMz, step);
             }
         }

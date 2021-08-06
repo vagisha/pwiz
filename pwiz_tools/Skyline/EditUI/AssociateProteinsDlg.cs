@@ -21,10 +21,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using pwiz.Common.SystemUtil;
 using pwiz.ProteomeDatabase.API;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Properties;
@@ -32,10 +34,13 @@ using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.EditUI
 {
-    public partial class AssociateProteinsDlg : FormEx
+    public partial class AssociateProteinsDlg : ModeUIInvariantFormEx,  // This dialog has nothing to do with small molecules, always display as proteomic even in mixed mode
+                  IAuditLogModifier<AssociateProteinsDlg.AssociateProteinsSettings>
     {
         private readonly SkylineWindow _parent;
         private IList<KeyValuePair<FastaSequence, List<PeptideDocNode>>> _associatedProteins;
+        private bool _isFasta;
+        private string _fileName;
 
         public AssociateProteinsDlg(SkylineWindow parent)
         {
@@ -74,6 +79,8 @@ namespace pwiz.Skyline.EditUI
                 MessageDlg.Show(this, Resources.AssociateProteinsDlg_UseBackgroundProteome_No_background_proteome_defined);
                 return;
             }
+            _isFasta = false;
+            _fileName = _parent.Document.Settings.PeptideSettings.BackgroundProteome.DatabasePath;
             checkBoxListMatches.Items.Clear();
             BackgroundProteome proteome = _parent.Document.Settings.PeptideSettings.BackgroundProteome;
             var proteinAssociations = new List<KeyValuePair<FastaSequence, List<PeptideDocNode>>>();
@@ -87,7 +94,7 @@ namespace pwiz.Skyline.EditUI
                     using (var proteomeDb = proteome.OpenProteomeDb(longWaitBroker.CancellationToken))
                     {
                         proteinsWithSequences = proteomeDb.GetDigestion()
-                            .GetProteinsWithSequences(peptidesForMatching.Select(pep => pep.Peptide.Sequence));
+                            .GetProteinsWithSequences(peptidesForMatching.Select(pep => pep.Peptide.Target.Sequence));
                     }
                 });
             }
@@ -104,7 +111,7 @@ namespace pwiz.Skyline.EditUI
                     {
                         continue;
                     }
-                    var matches = peptidesForMatching.Where(pep => protein.Sequence.Contains(pep.Peptide.Sequence)).ToList();
+                    var matches = peptidesForMatching.Where(pep => protein.Sequence.Contains(pep.Peptide.Target.Sequence)).ToList();
                     if (matches.Count == 0)
                     {
                         continue;
@@ -149,6 +156,9 @@ namespace pwiz.Skyline.EditUI
         // needed for Testing purposes so we can skip ImportFasta() because of the OpenFileDialog
         public void UseFastaFile(string file)
         {
+            _isFasta = true;
+            _fileName = file;
+
             checkBoxListMatches.Items.Clear();
             try
             {
@@ -157,7 +167,7 @@ namespace pwiz.Skyline.EditUI
                     FindProteinMatchesWithFasta(stream);
                 }
             }
-            catch (IOException e)
+            catch (Exception e)
             {
                 MessageDlg.ShowWithException(this, Resources.AssociateProteinsDlg_UseFastaFile_There_was_an_error_reading_from_the_file_, e);
             }
@@ -177,7 +187,7 @@ namespace pwiz.Skyline.EditUI
                     foreach (var peptide in peptidesForMatching)
                     {
                         // TODO(yuval): does digest matter?
-                        if (fasta.Sequence.IndexOf(peptide.Peptide.Sequence, StringComparison.Ordinal) < 0)
+                        if (fasta.Sequence.IndexOf(peptide.Peptide.Target.Sequence, StringComparison.Ordinal) < 0)
                         {
                             continue;
                         }
@@ -206,7 +216,7 @@ namespace pwiz.Skyline.EditUI
             var i = 0;
             foreach (var entry in proteinAssociations)
             {
-                checkBoxListMatches.Items.Add(entry.Key.Name);
+                checkBoxListMatches.Items.Add(entry.Key.DisplayName);
                 checkBoxListMatches.SetItemCheckState(i, CheckState.Checked);
                 i++;
             }
@@ -273,9 +283,9 @@ namespace pwiz.Skyline.EditUI
 
         public PeptideDocNode ChangeFastaSequence(SrmSettings srmSettings, PeptideDocNode peptideDocNode, FastaSequence newSequence)
         {
-            int begin = newSequence.Sequence.IndexOf(peptideDocNode.Peptide.Sequence, StringComparison.Ordinal);
-            int end = begin + peptideDocNode.Peptide.Sequence.Length;
-            var newPeptide = new Peptide(newSequence, peptideDocNode.Peptide.Sequence, 
+            int begin = newSequence.Sequence.IndexOf(peptideDocNode.Peptide.Target.Sequence, StringComparison.Ordinal);
+            int end = begin + peptideDocNode.Peptide.Target.Sequence.Length;
+            var newPeptide = new Peptide(newSequence, peptideDocNode.Peptide.Target.Sequence, 
                 begin, end, peptideDocNode.Peptide.MissedCleavages);
             var newPeptideDocNode = new PeptideDocNode(newPeptide, srmSettings, peptideDocNode.ExplicitMods, peptideDocNode.SourceKey,
                 peptideDocNode.GlobalStandardType, peptideDocNode.Rank, peptideDocNode.ExplicitRetentionTime,
@@ -291,6 +301,52 @@ namespace pwiz.Skyline.EditUI
            ApplyChanges();
         }
 
+        public AssociateProteinsSettings FormSettings
+        {
+            get
+            {
+                var proteins = checkBoxListMatches.CheckedIndices.OfType<int>()
+                    .Select(i => _associatedProteins[i].Key.DisplayName)
+                    .ToList();
+
+                var fileName = Path.GetFileName(_fileName);
+                return new AssociateProteinsSettings(proteins, _isFasta ? fileName : null, _isFasta ? null : fileName);
+            }
+        }
+
+        public class AssociateProteinsSettings : AuditLogOperationSettings<AssociateProteinsSettings>, IAuditLogComparable
+        {
+            public AssociateProteinsSettings(List<string> proteins, string fasta, string backgroundProteome)
+            {
+                FASTA = fasta;
+                BackgroundProteome = backgroundProteome;
+                Proteins = proteins;
+            }
+
+            protected override AuditLogEntry CreateEntry(SrmDocumentPair docPair)
+            {
+                var entry = AuditLogEntry.CreateCountChangeEntry(
+                    MessageType.associated_peptides_with_protein,
+                    MessageType.associated_peptides_with_proteins, docPair.NewDocumentType, Proteins);
+
+                return entry.Merge(base.CreateEntry(docPair));
+            }
+
+            [Track]
+            public List<string> Proteins { get; private set; }
+
+            [Track]
+            public string FASTA { get; private set; }
+
+            [Track]
+            public string BackgroundProteome { get; private set; }
+
+            public object GetDefaultObject(ObjectInfo<object> info)
+            {
+                return new AssociateProteinsSettings(null, null, null);
+            }
+        }
+
         // Will only be called if there are changes to apply
         // user cannot click apply button(disabled) without checking any items
         public void ApplyChanges()
@@ -298,8 +354,8 @@ namespace pwiz.Skyline.EditUI
             var selectedProteins =
                 checkBoxListMatches.CheckedIndices.OfType<int>().Select(i => _associatedProteins[i]).ToList();
 
-            _parent.ModifyDocument(Resources.AssociateProteinsDlg_ApplyChanges_Associated_proteins, 
-                doc => CreateDocTree(_parent.Document, selectedProteins));
+            _parent.ModifyDocument(Resources.AssociateProteinsDlg_ApplyChanges_Associated_proteins,
+                doc => CreateDocTree(_parent.Document, selectedProteins), FormSettings.EntryCreator.Create);
 
             DialogResult = DialogResult.OK;
         }

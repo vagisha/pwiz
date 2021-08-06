@@ -31,8 +31,14 @@
 #include <cstdlib>
 #include "Verbosity.h"
 #include "BlibException.h"
-#include "boost/filesystem/operations.hpp"
-#include "boost/filesystem/fstream.hpp"
+#include "pwiz/utility/misc/String.hpp"
+#include "pwiz/utility/misc/Stream.hpp"
+#include "pwiz/utility/misc/Container.hpp"
+#include "pwiz/utility/misc/Filesystem.hpp"
+
+using std::numeric_limits;
+using std::min;
+using std::max;
 
 #if defined(_MSC_VER)
 #include <direct.h>
@@ -50,8 +56,6 @@ inline bool isinf(T value)
 #endif
 
 
-using namespace std;
-
 namespace BiblioSpec {
 
 /**
@@ -59,6 +63,14 @@ namespace BiblioSpec {
  * files and spectrum files.  
  */
 enum SPEC_ID_TYPE { SCAN_NUM_ID, INDEX_ID, NAME_ID };
+const char* specIdTypeToString(SPEC_ID_TYPE specIdType);
+
+/**
+ * Different kinds of ion mobility are supported.
+ * N.B. this should agree with the enum eIonMobilityUnits in pwiz.CLI.analysis.SpectrumList_IonMobility
+ */
+enum IONMOBILITY_TYPE { IONMOBILITY_NONE, IONMOBILITY_DRIFTTIME_MSEC, IONMOBILITY_INVERSEREDUCED_VSECPERCM2, IONMOBILITY_COMPENSATION_V, NUM_IONMOBILITY_TYPES };
+const char* ionMobilityTypeToString(IONMOBILITY_TYPE ionMobilityType);
 
 /**
  * All possible scores from different search algorithms.
@@ -83,6 +95,7 @@ enum PSM_SCORE_TYPE {
     PEAKS_CONFIDENCE_SCORE,   // pepxml files with peaks confidence scores
     BYONIC_PEP,               // byonic .mzid files
     PEPTIDE_SHAKER_CONFIDENCE,// peptideshaker .mzid files
+    GENERIC_QVALUE,
 
     NUM_PSM_SCORE_TYPES
 };
@@ -99,6 +112,10 @@ PSM_SCORE_TYPE stringToScoreType(const string& scoreName);
  */
 const char* scoreTypeToString(PSM_SCORE_TYPE scoreType);
 
+/**
+* Returns the string representation of the score's cutoff type.
+*/
+const char* scoreTypeToProbabilityTypeString(PSM_SCORE_TYPE scoreType);
 /**
  * \brief Return a string from the root to the given filename.
  * Converts relative paths to absolute.  For filenames with no path,
@@ -222,6 +239,26 @@ template <class T> size_t getMaxElementIndex(const std::vector<T>& elements)
 
     return max_idx;
 }
+
+
+class TempFileDeleter
+{
+    bfs::path filepath_;
+
+    public:
+    TempFileDeleter(const bfs::path& filepath) : filepath_(filepath)
+    {
+    }
+
+    ~TempFileDeleter()
+    {
+        boost::system::error_code ec;
+        bfs::remove(filepath_, ec);
+    }
+
+    const bfs::path& filepath() const { return filepath_; }
+};
+
 
 /**
  * Return the full path to the location of the executable.

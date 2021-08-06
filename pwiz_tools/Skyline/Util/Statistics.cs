@@ -1018,7 +1018,7 @@ namespace pwiz.Skyline.Util
         public static double ATerm3(Statistics y, Statistics x)
         {
             if (x.Length < 3)
-                throw new InvalidOperationException("Insufficient pairs of co-ordinates"); // Not L10N
+                throw new InvalidOperationException(@"Insufficient pairs of co-ordinates");
 
             //notation sjk to mean the sum of x_i^j*y_i^k. 
             double s40 = x._list.Sum(v => v*v*v*v); //sum of x^4
@@ -1064,7 +1064,7 @@ namespace pwiz.Skyline.Util
         public static double BTerm3(Statistics y, Statistics x)
         {
             if (x.Length < 3)
-                throw new InvalidOperationException("Insufficient pairs of co-ordinates"); // Not L10N
+                throw new InvalidOperationException(@"Insufficient pairs of co-ordinates");
 
             //notation sjk to mean the sum of x_i^j*y_i^k.
             double s40 = x._list.Sum(v => v*v*v*v); //sum of x^4
@@ -1110,7 +1110,7 @@ namespace pwiz.Skyline.Util
         public static double CTerm3(Statistics y, Statistics x)
         {
             if (x.Length < 3)
-                throw new InvalidOperationException("Insufficient pairs of co-ordinates"); // Not L10N
+                throw new InvalidOperationException(@"Insufficient pairs of co-ordinates");
 
             //notation sjk to mean the sum of x_i^j*y_i^k.
             double s40 = x._list.Sum(v => v*v*v*v); //sum of x^4
@@ -1298,11 +1298,15 @@ namespace pwiz.Skyline.Util
                 var list = CopyList();
                 double pos = (list.Length - 1) * p;
                 int j = (int)pos;
+                if (j >= list.Length)
+                    return double.NaN;
                 double value = QNthItem(list, j);
                 double g = pos - j;
                 if (g == 0)
                     return value;
                 double value2 = QNthItem(list, j + 1);
+                if (j + 1 >= list.Length)
+                    return double.NaN;
                 return (1 - g) * value + g * value2;
             }
             catch (Exception)

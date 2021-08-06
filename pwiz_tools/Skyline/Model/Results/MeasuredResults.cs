@@ -61,6 +61,12 @@ namespace pwiz.Skyline.Model.Results
             IsTimeNormalArea = true;
         }
 
+        public bool IsEmpty
+        {
+            get { return _chromatograms == null || _chromatograms.Count == 0; }
+        }
+
+        [TrackChildren]
         public IList<ChromatogramSet> Chromatograms
         {
             get { return _chromatograms; }
@@ -70,25 +76,45 @@ namespace pwiz.Skyline.Model.Results
                 var dictNameToIndex = new Dictionary<string, int>();
                 var dictIdToIndex = new Dictionary<int, int>();
                 _setFiles = new HashSet<MsDataFileUri>();
-                for (int i = 0; i < _chromatograms.Count; i++)
+                int count = _chromatograms.Count;
+                for (int i = 0; i < count; i++)
                 {
                     var set = _chromatograms[i];
-                    dictNameToIndex.Add(set.Name, i);
+                    try
+                    {
+                        dictNameToIndex.Add(set.Name, i);
+                    }
+                    catch (ArgumentException argumentException)
+                    {
+                        throw new ArgumentException(
+                            set.Name + @" appears multiple times in the list ('" +
+                            string.Join(@"','", value.Select(c => c.Name)) + @"')", argumentException);
+                    }
+
                     dictIdToIndex.Add(set.Id.GlobalIndex, i);
                     foreach (var path in set.MSDataFilePaths)
-                        _setFiles.Add(path);
+                        _setFiles.Add(path.GetLocation());
                 }
                 _dictNameToIndex = new ImmutableDictionary<string, int>(dictNameToIndex);
                 _dictIdToIndex = new ImmutableDictionary<int, int>(dictIdToIndex);
                 _countUnloaded = _chromatograms.Count(c => !c.IsLoaded);
                 HasGlobalStandardArea = MSDataFileInfos.Any(chromFileInfo =>
                     chromFileInfo.ExplicitGlobalStandardArea.HasValue);
+
+                // Pre-allocate empty arrays in case they are needed
+                EmptyPeptideResults = new Results<PeptideChromInfo>(new ChromInfoList<PeptideChromInfo>[count]);
+                EmptyTransitionGroupResults = new Results<TransitionGroupChromInfo>(new ChromInfoList<TransitionGroupChromInfo>[count]);
+                EmptyTransitionResults = new Results<TransitionChromInfo>(new ChromInfoList<TransitionChromInfo>[count]);
             }
         }
 
         public IDictionary<int, int> IdToIndexDictionary { get { return _dictIdToIndex; } }
 
         public bool IsTimeNormalArea { get; private set; }
+
+        public Results<PeptideChromInfo> EmptyPeptideResults { get; private set; }
+        public Results<TransitionGroupChromInfo> EmptyTransitionGroupResults { get; private set; }
+        public Results<TransitionChromInfo> EmptyTransitionResults { get; private set; }
 
         public CacheFormatVersion? CacheVersion
         {
@@ -112,14 +138,14 @@ namespace pwiz.Skyline.Model.Results
                 // All the chromatogram sets are loaded, and the cache has not been modified
                 if (Chromatograms.Contains(c => !c.IsLoaded))
                 {
-                    return "Not all chromatogram sets are loaded - " + string.Join(";", Chromatograms.Where(c => !c.IsLoaded).Select(i => i.IsLoadedExplained()));  // Not L10N
+                    return @"Not all chromatogram sets are loaded - " + string.Join(@";", Chromatograms.Where(c => !c.IsLoaded).Select(i => i.IsLoadedExplained()));
                 }
                 if (!IsJoiningDisabled)
                 {
                     if (_cacheFinal == null)
-                        return "No final cache";  // Not L10N
+                        return @"No final cache";
                     if (_cacheFinal.ReadStream.IsModified)
-                        return string.Format("Cache has been modified ({0})", _cacheFinal.ReadStream.ModifiedExplanation);  // Not L10N
+                        return string.Format(@"Cache has been modified ({0})", _cacheFinal.ReadStream.ModifiedExplanation);
                 }
                 return null;
             }
@@ -157,7 +183,7 @@ namespace pwiz.Skyline.Model.Results
 
         public bool IsCachedFile(MsDataFileUri filePath)
         {
-            return _setCachedFiles.Contains(filePath);
+            return _setCachedFiles.Contains(filePath.GetLocation()); // Search filename only, ignoring centroiding, combineIM etc
         }
 
         public IEnumerable<Type> CachedScoreTypes
@@ -230,7 +256,7 @@ namespace pwiz.Skyline.Model.Results
 
         public bool IsDataFilePath(MsDataFileUri path)
         {
-            return _setFiles.Contains(path);
+            return _setFiles.Contains(path.GetLocation());
         }
 
         public ChromFileInfo GetChromFileInfo<TChromInfo>(Results<TChromInfo> results, int replicateIndex)
@@ -278,18 +304,22 @@ namespace pwiz.Skyline.Model.Results
         public ChromSetFileMatch FindMatchingMSDataFile(MsDataFileUri filePathFind)
         {
             // First look for an exact match
-            var exactMatch = FindExactMatchingMSDataFile(filePathFind);
+            var exactMatch = FindExactNameMatchingMSDataFile(filePathFind);
             if (exactMatch != null)
                 return exactMatch;
             // Then look for a basename match
+            string sampleName = filePathFind.GetSampleName();
             int fileOrder = 0;
             foreach (ChromatogramSet chromSet in Chromatograms)
             {
                 string fileBasename = filePathFind.GetFileNameWithoutExtension();
                 foreach (var filePath in chromSet.MSDataFilePaths)
                 {
-                    if (IsBaseNameMatch(filePath.GetFileNameWithoutExtension(), fileBasename))
-                        return new ChromSetFileMatch(chromSet, filePath, fileOrder);
+                    if (sampleName == null || sampleName == filePath.GetSampleName())
+                    {
+                        if (IsBaseNameMatch(filePath.GetFileNameWithoutExtension(), fileBasename))
+                            return new ChromSetFileMatch(chromSet, filePath, fileOrder);
+                    }
                     fileOrder++;
                 }
             }
@@ -298,8 +328,8 @@ namespace pwiz.Skyline.Model.Results
 
         public ChromSetFileMatch FindMatchingOrExistingMSDataFile(MsDataFileUri filePathFind)
         {
-            // First look for an exact match
-            var exactMatch = FindExactMatchingMSDataFile(filePathFind);
+            // First look for an exact match, ignoring any details like centroid or combineIMS settins
+            var exactMatch = FindExactNameMatchingMSDataFile(filePathFind);
             if (exactMatch != null)
                 return exactMatch;
             // Then look for an existing file
@@ -317,15 +347,25 @@ namespace pwiz.Skyline.Model.Results
             return null;
         }
 
-        private ChromSetFileMatch FindExactMatchingMSDataFile(MsDataFileUri filePathFind)
+        /// <summary>
+        /// Look for this file in the list, ignoring details like centroiding, combineIonMobilitySpectra etc
+        /// </summary>
+        private ChromSetFileMatch FindExactNameMatchingMSDataFile(MsDataFileUri fileUri)
         {
+            var filePathFind = fileUri.GetFilePath();
+            string sampleName = fileUri.GetSampleName();
             int fileOrder = 0;
             foreach (ChromatogramSet chromSet in Chromatograms)
             {
                 foreach (var filePath in chromSet.MSDataFilePaths)
                 {
-                    if (Equals(filePath, filePathFind))
-                        return new ChromSetFileMatch(chromSet, filePath, fileOrder);
+                    if (Equals(filePath.GetFilePath(), filePathFind))
+                    {
+                        if (sampleName == null || sampleName.Equals(filePath.GetSampleName()))
+                        {
+                            return new ChromSetFileMatch(chromSet, filePath, fileOrder);
+                        }
+                    }
                     fileOrder++;
                 }
             }
@@ -346,19 +386,25 @@ namespace pwiz.Skyline.Model.Results
             // has a pipeline that generates mzML files all uppercase
             if (!name.ToLower().StartsWith(prefix.ToLower()))
                 return false;
-            if (name.Length == prefix.Length || name[prefix.Length] == '.') // Not L10N
+            if (name.Length == prefix.Length || name[prefix.Length] == '.')
                 return true;
-            // Check for Waters MSe
+            // Check for special suffixes we know get added to the basename by other tools
             string suffix = name.Substring(prefix.Length);
             if (suffix[0] == '_' && IsUnderscoreSuffix(suffix))
                 return true;
             return false;
         }
 
-        public static bool IsUnderscoreSuffix(string name)
+        public static bool IsUnderscoreSuffix(string suffix)
         {
-            return name.ToLowerInvariant().EndsWith("_ia_final_fragment") || // Not L10N
-                   name.EndsWith("_final_fragment"); // Not L10N
+            string suffixLower = suffix.ToLowerInvariant();
+            return
+                // Waters MSe
+                suffixLower.EndsWith(@"_ia_final_fragment") ||
+                suffixLower.EndsWith(@"_final_fragment") ||
+                // MSFragger
+                suffixLower.EndsWith(@"_calibrated") ||
+                suffixLower.EndsWith(@"_uncalibrated");
         }
 
 // ReSharper disable MemberCanBeMadeStatic.Local
@@ -409,8 +455,12 @@ namespace pwiz.Skyline.Model.Results
         private void SetClonedCacheState(ChromatogramCache cacheFinal, IList<ChromatogramCache> partialCaches = null)
         {
             _cacheFinal = cacheFinal;
+            if (_cacheFinal != null)
+            {
+                _cacheRecalc = null;
+            }
             _listPartialCaches = MakeReadOnly(partialCaches);
-            _setCachedFiles = new HashSet<MsDataFileUri>(CachedFilePaths);
+            _setCachedFiles = new HashSet<MsDataFileUri>(CachedFilePaths.Select(p => p.GetLocation()));
         }
 
         public MeasuredResults UpdateCaches(string documentPath, MeasuredResults resultsCache)
@@ -432,7 +482,7 @@ namespace pwiz.Skyline.Model.Results
 
             string cachePath = ChromatogramCache.FinalPathForName(documentPath, null);
             var cachedFiles = results.CachedFileInfos.Distinct(new PathComparer<ChromCachedFile>()).ToArray();
-            var dictCachedFiles = cachedFiles.ToDictionary(cachedFile => cachedFile.FilePath);
+            var dictCachedFiles = cachedFiles.ToDictionary(cachedFile => cachedFile.FilePath.GetLocation()); // Ignore centroiding, combineIMS etc for key purposes
             var enumCachedNames = cachedFiles.Select(cachedFile => cachedFile.FilePath.GetFileName());
             var setCachedFileNames = new HashSet<string>(enumCachedNames);
             var chromatogramSets = new List<ChromatogramSet>();
@@ -536,20 +586,38 @@ namespace pwiz.Skyline.Model.Results
             return index != -1;            
         }
 
-        public MsDataFileScanIds LoadMSDataFileScanIds(MsDataFileUri dataFilePath)
+        public MsDataFileScanIds LoadMSDataFileScanIds(MsDataFileUri dataFilePath, out ChromCachedFile cachedFile)
         {
             foreach (var cache in Caches)
             {
                 int fileIndex = cache.CachedFiles.IndexOf(f => Equals(f.FilePath, dataFilePath));
                 if (fileIndex != -1)
+                {
+                    cachedFile = cache.CachedFiles[fileIndex];
                     return cache.LoadMSDataFileScanIds(fileIndex);
+                }
             }
+
+            cachedFile = null;
             return null;
         }
 
         public bool HasAllIonsChromatograms
         {
             get { return Caches.Any(cache => cache.HasAllIonsChromatograms); }
+        }
+
+        public IEnumerable<string> QcTraceNames
+        {
+            get
+            {
+                var qcTraceInfos = Caches.SelectMany(cache=>cache.ChromGroupHeaderInfos
+                                                                 .Where(header => header.Flags.HasFlag(ChromGroupHeaderInfo.FlagValues.extracted_qc_trace))
+                                                                 .Select(header => cache.LoadChromatogramInfo(header)));
+                var qcTraceNames = qcTraceInfos.Select(info => info.TextId).Distinct().ToList();
+                qcTraceNames.Sort();
+                return qcTraceNames;
+            }
         }
 
         public bool TryLoadAllIonsChromatogram(int index,
@@ -620,11 +688,19 @@ namespace pwiz.Skyline.Model.Results
             // In small molecule SRM, it's not at all unusual to have the same Q1>Q3
             // pair repeatedly, at different retention times, so we use explicit RT to disambiguate if available
             int maxTranMatch = 1;
-            var minErrRT = double.MaxValue;
 
             IList<ChromatogramGroupInfo> listChrom = EMPTY_GROUP_INFOS;
             foreach (var cache in CachesEx)
             {
+                if (_cacheFinal == null && cache.CachedFiles.Count == 1)
+                {
+                    // If the cache has only one file in it, it's likely to be a temporary one.
+                    // Skip the cache if it does not contain any files of interest.
+                    if (!chromatogram.ContainsFile(cache.CachedFiles[0].FilePath))
+                    {
+                        continue;
+                    }
+                }
                 var infoEnum = cache.LoadChromatogramInfos(nodePep, nodeGroup, tolerance, chromatogram);
                 IList<ChromatogramGroupInfo> info = listChromBuffer;
                 infoSet = null;
@@ -638,7 +714,7 @@ namespace pwiz.Skyline.Model.Results
                 foreach (var chromInfo in info)
                 {
                     // Short-circuit further processing for common case in label free data
-                    if (_cacheFinal != null && info.Count == 1 && minErrRT == double.MaxValue)
+                    if (_cacheFinal != null && info.Count == 1)
                     {
                         if (loadPoints)
                             info[0].ReadChromatogram(cache);
@@ -652,26 +728,14 @@ namespace pwiz.Skyline.Model.Results
                     // For small molecules we will likely have to select from several chromInfos all with same Q1>Q3,
                     // so we examine peaks for match with explicitRT if provided
                     bool multiMatch = chromatogram.OptimizationFunction != null;
-                    double errRT;
-                    int tranMatch = chromInfo.MatchTransitions(nodePep, nodeGroup, tolerance, multiMatch, out errRT);
+                    int tranMatch = chromInfo.MatchTransitions(nodePep, nodeGroup, tolerance, multiMatch);
                     // CONSIDER: This is pretty tricky code, and we are currently favoring
                     //           peak proximity to explicit retention time over number of matching
                     //           transitions.
-                    if (tranMatch >= maxTranMatch  || errRT < minErrRT)
+                    if (tranMatch >= maxTranMatch)
                     {
                         if (ReferenceEquals(listChrom, EMPTY_GROUP_INFOS))
                             listChrom = new List<ChromatogramGroupInfo>();
-                        if (errRT < minErrRT)
-                        {
-                            // This is the closest peak we've found to the explicit RT
-                            listChrom.Clear();
-                            minErrRT = errRT;
-                        }  
-                        else if (errRT > minErrRT)
-                        {
-                            // This is not the closest peak we've found to the explicit RT, skip it
-                            continue;
-                        }
                         // If new maximum, clear anything collected at the previous maximum
                         if (tranMatch > maxTranMatch)
                             listChrom.Clear();
@@ -1276,24 +1340,28 @@ namespace pwiz.Skyline.Model.Results
 
             private List<DataFileReplicates> GetDataFiles()
             {
-                var dataFiles = new List<DataFileReplicates>();
-                foreach (var dataFilePath in _resultsClone.MSDataFilePaths)
+                List<DataFileReplicates> resultList = new List<DataFileReplicates>();
+                var replicatesByDataFile = new Dictionary<MsDataFileUri, DataFileReplicates>();
+                foreach (var chromatogramSet in _resultsClone.Chromatograms)
                 {
-                    var dataFileReplicate = new DataFileReplicates
+                    foreach (var msDataFileUri in chromatogramSet.MSDataFilePaths)
                     {
-                        DataFile = dataFilePath,
-                        ReplicateList = new List<string>()
-                    };
-                    dataFiles.Add(dataFileReplicate);
-                    foreach (var chromatogramSet in _resultsClone.Chromatograms)
-                    {
-                        if (chromatogramSet.MSDataFilePaths.Contains(dataFilePath))
+                        DataFileReplicates dataFileReplicates;
+                        if (!replicatesByDataFile.TryGetValue(msDataFileUri, out dataFileReplicates))
                         {
-                            dataFileReplicate.ReplicateList.Add(chromatogramSet.Name);
+                            dataFileReplicates = new DataFileReplicates
+                            {
+                                DataFile = msDataFileUri,
+                                ReplicateList = new List<string>()
+                            };
+                            replicatesByDataFile.Add(msDataFileUri, dataFileReplicates);
+                            resultList.Add(dataFileReplicates);
                         }
+                        dataFileReplicates.ReplicateList.Add(chromatogramSet.Name);
                     }
                 }
-                return dataFiles;
+
+                return resultList;
             }
 
             private string FinalCachePath
@@ -1485,9 +1553,9 @@ namespace pwiz.Skyline.Model.Results
                             }
                         }
 
-                        // If there is only one result path, then just create the cache directly to its
-                        // final destination.
-                        if (dataFileReplicatesList.Count == 1 && !_resultsClone.IsJoiningDisabled)
+                        // If there is only one result path and joining is not disabled and no prior caches exist,
+                        // then just create the cache directly to its final destination.
+                        if (dataFileReplicatesList.Count == 1 && !_resultsClone.IsJoiningDisabled && _resultsClone._listPartialCaches == null)
                             dataFileReplicates.PartPath = cachePath;
                         else
                         {
@@ -1591,23 +1659,26 @@ namespace pwiz.Skyline.Model.Results
                 }
             }
 
-            private void FinishCacheBuild(ChromatogramCache cache, IProgressStatus status)
+            private void FinishCacheBuild(IList<FileLoadCompletionAccumulator.Completion> buildCompletions)
             {
-                if (status.IsError)
-                {
-                    Fail(status);
+                foreach (var completion in buildCompletions.Where(c => c.Status.IsError))
+                    Fail(completion.Status);
+
+                if (buildCompletions.All(c => c.Status.IsError))
                     return;
-                }
 
                 var results = _resultsClone;
-                if (cache != null && EnsurePathsMatch(cache))
+                var cachesToAdd = buildCompletions
+                    .Where(c => c.Cache != null && c.Status.IsComplete && EnsurePathsMatch(c.Cache))
+                    .Select(c => c.Cache).ToArray();
+                if (cachesToAdd.Length > 0)
                 {
                     // Add this to the list of partial caches
                     results = ImClone(results); // Clone because many files may come through here
                     var listPartialCaches = new List<ChromatogramCache>();
                     if (results._listPartialCaches != null)
                         listPartialCaches.AddRange(results._listPartialCaches);
-                    listPartialCaches.Add(EnsureOptimalMemoryUse(cache));
+                    listPartialCaches.AddRange(cachesToAdd.Select(EnsureOptimalMemoryUse));
                     results.SetClonedCacheState(null, listPartialCaches);
                 }
 
@@ -1665,6 +1736,44 @@ namespace pwiz.Skyline.Model.Results
 
                 Complete(_resultsClone, true);
             }
+        }
+
+        public static bool HasResults(IEnumerable<string> filePaths)
+        {
+            foreach (string filePath in filePaths)
+            {
+                try
+                {
+                    using (var reader = new StreamReader(filePath))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            // If there is a measured results tag before the settings_summary end
+                            // tag, then this document contains results.  Otherwise not.
+                            if (line.Contains(@"<measured_results"))
+                                return true;
+                            if (line.Contains(@"</settings_summary>"))
+                                return false;
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (IOException) { }
+            }
+            return false;
+        }
+
+        public double? GetMedianTicArea()
+        {
+            var ticAreas = new Statistics(Chromatograms.SelectMany(c => c.MSDataFileInfos)
+                .Where(fileInfo => fileInfo.TicArea.HasValue).Select(fileInfo => fileInfo.TicArea.Value));
+            if (ticAreas.Length == 0)
+            {
+                return null;
+            }
+
+            return ticAreas.Median();
         }
     }
 

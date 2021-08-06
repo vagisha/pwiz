@@ -32,21 +32,21 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
 {
     public partial class ImportResultsDIAControl : UserControl, IImportResultsControl
     {
-        public ImportResultsDIAControl(SkylineWindow skylineWindow)
+        public ImportResultsDIAControl(IModifyDocumentContainer documentContainer)
         {
-            SkylineWindow = skylineWindow;
+            DocumentContainer = documentContainer;
 
             InitializeComponent();
 
             _foundResultsFiles = new BindingList<ImportPeptideSearch.FoundResultsFile>();
             listResultsFiles.DataSource = _foundResultsFiles;
-            listResultsFiles.DisplayMember = "Name"; // Not L10N
+            listResultsFiles.DisplayMember = @"Name";
             SimultaneousFiles = Settings.Default.ImportResultsSimultaneousFiles;
             DoAutoRetry = Settings.Default.ImportResultsDoAutoRetry;
         }
 
         private BindingList<ImportPeptideSearch.FoundResultsFile> _foundResultsFiles;
-        private SkylineWindow SkylineWindow { get; set; }
+        private IModifyDocumentContainer DocumentContainer { get; set; }
 
         public int SimultaneousFiles
         {
@@ -60,9 +60,12 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             set { cbAutoRetry.Checked = value; }
         }
 
-        public List<ImportPeptideSearch.FoundResultsFile> FoundResultsFiles
+        public string Prefix { get; set; }
+        public string Suffix { get; set; }
+
+        public IList<ImportPeptideSearch.FoundResultsFile> FoundResultsFiles
         {
-            get { return _foundResultsFiles.ToList(); }
+            get { return _foundResultsFiles; }
             set
             {
                 var files = ImportResultsControl.EnsureUniqueNames(value); // May change names to ensure uniqueness
@@ -71,19 +74,31 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
             }
         }
 
+        public IEnumerable<string> MissingResultsFiles { get { yield break; } }
+
         public bool ResultsFilesMissing { get { return !_foundResultsFiles.Any(); } }
+
+        public ImportResultsSettings ImportSettings
+        {
+            get { return new ImportResultsSettings(false, this); }
+        }
 
         public event EventHandler<ImportResultsControl.ResultsFilesEventArgs> ResultsFilesChanged;
 
         private void btnBrowse_Click(object sender, EventArgs e)
         {
-            using (var dlgOpen = new OpenDataSourceDialog(Settings.Default.ChorusAccountList)
+            Browse();
+        }
+
+        public void Browse(string path = null)
+        {
+            using (var dlgOpen = new OpenDataSourceDialog(Settings.Default.RemoteAccountList)
             {
                 Text = Resources.ImportResultsDIAControl_btnBrowse_Click_Browse_for_Results_Files
             })
             {
                 // The dialog expects null to mean no directory was supplied, so don't assign an empty string.
-                string initialDir = Path.GetDirectoryName(SkylineWindow.DocumentFilePath);
+                string initialDir = path ?? Path.GetDirectoryName(DocumentContainer.DocumentFilePath);
                 dlgOpen.InitialDirectory = new MsDataFilePath(initialDir);
 
                 // Use saved source type, if there is one.
@@ -102,9 +117,11 @@ namespace pwiz.Skyline.FileUI.PeptideSearch
                     return;
                 }
 
-                foreach (var dataSource in dataSources.Where(d => !_foundResultsFiles.Select(f => f.Path).Contains(d.ToString())))
+                foreach (var dataSource in dataSources.Where(
+                    d => !_foundResultsFiles.Select(f => f.Path).Contains(d.ToString())))
                 {
-                    _foundResultsFiles.Add(new ImportPeptideSearch.FoundResultsFile(dataSource.GetFileNameWithoutExtension(), dataSource.ToString()));
+                    _foundResultsFiles.Add(new ImportPeptideSearch.FoundResultsFile(dataSource.GetFileNameWithoutExtension(),
+                        dataSource.ToString()));
                 }
 
                 if (ResultsFilesChanged != null)

@@ -95,6 +95,40 @@ namespace IDPicker
         }
     }
 
+    public static class ControlExtensions
+    {
+        public static T CloneAsDesigned<T>(this T controlToClone) where T : Control
+        {
+            PropertyInfo[] controlProperties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+            Control instance = (Control)Activator.CreateInstance(controlToClone.GetType());
+
+            foreach (PropertyInfo propInfo in controlProperties)
+            {
+                var browsable = propInfo.GetCustomAttribute<System.ComponentModel.BrowsableAttribute>();
+                if (browsable != null && !browsable.Browsable)
+                    continue;
+
+                var defaultValue = propInfo.GetCustomAttribute<System.ComponentModel.DefaultValueAttribute>();
+                var category = propInfo.GetCustomAttribute<System.ComponentModel.CategoryAttribute>();
+                var localizable = propInfo.GetCustomAttribute<System.ComponentModel.LocalizableAttribute>();
+                if (defaultValue == null && category == null && localizable == null)
+                    continue;
+
+                if (!propInfo.CanWrite)
+                    continue;
+
+                propInfo.SetValue(instance, propInfo.GetValue(controlToClone, null), null);
+            }
+
+            /*foreach (Control ctl in controlToClone.Controls)
+            {
+                instance.Controls.Add(ctl.Clone());
+            }*/
+            return (T)instance;
+        }
+    }
+
     public static class SystemDataExtensionMethods
     {
         public static int ExecuteNonQuery (this IDbConnection conn, string sql)
@@ -147,6 +181,11 @@ namespace IDPicker
             if (delimiterIndex < 0)
                 return conn.ConnectionString.Substring(dataSourceIndex);
             return conn.ConnectionString.Substring(dataSourceIndex, delimiterIndex - dataSourceIndex);
+        }
+
+        public static System.Data.SQLite.SQLiteConnection GetSQLiteConnection(this NHibernate.ISession session)
+        {
+            return session.Connection as System.Data.SQLite.SQLiteConnection;
         }
 
         public static DataTable ApplySort (this DataTable table, Comparison<DataRow> comparison)

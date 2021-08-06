@@ -23,6 +23,7 @@ using System.Globalization;
 using System.Linq;
 using System.Windows.Forms;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.GroupComparison;
 using pwiz.Skyline.Properties;
@@ -32,12 +33,12 @@ namespace pwiz.Skyline.Controls.GroupComparison
 {
     public partial class EditGroupComparisonDlg : FormEx
     {
-        private GroupComparisonDef _originalGroupComparisonDef;
-        private IEnumerable<GroupComparisonDef> _existingGroupComparisons;
+        private readonly GroupComparisonDef _originalGroupComparisonDef;
+        private readonly IEnumerable<GroupComparisonDef> _existingGroupComparisons;
         protected bool _inChangeSettings;
         private readonly bool _pushChangesToDocument;
 
-        public EditGroupComparisonDlg(IDocumentContainer documentContainer,
+        public EditGroupComparisonDlg(IDocumentUIContainer documentContainer,
             GroupComparisonDef groupComparisonDef, IEnumerable<GroupComparisonDef> existingGroupComparisons)
             : this(new GroupComparisonModel(documentContainer, null) { GroupComparisonDef = groupComparisonDef})
         {
@@ -180,14 +181,43 @@ namespace pwiz.Skyline.Controls.GroupComparison
             get { return comboCaseValue; }
         }
 
+        public ComboBox ComboSummaryMethod
+        {
+            get { return comboSummaryMethod; }
+        }
+
         public TextBox TextBoxConfidenceLevel
         {
             get { return tbxConfidenceLevel; }
         }
+
+        public TextBox TextBoxQValueCutoff
+        {
+            get { return tbxQValueCutoff; }
+        }
+
         public RadioButton RadioScopePerProtein { get { return radioScopeProtein; } }
         public RadioButton RadioScopePerPeptide { get { return radioScopePeptide; } }
 
         public TextBox TextBoxName { get { return tbxName; } }
+
+        public static void ChangeGroupComparisonDef(bool pushChangesToDocument, GroupComparisonModel model, GroupComparisonDef groupDef)
+        {
+            if (pushChangesToDocument)
+            {
+                Program.MainWindow.ModifyDocument(
+                    GroupComparisonStrings.GroupComparisonSettingsForm_GroupComparisonDef_Change_Group_Comparison,
+                    doc => model.ApplyChangesToDocument(doc, groupDef),
+                    AuditLogEntry.SettingsLogFunction
+                );
+                
+                Settings.Default.GroupComparisonDefList.Add(groupDef);
+            }
+            else
+            {
+                model.GroupComparisonDef = groupDef;
+            }
+        }
 
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public GroupComparisonDef GroupComparisonDef
@@ -203,36 +233,10 @@ namespace pwiz.Skyline.Controls.GroupComparison
             }
             set
             {
-                if (_pushChangesToDocument)
-                {
-                    Program.MainWindow.ModifyDocument(
-                        GroupComparisonStrings.GroupComparisonSettingsForm_GroupComparisonDef_Change_Group_Comparison,
-                        doc =>
-                        {
-                            var groupComparisons = doc.Settings.DataSettings.GroupComparisonDefs.ToList();
-                            int index =
-                                groupComparisons.FindIndex(def => def.Name == GroupComparisonModel.GroupComparisonName);
-                            if (index < 0)
-                            {
-                                groupComparisons.Add(value);
-                            }
-                            else
-                            {
-                                groupComparisons[index] = value;
-                            }
-                            doc =
-                                doc.ChangeSettings(
-                                    doc.Settings.ChangeDataSettings(
-                                        doc.Settings.DataSettings.ChangeGroupComparisonDefs(groupComparisons)));
-                            return doc;
-                        }
-                        );
-                    Settings.Default.GroupComparisonDefList.Add(value);
-                }
-                else
-                {
-                    GroupComparisonModel.GroupComparisonDef = value.ChangeName(tbxName.Text);
-                }
+                var def = value;
+                if(!_pushChangesToDocument)
+                    def = value.ChangeName(tbxName.Text);
+                ChangeGroupComparisonDef(_pushChangesToDocument, GroupComparisonModel, def);
             }
         }
 

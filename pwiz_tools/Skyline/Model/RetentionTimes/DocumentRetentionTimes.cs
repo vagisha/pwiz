@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Nick Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -20,9 +20,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
+using pwiz.Common.DataAnalysis;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
@@ -31,7 +33,7 @@ using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Model.RetentionTimes
 {
-    public enum RegressionMethodRT { linear, kde, loess }
+    public enum RegressionMethodRT { linear, kde, log, loess }
 
     /// <summary>
     /// Contains all of the retention time alignments that are relevant for a <see cref="SrmDocument"/>
@@ -70,7 +72,7 @@ namespace pwiz.Skyline.Model.RetentionTimes
             var resultSources = ListSourcesForResults(srmSettings.MeasuredResults, availableSources);
             if (!Equals(resultSources.Keys, documentRetentionTimes.FileAlignments.Keys))
             {
-                return "DocumentRetentionTimes: !Equals(resultSources.Keys, documentRetentionTimes.FileAlignments.Keys)"; // Not L10N
+                return @"DocumentRetentionTimes: !Equals(resultSources.Keys, documentRetentionTimes.FileAlignments.Keys)";
             }
             if (documentRetentionTimes.FileAlignments.IsEmpty)
             {
@@ -78,7 +80,7 @@ namespace pwiz.Skyline.Model.RetentionTimes
             }
             if (!Equals(availableSources, documentRetentionTimes.RetentionTimeSources))
             {
-                return "DocumentRetentionTimes: !Equals(availableSources, documentRetentionTimes.RetentionTimeSources)"; // Not L10N
+                return @"DocumentRetentionTimes: !Equals(availableSources, documentRetentionTimes.RetentionTimeSources)";
             }
             return null;
         }
@@ -99,7 +101,7 @@ namespace pwiz.Skyline.Model.RetentionTimes
             var newResultsSources = ListSourcesForResults(document.Settings.MeasuredResults, newSources);
             var allLibraryRetentionTimes = ReadAllRetentionTimes(document, newSources);
             var newFileAlignments = new List<FileRetentionTimeAlignments>();
-            IProgressStatus progressStatus = new ProgressStatus("Aligning retention times"); // Not L10N?  Will users see this?
+            IProgressStatus progressStatus = new ProgressStatus(@"Aligning retention times"); // CONSIDER: localize?  Will users see this?
             foreach (var retentionTimeSource in newResultsSources.Values)
             {
                 progressStatus = progressStatus.ChangePercentComplete(100*newFileAlignments.Count/newResultsSources.Count);
@@ -123,7 +125,7 @@ namespace pwiz.Skyline.Model.RetentionTimes
         }
 
         private static FileRetentionTimeAlignments CalculateFileRetentionTimeAlignments(
-            string dataFileName, ResultNameMap<IDictionary<string, double>> libraryRetentionTimes, IProgressMonitor progressMonitor)
+            string dataFileName, ResultNameMap<IDictionary<Target, double>> libraryRetentionTimes, IProgressMonitor progressMonitor)
         {
             var targetTimes = libraryRetentionTimes.Find(dataFileName);
             if (targetTimes == null)
@@ -137,8 +139,9 @@ namespace pwiz.Skyline.Model.RetentionTimes
                 {
                     continue;
                 }
-                var alignedFile = AlignedRetentionTimes.AlignLibraryRetentionTimes(targetTimes, entry.Value, REFINEMENT_THRESHHOLD, RegressionMethodRT.linear, () => progressMonitor.IsCanceled);
-                if (alignedFile == null || !RetentionTimeRegression.IsAboveThreshold(alignedFile.RegressionRefinedStatistics.R, REFINEMENT_THRESHHOLD))
+                var alignedFile = AlignedRetentionTimes.AlignLibraryRetentionTimes(targetTimes, entry.Value, REFINEMENT_THRESHHOLD, RegressionMethodRT.linear, new CustomCancellationToken(CancellationToken.None, () => progressMonitor.IsCanceled));
+                if (alignedFile == null || alignedFile.RegressionRefinedStatistics == null ||
+                    !RetentionTimeRegression.IsAboveThreshold(alignedFile.RegressionRefinedStatistics.R, REFINEMENT_THRESHHOLD))
                 {
                     continue;
                 }
@@ -256,9 +259,9 @@ namespace pwiz.Skyline.Model.RetentionTimes
             }
             return ResultNameMap.FromNamedElements(sources);
         }
-        public static ResultNameMap<IDictionary<string, double>> ReadAllRetentionTimes(SrmDocument document, ResultNameMap<RetentionTimeSource> sources)
+        public static ResultNameMap<IDictionary<Target, double>> ReadAllRetentionTimes(SrmDocument document, ResultNameMap<RetentionTimeSource> sources)
         {
-            var allRetentionTimes = new Dictionary<string, IDictionary<string, double>>();
+            var allRetentionTimes = new Dictionary<string, IDictionary<Target, double>>();
             foreach (var source in sources)
             {
                 var library = document.Settings.PeptideSettings.Libraries.GetLibrary(source.Value.Library);

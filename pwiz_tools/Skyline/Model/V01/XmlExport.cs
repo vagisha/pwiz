@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -22,6 +22,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.Model.V01
@@ -49,7 +50,7 @@ namespace pwiz.Skyline.Model.V01
             string baseName;
             if (fileName == null)
             {
-                baseName = "memory"; // Not L10N : Internal key
+                baseName = @"memory"; // : Internal key
                 TestOutput = new Dictionary<string, StringBuilder>();
             }
             else
@@ -155,11 +156,11 @@ namespace pwiz.Skyline.Model.V01
             // Make sure file names sort into the order in which they were
             // written.  This will help the results load in tree order.
             baseName = suffix == null
-                           ? string.Format("{0}_{1:0000}", baseName, fileCount) // Not L10N
-                           : string.Format("{0}_{1:0000}_{2}", baseName, fileCount, suffix); // Not L10N
+                           ? string.Format(@"{0}_{1:0000}", baseName, fileCount)
+                           : string.Format(@"{0}_{1:0000}_{2}", baseName, fileCount, suffix);
 
             if (TestOutput == null)
-                writer = new StreamWriter(baseName + ".csv"); // Not L10N
+                writer = new StreamWriter(baseName + @".csv");
             else
             {
                 StringBuilder sb = new StringBuilder();
@@ -173,7 +174,9 @@ namespace pwiz.Skyline.Model.V01
             StringBuilder sb = new StringBuilder();
             foreach (char c in namePart)
             {
-                sb.Append("/\\:*?\"<>|".IndexOf(c) == -1 ? c : '_'); // Not L10N
+                // ReSharper disable LocalizableElement
+                sb.Append("/\\:*?\"<>|".IndexOf(c) == -1 ? c : '_');
+                // ReSharper restore LocalizableElement
             }
             return sb.ToString();
         }
@@ -206,7 +209,7 @@ namespace pwiz.Skyline.Model.V01
                 writer.Write(separator);
                 writer.Write(transition.StopRT.Value.ToString(_cultureInfo));
                 writer.Write(separator);
-                writer.Write('1'); // Not L10N
+                writer.Write('1');
                 writer.Write(separator);
             }
             writer.Write(peptide.Sequence);
@@ -249,13 +252,13 @@ namespace pwiz.Skyline.Model.V01
             var fastaSequence = new FastaSequence(sequence.Name, sequence.Description, null, peptide.Sequence);
             var newPeptide = new Peptide(fastaSequence, peptide.Sequence, 0, peptide.Sequence.Length, peptide.MissedCleavages);
             var nodePep = new PeptideDocNode(newPeptide);
-            string modifiedPepSequence = AbiMassListExporter.GetSequenceWithModsString(nodePep, _document.Settings); // Not L10N;
+            string modifiedPepSequence = AbiMassListExporter.GetSequenceWithModsString(nodePep, _document.Settings);
             
-            string extPeptideId = string.Format("{0}.{1}.{2}.{3}", // Not L10N
+            string extPeptideId = string.Format(@"{0}.{1}.{2}.{3}",
                                                 sequence.Name,
                                                 modifiedPepSequence,
                                                 GetTransitionName(transition),
-                                                "light"); // Not L10N : file format
+                                                @"light"); // File format
 
             writer.WriteDsvField(extPeptideId, separator);
             writer.Write(separator);
@@ -270,9 +273,9 @@ namespace pwiz.Skyline.Model.V01
 
         private static string GetTransitionName(XmlTransition transition)
         {
-            return AbiMassListExporter.GetTransitionName(transition.PrecursorCharge,
+            return AbiMassListExporter.GetTransitionName(Adduct.FromChargeProtonated(transition.PrecursorCharge),
                                                         transition.FragmentType.ToString().ToLower() + transition.FragmentOrdinal,
-                                                        transition.ProductCharge);
+                                                        Adduct.FromChargeProtonated(transition.ProductCharge));
         }
     }
 }

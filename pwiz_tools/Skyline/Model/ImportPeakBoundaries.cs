@@ -29,6 +29,7 @@ using pwiz.Skyline.Model.Databinding.Entities;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.Model
@@ -59,9 +60,9 @@ namespace pwiz.Skyline.Model
         {
             public string Peptide;
             public string File;
-            public int Charge;
+            public Adduct Charge;
 
-            public UnrecognizedChargeState(int charge, string file, string peptide)
+            public UnrecognizedChargeState(Adduct charge, string file, string peptide)
             {
                 Charge = charge;
                 File = file;
@@ -72,11 +73,16 @@ namespace pwiz.Skyline.Model
             {
                 var sb = new StringBuilder();
                 sb.Append(Peptide);
-                sb.Append(separator); // Not L10N
+                sb.Append(separator);
                 sb.Append(File);
-                sb.Append(separator); // Not L10N
+                sb.Append(separator);
                 sb.Append(Charge);
                 return sb.ToString();
+            }
+
+            public override string ToString()
+            {
+                return PrintLine(' ');
             }
         }
 
@@ -92,7 +98,7 @@ namespace pwiz.Skyline.Model
 
         public static int[] REQUIRED_NO_CHROM { get { return REQUIRED_FIELDS.Take(2).ToArray(); }}
 
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         // NOTE: The first name is what appears in error messages about missing required fields
         public static string[][] FIELD_NAMES
         {
@@ -115,7 +121,7 @@ namespace pwiz.Skyline.Model
                 };
             }
         }
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         public static readonly string[] STANDARD_FIELD_NAMES = FIELD_NAMES.Select(fieldNames => fieldNames[0]).ToArray();
 
@@ -178,6 +184,10 @@ namespace pwiz.Skyline.Model
 
         public static double GetMaxRt(SrmDocument document)
         {
+            if (!document.Settings.HasResults)
+            {
+                return 0;
+            }
             var chromFileInfos = document.Settings.MeasuredResults.MSDataFileInfos;
             double maxRt = chromFileInfos.Select(info => info.MaxRetentionTime).Max();
             return maxRt != 0 ? maxRt : 720;    // 12 hours as default maximum RT in minutes
@@ -192,7 +202,7 @@ namespace pwiz.Skyline.Model
             var docNew = (SrmDocument) Document.ChangeIgnoreChangingChildren(true);
             var docReference = docNew;
             var sequenceToNode = MakeSequenceDictionary(Document);
-            var fileNameToFileMatch = new Dictionary<string, ChromSetFileMatch>();
+            var fileNameToFileMatch = new Dictionary<Tuple<string, string>, ChromSetFileMatch>();
             var trackAdjustedResults = new HashSet<ResultsKey>();
             var modMatcher = new ModificationMatcher();
             var canonicalSequenceDict = new Dictionary<string, string>();
@@ -255,7 +265,7 @@ namespace pwiz.Skyline.Model
                             nodeForModPep = nodeForModPep.ChangeSettings(Document.Settings, SrmSettingsDiff.ALL);
                             // Convert the modified peptide string into a standardized form that 
                             // converts unimod, names, etc, into masses, eg [+57.0]
-                            canonicalSequence = nodeForModPep.RawTextId;
+                            canonicalSequence = nodeForModPep.ModifiedTarget.Sequence;
                             canonicalSequenceDict.Add(modifiedPeptideString, canonicalSequence);
                         }
                     }
@@ -269,7 +279,7 @@ namespace pwiz.Skyline.Model
                     UnrecognizedPeptides.Add(modifiedPeptideString);
                     continue;
                 }
-                int charge;
+                Adduct charge;
                 bool chargeSpecified = dataFields.TryGetCharge(linesRead, out charge);
                 string sampleName = dataFields.GetField(Field.sample_name);
 
@@ -293,12 +303,32 @@ namespace pwiz.Skyline.Model
                         throw new IOException(string.Format(Resources.PeakBoundaryImporter_Import_Missing_end_time_on_line__0_, linesRead));
                     startTime = null;
                 }
+
+                Tuple<string, string> fileKey = Tuple.Create(fileName, sampleName);
                 // Add filename to second dictionary if not yet encountered
                 ChromSetFileMatch fileMatch;
-                if (!fileNameToFileMatch.TryGetValue(fileName, out fileMatch))
+                if (!fileNameToFileMatch.TryGetValue(fileKey, out fileMatch) && Document.Settings.HasResults)
                 {
-                    fileMatch = Document.Settings.MeasuredResults.FindMatchingMSDataFile(MsDataFileUri.Parse(fileName));
-                    fileNameToFileMatch.Add(fileName, fileMatch);
+                    var dataFileUri = MsDataFileUri.Parse(fileName);
+                    if (sampleName != null && dataFileUri is MsDataFilePath msDataFilePath)
+                    {
+                        var uriWithSample = new MsDataFilePath(msDataFilePath.FilePath, sampleName, msDataFilePath.SampleIndex, msDataFilePath.LockMassParameters);
+                        fileMatch = Document.Settings.MeasuredResults.FindMatchingMSDataFile(uriWithSample);
+                        if (fileMatch == null)
+                        {
+                            var bareFileMatch = Document.Settings.MeasuredResults.FindMatchingMSDataFile(dataFileUri);
+                            if (bareFileMatch != null)
+                            {
+                                throw new IOException(string.Format(Resources.PeakBoundaryImporter_Import_Sample__0__on_line__1__does_not_match_the_file__2__, sampleName, linesRead, fileName));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        fileMatch = Document.Settings.MeasuredResults.FindMatchingMSDataFile(dataFileUri);
+                    }
+
+                    fileNameToFileMatch.Add(fileKey, fileMatch);
                 }
                 if (fileMatch == null)
                 {
@@ -307,20 +337,7 @@ namespace pwiz.Skyline.Model
                 }
                 var chromSet = fileMatch.Chromatograms;
                 string nameSet = chromSet.Name;
-                ChromFileInfoId[] fileIds;
-                if (sampleName == null)
-                {
-                    fileIds = chromSet.MSDataFileInfos.Select(x => x.FileId).ToArray();
-                }
-                else
-                {
-                    var sampleFile = chromSet.MSDataFileInfos.FirstOrDefault(info => Equals(sampleName, info.FilePath.GetSampleName()));
-                    if (sampleFile == null)
-                    {
-                        throw new IOException(string.Format(Resources.PeakBoundaryImporter_Import_Sample__0__on_line__1__does_not_match_the_file__2__, sampleName, linesRead, fileName));
-                    }
-                    fileIds = new[] {sampleFile.FileId};
-                }
+                var fileId = chromSet.FindFile(fileMatch.FilePath);
                 // Define the annotations to be added
                 var annotations = dataFields.GetAnnotations();
                 if (!changePeaks)
@@ -344,30 +361,31 @@ namespace pwiz.Skyline.Model
 
                     foreach (TransitionGroupDocNode groupNode in nodePep.Children)
                     {
-                        if (chargeSpecified && charge != groupNode.TransitionGroup.PrecursorCharge)
+                        if (chargeSpecified && charge != groupNode.TransitionGroup.PrecursorAdduct)
                             continue;
 
                         // Loop over the files in this groupNode to find the correct sample
                         // Change peak boundaries for the transition group
-                        foreach (var fileId in GetApplicableFiles(fileIds, groupNode))
+                        if (!groupNode.ChromInfos.Any(info => ReferenceEquals(info.FileId, fileId)))
                         {
-                            var groupPath = new IdentityPath(pepPath, groupNode.Id);
-                            // Attach annotations
-                            if (annotations.Any())
-                            {
-                                docNew = docNew.AddPrecursorResultsAnnotations(groupPath, fileId, annotations);
-                            }
-                            // Change peak
-                            var filePath = chromSet.GetFileInfo(fileId).FilePath;
-                            if (changePeaks)
-                            {
-                                docNew = docNew.ChangePeak(groupPath, nameSet, filePath,
-                                    null, startTime, endTime, UserSet.IMPORTED, null, false);
-                            }
-                            // For removing peaks that are not in the file, if removeMissing = true
-                            trackAdjustedResults.Add(new ResultsKey(fileId.GlobalIndex, groupNode.Id));
-                            foundSample = true;
+                            continue;
                         }
+                        var groupPath = new IdentityPath(pepPath, groupNode.Id);
+                        // Attach annotations
+                        if (annotations.Any())
+                        {
+                            docNew = docNew.AddPrecursorResultsAnnotations(groupPath, fileId, annotations);
+                        }
+                        // Change peak
+                        var filePath = chromSet.GetFileInfo(fileId).FilePath;
+                        if (changePeaks)
+                        {
+                            docNew = docNew.ChangePeak(groupPath, nameSet, filePath,
+                                null, startTime, endTime, UserSet.IMPORTED, null, false);
+                        }
+                        // For removing peaks that are not in the file, if removeMissing = true
+                        trackAdjustedResults.Add(new ResultsKey(fileId.GlobalIndex, groupNode.Id));
+                        foundSample = true;
                     }
                 }
                 if (!foundSample)
@@ -382,28 +400,6 @@ namespace pwiz.Skyline.Model
             if (!ReferenceEquals(docNew, docReference))
                 Document = (SrmDocument) Document.ChangeIgnoreChangingChildren(false).ChangeChildrenChecked(docNew.Children);
             return Document;
-        }
-
-        private IEnumerable<ChromFileInfoId> GetApplicableFiles(ChromFileInfoId[] fileIds, TransitionGroupDocNode groupNode)
-        {
-            if (fileIds.Length > 0)
-            {
-                if (fileIds.Length == 1)
-                {
-                    var fileId = fileIds[0];
-                    if (groupNode.ChromInfos.Any(x => x.FileId.GlobalIndex == fileId.GlobalIndex))
-                        yield return fileId;
-                }
-                else
-                {
-                    var groupFileIndices = new HashSet<int>(groupNode.ChromInfos.Select(x => x.FileId.GlobalIndex));
-                    foreach (var fileId in fileIds)
-                    {
-                        if (groupFileIndices.Contains(fileId.GlobalIndex))
-                            yield return fileId;
-                    }
-                }
-            }
         }
 
         /// <summary>
@@ -446,9 +442,9 @@ namespace pwiz.Skyline.Model
         /// </summary>
         private IEnumerable<string> ListSequenceKeys(PeptideDocNode peptideDocNode)
         {
-            yield return peptideDocNode.RawTextId;
+            yield return peptideDocNode.ModifiedTarget.Sequence;
             if (!string.IsNullOrEmpty(peptideDocNode.ModifiedSequenceDisplay) &&
-                peptideDocNode.ModifiedSequenceDisplay != peptideDocNode.RawTextId)
+                peptideDocNode.ModifiedSequenceDisplay != peptideDocNode.ModifiedTarget.Sequence)
             {
                 yield return peptideDocNode.ModifiedSequenceDisplay;
             }
@@ -533,7 +529,7 @@ namespace pwiz.Skyline.Model
                     string[] missingFields = fieldIndices.Select((index, i) => new Tuple<int, int>(index, i))
                         .Where(t => t.Item1 == -1 && requiredFields.Contains(t.Item2))
                         .Select(t => allFieldNames[t.Item2][0]).ToArray();
-                    fieldNames = string.Join(", ", missingFields); // Not L10N
+                    fieldNames = string.Join(@", ", missingFields);
                 }
                 throw new IOException(string.Format(Resources.PeakBoundaryImporter_Import_Failed_to_find_the_necessary_headers__0__in_the_first_line, fieldNames));
             }
@@ -686,9 +682,9 @@ namespace pwiz.Skyline.Model
                 int itemsToShow = Math.Min(items.Count, maxItems);
                 var itemsList = items.ToList();
                 for (int i = 0; i < itemsToShow; ++i)
-                    sb.AppendLine(printLine(itemsList[i])); // Not L10N
+                    sb.AppendLine(printLine(itemsList[i]));
                 if (itemsToShow < items.Count)
-                    sb.AppendLine("..."); // Not L10N
+                    sb.AppendLine(@"...");
                 sb.AppendLine();
                 sb.Append(messageLines.Last);
                 var dlgFiles = MultiButtonMsgDlg.Show(parent, sb.ToString(), MultiButtonMsgDlg.BUTTON_OK);
@@ -807,10 +803,10 @@ namespace pwiz.Skyline.Model
                     {
                         switch (decoyString.ToLowerInvariant())
                         {
-                            case "false": // Not L10N
+                            case @"false":
                                 decoyNum = 0;
                                 break;
-                            case "true": // Not L10N
+                            case @"true":
                                 decoyNum = 1;
                                 break;
                             default:
@@ -828,16 +824,16 @@ namespace pwiz.Skyline.Model
                 return isDecoy;
             }
 
-            public bool TryGetCharge(long linesRead, out int charge)
+            public bool TryGetCharge(long linesRead, out Adduct charge)
             {
                 string chargeString = GetField(Field.charge);
                 if (chargeString == null)
                 {
-                    charge = -1;
+                    charge = Adduct.EMPTY;
                     return false;
                 }
 
-                if (!int.TryParse(chargeString, out charge))
+                if (!Adduct.TryParse(chargeString, out charge, Adduct.ADDUCT_TYPE.proteomic)) // Read, for example, "2" as Adduct.DOUBLY_PROTONATED
                 {
                     throw new IOException(string.Format(Resources.PeakBoundaryImporter_Import_The_value___0___on_line__1__is_not_a_valid_charge_state_, chargeString, linesRead));
                 }

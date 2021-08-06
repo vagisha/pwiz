@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -32,7 +32,7 @@ namespace pwiz.Common.DataAnalysis
     /// This method is also called "downhill simplex method".  It is a heuristic
     /// search that works well if there is only one local minimum.
     /// </summary>
-    public sealed class NelderMeadSimplex
+    public static class NelderMeadSimplex
     {
         private const double JITTER = 1e-10d; // a small value used to protect against floating point noise
 
@@ -41,10 +41,10 @@ namespace pwiz.Common.DataAnalysis
         {
             // confirm that we are in a position to commence
             if (objectiveFunction == null)
-                throw new InvalidOperationException("ObjectiveFunction must be set to a valid ObjectiveFunctionDelegate"); // Not L10N
+                throw new InvalidOperationException(@"ObjectiveFunction must be set to a valid ObjectiveFunctionDelegate");
 
             if (simplexConstants == null)
-                throw new InvalidOperationException("SimplexConstants must be initialized"); // Not L10N
+                throw new InvalidOperationException(@"SimplexConstants must be initialized");
 
             // create the initial simplex
             int numDimensions = simplexConstants.Length;

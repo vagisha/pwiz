@@ -81,9 +81,7 @@ RunTimeConfig* g_rtConfig;
 
 int InitProcess( argList_t& args )
 {
-    cout << "IDPickerQonvert " << idpQonvert::Version::str() << " (" << idpQonvert::Version::LastModified() << ")\n" <<
-            "IDPickerCore " << IDPicker::Version::str() << " (" << IDPicker::Version::LastModified() << ")\n" <<
-            "FreiCore " << freicore::Version::str() << " (" << freicore::Version::LastModified() << ")\n" << endl;
+    cout << "IDPickerQonvert " << idpQonvert::Version::str() << " (" << idpQonvert::Version::LastModified() << ")\n" << endl;
 
     string usage = "Usage: " + lexical_cast<string>(bfs::path(args[0]).filename()) + " [optional arguments] <analyzed data filemask> [<another filemask> ...]\n"
                     "Optional arguments:\n"
@@ -173,7 +171,7 @@ int InitProcess( argList_t& args )
 
             ifstream listFile(args[i+1].c_str());
             string line;
-            while (getline(listFile, line))
+            while (getlinePortable(listFile, line))
                 extraFilepaths.push_back(line);
 
             args.erase( args.begin() + i );
@@ -808,13 +806,16 @@ int run( int argc, char* argv[] )
                 if (idpDbFilepath.has_parent_path())
                     sourceSearchPath += ";" + idpDbFilepath.parent_path().string();
 
+                IterationListenerRegistry ilr;
+                ilr.addListener(IterationListenerPtr(new UserFeedbackProgressMonitor(idpDbFilepaths[i])), 1);
+
                 if (g_rtConfig->QuantitationMethod == QuantitationMethod::LabelFree)
-                    Embedder::EmbedMS1Metrics(idpDbFilepaths[i], sourceSearchPath, g_rtConfig->SourceExtensionPriorityList, allSourcesQuantitationMethodMap, allSourcesXICConfigurationMap, 0);
+                    Embedder::EmbedMS1Metrics(idpDbFilepaths[i], sourceSearchPath, g_rtConfig->SourceExtensionPriorityList, allSourcesQuantitationMethodMap, allSourcesXICConfigurationMap, &ilr);
 
                 if (g_rtConfig->EmbedSpectrumSources)
-                    Embedder::embed(idpDbFilepaths[i], sourceSearchPath, g_rtConfig->SourceExtensionPriorityList, allSourcesQuantitationMethodMap);
+                    Embedder::embed(idpDbFilepaths[i], sourceSearchPath, g_rtConfig->SourceExtensionPriorityList, allSourcesQuantitationMethodMap, &ilr);
                 else
-                    Embedder::embedScanTime(idpDbFilepaths[i], sourceSearchPath, g_rtConfig->SourceExtensionPriorityList, allSourcesQuantitationMethodMap);
+                    Embedder::embedScanTime(idpDbFilepaths[i], sourceSearchPath, g_rtConfig->SourceExtensionPriorityList, allSourcesQuantitationMethodMap, &ilr);
             }
         }
 

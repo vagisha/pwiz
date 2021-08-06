@@ -33,6 +33,7 @@
 #include "PrideXmlReader.h"
 #include "MaxQuantReader.h"
 #include "MSFReader.h"
+#include "mzTabReader.h"
 #include "SslReader.h"
 #include "TandemNativeParser.h"
 #include "PwizReader.h"
@@ -41,6 +42,10 @@
 #include "PercolatorXmlReader.h"
 #include "WatersMseReader.h"
 #include "ProxlXmlReader.h"
+#include "ShimadzuMLBReader.h"
+#include "DiaNNSpecLibReader.h"
+#include "TSVReader.h"
+#include "OSWReader.h"
 /*
  * Local Variables:
  * mode: c

@@ -41,7 +41,11 @@ namespace pwiz.Skyline.Model.GroupComparison
         public double FoldChange 
         { get { return Math.Pow(2.0, LinearFit.EstimatedValue); }}
         [Format(Formats.FoldChange)]
+        public double AbsFoldChange { get { return Math.Pow(2.0, Math.Abs(LinearFit.EstimatedValue)); } }
+        [Format(Formats.FoldChange)]
         public double Log2FoldChange { get { return LinearFit.EstimatedValue; }}
+        [Format(Formats.FoldChange)]
+        public double AbsLog2FoldChange { get { return Math.Abs(Log2FoldChange); } }
         [Format(Formats.PValue)]
         public double AdjustedPValue { get; private set; }
 
@@ -69,7 +73,7 @@ namespace pwiz.Skyline.Model.GroupComparison
         {
             string formatFoldChange = Formats.PEAK_FOUND_RATIO;
             string formatConfidenceLevel = Formats.CV;
-            return string.Format("{0} ({1} CI:{2} to {3})", // Not L10N
+            return string.Format(@"{0} ({1} CI:{2} to {3})",
                 FoldChange.ToString(formatFoldChange), 
                 ConfidenceLevel.ToString(formatConfidenceLevel), 
                 MinFoldChange.ToString(formatFoldChange), 

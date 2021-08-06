@@ -57,8 +57,7 @@
             this.availableFieldsTreeColumns.DrawMode = System.Windows.Forms.TreeViewDrawMode.OwnerDrawText;
             this.availableFieldsTreeColumns.HideSelection = false;
             this.availableFieldsTreeColumns.Name = "availableFieldsTreeColumns";
-            this.availableFieldsTreeColumns.RootColumn = null;
-            this.availableFieldsTreeColumns.ShowAdvancedFields = false;
+            this.availableFieldsTreeColumns.ShowNodeToolTips = true;
             this.availableFieldsTreeColumns.AfterCheck += new System.Windows.Forms.TreeViewEventHandler(this.AvailableFieldsTreeColumnsOnAfterCheck);
             this.availableFieldsTreeColumns.NodeMouseDoubleClick += new System.Windows.Forms.TreeNodeMouseClickEventHandler(this.AvailableFieldsTreeColumnsOnNodeMouseDoubleClick);
             // 

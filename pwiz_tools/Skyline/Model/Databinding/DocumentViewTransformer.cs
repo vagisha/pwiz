@@ -16,8 +16,11 @@ namespace pwiz.Skyline.Model.Databinding
     /// </summary>
     public class DocumentViewTransformer : IViewTransformer
     {
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         private static readonly PropertyPath Proteins = PropertyPath.Root.Property("Proteins").LookupAllItems();
+
+        private static readonly PropertyPath ProteinResults 
+            = Proteins.Property(nameof(Protein.Results)).LookupAllItems().Property("Value");
         private static readonly PropertyPath Peptides 
             = Proteins.Property("Peptides").LookupAllItems();
 
@@ -41,7 +44,7 @@ namespace pwiz.Skyline.Model.Databinding
 
         private static readonly PropertyPath TransitionResults
             = PeptidesPrecursorsTransitions.Property("Results").LookupAllItems().Property("Value");
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         public KeyValuePair<ViewInfo, IEnumerable<PropertyPath>> TransformView(ViewInfo view, IEnumerable<PropertyPath> propertyPaths)
         {
@@ -186,29 +189,35 @@ namespace pwiz.Skyline.Model.Databinding
             return propertyPath;
         }
 
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         private static IList<KeyValuePair<PropertyPath, PropertyPath>> MappingFromProteins()
         {
-            PropertyPath resultFiles = PropertyPath.Root.Property("Results").LookupAllItems().Property("Value");
-            PropertyPath replicates = resultFiles.Property("Replicate");
+            PropertyPath proteinResults = PropertyPath.Root.Property(nameof(Protein.Results)).LookupAllItems().Property("Value");
+            PropertyPath replicates = proteinResults.Property(nameof(ProteinResult.Replicate));
+            PropertyPath resultFiles = replicates.Property(nameof(Replicate.Files));
             return new List<KeyValuePair<PropertyPath, PropertyPath>>
             {
                 Kvp(replicates, Replicates),
                 Kvp(resultFiles, ResultFiles),
+                Kvp(proteinResults, ProteinResults),
                 Kvp(PropertyPath.Root, Proteins),
             };
         }
 
         private static IList<KeyValuePair<PropertyPath, PropertyPath>> MappingFromPeptides()
         {
-            PropertyPath resultFiles = PropertyPath.Root.Property("Results").LookupAllItems().Property("Value").Property("ResultFile");
+            PropertyPath resultFiles = PropertyPath.Root.Property("Results").LookupAllItems().Property("Value")
+                .Property(nameof(PeptideResult.ResultFile));
             PropertyPath replicates = resultFiles.Property("Replicate");
+            PropertyPath proteinResults = PropertyPath.Root.Property(nameof(Entities.Peptide.Results)).Property("Value")
+                .Property(nameof(PeptideResult.ProteinResult));
 
             return new List<KeyValuePair<PropertyPath, PropertyPath>>
             {
                 Kvp(PropertyPath.Root.Property("Protein"), Proteins),
                 Kvp(replicates, Replicates),
                 Kvp(resultFiles, ResultFiles),
+                Kvp(proteinResults, ProteinResults),
                 Kvp(PropertyPath.Root, Peptides),
             };
         }
@@ -219,12 +228,14 @@ namespace pwiz.Skyline.Model.Databinding
             PropertyPath results = PropertyPath.Root.Property("Results").LookupAllItems().Property("Value");
             PropertyPath peptideResult = results.Property("PeptideResult");
             PropertyPath resultFile = peptideResult.Property("ResultFile");
+            PropertyPath proteinResult = peptideResult.Property(nameof(PeptideResult.ProteinResult));
             PropertyPath replicate = resultFile.Property("Replicate");
             return new List<KeyValuePair<PropertyPath, PropertyPath>>
             {
                 Kvp(peptide.Property("Protein"), Proteins),
                 Kvp(peptide, Peptides),
                 Kvp(replicate, Replicates),
+                Kvp(proteinResult, ProteinResults),
                 Kvp(resultFile, ResultFiles),
                 Kvp(peptideResult, PeptideResults),
                 Kvp(results, PrecursorResults),
@@ -241,6 +252,7 @@ namespace pwiz.Skyline.Model.Databinding
             PropertyPath precursorResult = transitionResult.Property("PrecursorResult");
             PropertyPath peptideResult = precursorResult.Property("PeptideResult");
             PropertyPath resultFile = peptideResult.Property("ResultFile");
+            PropertyPath proteinResult = peptideResult.Property(nameof(PeptideResult.ProteinResult));
             PropertyPath replicate = resultFile.Property("Replicate");
 
             return new List<KeyValuePair<PropertyPath, PropertyPath>>
@@ -249,6 +261,7 @@ namespace pwiz.Skyline.Model.Databinding
                 Kvp(peptide, Peptides),
                 Kvp(precursor, PeptidesPrecursors),
                 Kvp(replicate, Replicates),
+                Kvp(proteinResult, ProteinResults),
                 Kvp(resultFile, ResultFiles),
                 Kvp(peptideResult, PeptideResults),
                 Kvp(precursorResult, PrecursorResults),
@@ -265,7 +278,7 @@ namespace pwiz.Skyline.Model.Databinding
                 Kvp(PropertyPath.Root, Replicates),
             };
         }
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         private static PropertyPath ReplacePrefix(PropertyPath oldPrefix, PropertyPath newPrefix, PropertyPath tail)
         {

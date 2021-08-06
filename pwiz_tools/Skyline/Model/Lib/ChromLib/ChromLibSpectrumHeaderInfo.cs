@@ -26,16 +26,17 @@ namespace pwiz.Skyline.Model.Lib.ChromLib
     [XmlRoot("chromatogram_library_spectrum_header_info")]
     public class ChromLibSpectrumHeaderInfo : SpectrumHeaderInfo
     {
-        public ChromLibSpectrumHeaderInfo(string libraryName, double peakArea) : base(libraryName)
+        public ChromLibSpectrumHeaderInfo(string libraryName, double peakArea, string proteinName) : base(libraryName)
         {
             PeakArea = peakArea;
+            Protein = proteinName;
         }
 
         public double PeakArea { get; private set; }
 
         public override float GetRankValue(PeptideRankId rankId)
         {
-            if (rankId == ChromatogramLibrarySpec.PEPTIDE_RANK_PEAK_AREA)
+            if (ReferenceEquals(rankId, ChromatogramLibrarySpec.PEPTIDE_RANK_PEAK_AREA))
             {
                 return (float) PeakArea;
             }
@@ -50,10 +51,11 @@ namespace pwiz.Skyline.Model.Lib.ChromLib
                     {
                         new KeyValuePair<PeptideRankId, string>(
                             ChromatogramLibrarySpec.PEPTIDE_RANK_PEAK_AREA,
-                            string.Format("{0:F0}", PeakArea)) // Not L10N
+                            string.Format(@"{0:F0}", PeakArea))
                     };
             }
         }
+
         #region Implementation of IXmlSerializable
 
         /// <summary>

@@ -18,12 +18,12 @@
  */
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Windows.Forms;
 using pwiz.Common.DataBinding.Controls;
+using pwiz.Common.DataBinding.Layout;
 
 namespace pwiz.Common.DataBinding
 {
@@ -35,17 +35,19 @@ namespace pwiz.Common.DataBinding
         IEnumerable<ViewGroup> ViewGroups { get; }
         ViewSpecList GetViewSpecList(ViewGroupId groupId);
         bool TryRenameView(ViewGroupId group, string oldName, string newName);
-        void AddOrReplaceViews(ViewGroupId group, IEnumerable<ViewSpec> viewSpecs);
+        void AddOrReplaceViews(ViewGroupId group, IEnumerable<ViewSpecLayout> viewSpecs);
         void DeleteViews(ViewGroupId groupId, IEnumerable<string> names);
         ViewGroup DefaultViewGroup { get; }
         ViewGroup FindGroup(ViewGroupId groupId);
-        IEnumerable GetRowSource(ViewInfo viewInfo);
+        IRowSource GetRowSource(ViewInfo viewInfo);
         ViewInfo GetViewInfo(ViewGroup viewGroup, ViewSpec viewSpec);
         ViewInfo GetViewInfo(ViewName? viewName);
         void Export(Control owner, BindingListSource bindingListSource);
         void CopyAll(Control owner, BindingListSource bindingListSource);
         ViewSpec NewView(Control owner, ViewGroup viewGroup);
         ViewSpec CustomizeView(Control owner, ViewSpec viewSpec, ViewGroup viewGroup);
+        ViewLayoutList GetViewLayoutList(ViewName viewName);
+        void SetViewLayoutList(ViewGroupId viewGroup, ViewLayoutList list);
         void ManageViews(Control owner);
         void ExportViews(Control owner, ViewSpecList views);
         void ExportViewsToFile(Control owner, ViewSpecList views, string fileName);
@@ -58,9 +60,15 @@ namespace pwiz.Common.DataBinding
         void OnDataError(object sender, DataGridViewDataErrorEventArgs dataGridViewDataErrorEventArgs);
         bool DeleteEnabled { get; }
         void Delete();
+        bool HasRowActions { get; }
+        void RowActionsDropDownOpening(ToolStripItemCollection dropDownItems);
         void Preview(Control owner, ViewInfo viewInfo);
         Image[] GetImageList();
         int GetImageIndex(ViewSpec viewSpec);
         event Action ViewsChanged;
+        DataSchema DataSchema { get; }
+        IEnumerable<IUiModeInfo> AvailableUiModes { get; }
+
+        void ToggleClustering(BindingListSource bindingListSource, bool turnClusteringOn);
     }
 }

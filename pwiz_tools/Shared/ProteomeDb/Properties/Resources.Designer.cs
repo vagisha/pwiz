@@ -245,20 +245,12 @@ namespace pwiz.ProteomeDatabase.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Must have write lock.
+        ///   Looks up a localized string similar to A protein sequence cannot contain the character &apos;{0}&apos; at line {1}.
         /// </summary>
-        public static string SessionWithLock_EnsureWriteLock_Must_have_write_lock {
+        public static string WebEnabledFastaImporter_ValidateProteinSequence_A_protein_sequence_cannot_contain_the_character___0___at_line__1_ {
             get {
-                return ResourceManager.GetString("SessionWithLock_EnsureWriteLock_Must_have_write_lock", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Can&apos;t acquire write lock while holding read lock..
-        /// </summary>
-        public static string SessionWithLock_SessionWithLock_Cant_acquire_write_lock_while_holding_read_lock {
-            get {
-                return ResourceManager.GetString("SessionWithLock_SessionWithLock_Cant_acquire_write_lock_while_holding_read_lock", resourceCulture);
+                return ResourceManager.GetString("WebEnabledFastaImporter_ValidateProteinSequence_A_protein_sequence_cannot_contain" +
+                        "_the_character___0___at_line__1_", resourceCulture);
             }
         }
     }

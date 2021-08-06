@@ -42,19 +42,38 @@ namespace detail {
 //
 // SpectrumList_Waters
 //
-class PWIZ_API_DECL SpectrumList_Waters : public SpectrumListBase
+class PWIZ_API_DECL SpectrumList_Waters : public SpectrumListIonMobilityBase
 {
     public:
+        struct VendorOptions
+        {
+            pwiz::util::IntegerSet msLevelsToCentroid;
 
+        };
     virtual size_t size() const;
     virtual const SpectrumIdentity& spectrumIdentity(size_t index) const;
     virtual size_t find(const string& id) const;
     virtual SpectrumPtr spectrum(size_t index, bool getBinaryData) const;
     virtual SpectrumPtr spectrum(size_t index, DetailLevel detailLevel) const;
-    virtual SpectrumPtr spectrum(size_t index, bool getBinaryData, double lockmassMzPosScans, double lockmassMzNegScans, double lockmassTolerance) const;
-    virtual SpectrumPtr spectrum(size_t index, DetailLevel detailLevel, double lockmassMzPosScans, double lockmassMzNegScans, double lockmassTolerance) const;
+
+    // TODO: convert vendor-specific parameters to a single config struct, but all non-vendor wrappers are going to have to pass it along :(
+    virtual SpectrumPtr spectrum(size_t index, bool getBinaryData, const pwiz::util::IntegerSet& msLevelsToCentroid) const;
+    virtual SpectrumPtr spectrum(size_t index, DetailLevel detailLevel, const pwiz::util::IntegerSet& msLevelsToCentroid) const;
+    virtual SpectrumPtr spectrum(size_t index, bool getBinaryData, double lockmassMzPosScans, double lockmassMzNegScans, double lockmassTolerance, const pwiz::util::IntegerSet& msLevelsToCentroid) const;
+    virtual SpectrumPtr spectrum(size_t index, DetailLevel detailLevel, double lockmassMzPosScans, double lockmassMzNegScans, double lockmassTolerance, const pwiz::util::IntegerSet& msLevelsToCentroid) const;
 
     virtual pwiz::analysis::Spectrum3DPtr spectrum3d(double scanStartTime, const boost::icl::interval_set<double>& driftTimeRanges) const;
+    
+    /// returns true if any functions are SONAR-enabled
+    virtual bool hasSonarFunctions() const;
+    virtual pair<int, int> sonarMzToBinRange(double precursorMz, double tolerance) const; // If precursor mz is outside SONAR range, returns pair <-1,-1>
+    virtual double sonarBinToPrecursorMz(int bin) const; // If bin is outside SONAR range, returns 0
+
+    virtual bool hasIonMobility() const;
+    virtual bool hasCombinedIonMobility() const;
+    virtual bool canConvertIonMobilityAndCCS() const;
+    virtual double ionMobilityToCCS(double ionMobility, double mz, int charge) const;
+    virtual double ccsToIonMobility(double ccs, double mz, int charge) const;
 
 #ifdef PWIZ_READER_WATERS
     SpectrumList_Waters(MSData& msd, RawDataPtr rawdata, const Reader::Config& config);
@@ -77,6 +96,8 @@ class PWIZ_API_DECL SpectrumList_Waters : public SpectrumListBase
     mutable vector<IndexEntry> index_;
     mutable map<string, size_t> idToIndexMap_;
     mutable boost::container::flat_map<double, vector<pair<int, int> > > scanTimeToFunctionAndBlockMap_;
+
+    void getCombinedSpectrumData(int function, int block, BinaryData<double>& mz, BinaryData<double>& intensity, BinaryData<double>& driftTime, bool doCentroid) const;
 
     void initializeCoefficients() const;
     double calibrate(const double &mz) const;

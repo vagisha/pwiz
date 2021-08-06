@@ -24,6 +24,7 @@ using pwiz.Skyline.Util;
 using ZedGraph;
 using pwiz.MSGraph;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.RetentionTimes;
 using pwiz.Skyline.Properties;
 
 namespace pwiz.Skyline.Controls.Graphs
@@ -32,7 +33,8 @@ namespace pwiz.Skyline.Controls.Graphs
     {
         private DisplayState _displayState;
         private bool _zoomLocked;
-        public const string scientificNotationFormatString = "0.0#####e0"; // Not L10N
+
+        public const string SCIENTIFIC_NOTATION_FORMAT_STRING = "0.0#####e0";
 
         public GraphHelper(MSGraphControl msGraphControl)
         {
@@ -102,14 +104,20 @@ namespace pwiz.Skyline.Controls.Graphs
             _displayState = newDisplayState;
         }
 
-        public void ResetForChromatograms(IEnumerable<TransitionGroup> transitionGroups, bool proteinSelected = false)
+        public void ResetForChromatograms(IEnumerable<TransitionGroup> transitionGroups, bool proteinSelected = false, bool forceLegendDisplay = false)
         {
-            SetDisplayState(new ChromDisplayState(Settings.Default, transitionGroups, proteinSelected));
+            SetDisplayState(new ChromDisplayState(Settings.Default, transitionGroups, proteinSelected, forceLegendDisplay));
         }
 
-        public void FinishedAddingChromatograms(double bestStartTime, double bestEndTime, bool forceZoom,
-            double leftPeakWidth = 0, double rightPeakWidth = 0)
+        public void FinishedAddingChromatograms(double bestPeakStartTime, double bestPeakEndTime, bool forceZoom)
         {
+            var retentionTimeValues = new RetentionTimeValues((bestPeakStartTime + bestPeakEndTime) / 2, bestPeakStartTime, bestPeakEndTime, 0, null);
+            FinishedAddingChromatograms(new[] { retentionTimeValues }, forceZoom);
+        }
+
+        public void FinishedAddingChromatograms(IEnumerable<RetentionTimeValues> bestPeaks, bool forceZoom)
+        {
+            var bestPeakList = bestPeaks.Where(peak => null != peak).ToList();
             if (!_zoomLocked)
             {
                 if (forceZoom || !_displayState.ZoomStateValid)
@@ -117,7 +125,7 @@ namespace pwiz.Skyline.Controls.Graphs
                     var chromDisplayState = _displayState as ChromDisplayState;
                     if (chromDisplayState != null)
                     {
-                        AutoZoomChromatograms(bestStartTime, bestEndTime, leftPeakWidth, rightPeakWidth);
+                        AutoZoomChromatograms(bestPeakList);
                     }
                 }
             }
@@ -139,7 +147,7 @@ namespace pwiz.Skyline.Controls.Graphs
             SetDisplayState(new SpectrumDisplayState(Settings.Default, transitionGroups));
         }
 
-        private void AutoZoomChromatograms(double bestStartTime, double bestEndTime, double leftPeakWidth, double rightPeakWidth)
+        private void AutoZoomChromatograms(IList<RetentionTimeValues> bestPeaks)
         {
             var chromDisplayState = (ChromDisplayState) _displayState;
             if (chromDisplayState.ZoomStateValid)
@@ -159,16 +167,18 @@ namespace pwiz.Skyline.Controls.Graphs
                     }
                     break;
                 case AutoZoomChrom.peak:
-                    if (bestEndTime != 0)
+                    var firstPeak = bestPeaks.OrderBy(peak => peak.StartRetentionTime).FirstOrDefault();
+                    var lastPeak = bestPeaks.OrderByDescending(peak => peak.EndRetentionTime).FirstOrDefault();
+                    if (firstPeak != null && lastPeak != null)
                     {
+                        var bestStartTime = firstPeak.StartRetentionTime;
+                        var bestEndTime = lastPeak.EndRetentionTime;
                         // If relative zooming, scale to the best peak
                         if (chromDisplayState.TimeRange == 0 || chromDisplayState.PeakRelativeTime)
                         {
                             double multiplier = (chromDisplayState.TimeRange != 0 ? chromDisplayState.TimeRange : GraphChromatogram.DEFAULT_PEAK_RELATIVE_WINDOW);
-                            if (leftPeakWidth <= 0)
-                                leftPeakWidth = rightPeakWidth = bestEndTime - bestStartTime;
-                            bestStartTime -= leftPeakWidth * (multiplier - 1) / 2;
-                            bestEndTime += rightPeakWidth * (multiplier - 1) / 2;
+                            bestStartTime -= firstPeak.Fwb * (multiplier - 1) / 2;
+                            bestEndTime += lastPeak.Fwb * (multiplier - 1) / 2;
                         }
                         // Otherwise, use an absolute peak width
                         else
@@ -199,10 +209,10 @@ namespace pwiz.Skyline.Controls.Graphs
                     {
                         double start = double.MaxValue;
                         double end = 0;
-                        if (bestEndTime != 0)
+                        if (bestPeaks.Any())
                         {
-                            start = bestStartTime;
-                            end = bestEndTime;
+                            start = bestPeaks.Min(peak => peak.StartRetentionTime);
+                            end = bestPeaks.Max(peak=>peak.EndRetentionTime);
                         }
                         var chromGraph = GetRetentionTimeGraphItem(chromDisplayState);
                         if (chromGraph != null)
@@ -232,12 +242,12 @@ namespace pwiz.Skyline.Controls.Graphs
             {
                 if (chromDisplayState.MinIntensity == 0)
                 {
-                    graphPane.LockYAxisAtZero = true;
+                    graphPane.LockYAxisMinAtZero = true;
                     graphPane.YAxis.Scale.MinAuto = true;
                 }
                 else
                 {
-                    graphPane.LockYAxisAtZero = false;
+                    graphPane.LockYAxisMinAtZero = false;
                     graphPane.YAxis.Scale.MinAuto = false;
                     graphPane.YAxis.Scale.Min = chromDisplayState.MinIntensity;
                 }
@@ -293,9 +303,18 @@ namespace pwiz.Skyline.Controls.Graphs
 
         public CurveItem AddChromatogram(PaneKey paneKey, ChromGraphItem chromGraphItem)
         {
-            var chromDisplayState = (ChromDisplayState) _displayState;
-            chromDisplayState.ChromGraphItems.Add(new KeyValuePair<PaneKey, ChromGraphItem>(paneKey, chromGraphItem));
-            return GraphControl.AddGraphItem(chromDisplayState.GetOrCreateGraphPane(GraphControl, paneKey), chromGraphItem, false);
+            var chromDisplayState = _displayState as ChromDisplayState;
+            if (chromDisplayState != null)
+            {
+                chromDisplayState.ChromGraphItems.Add(
+                    new KeyValuePair<PaneKey, ChromGraphItem>(paneKey, chromGraphItem));
+                return GraphControl.AddGraphItem(chromDisplayState.GetOrCreateGraphPane(GraphControl, paneKey),
+                    chromGraphItem, false);
+            }
+            else
+            {
+                return null;
+            }
         }
 
         public MSGraphPane GetGraphPane(PaneKey paneKey)
@@ -303,14 +322,15 @@ namespace pwiz.Skyline.Controls.Graphs
             return _displayState.GetGraphPane(GraphControl, paneKey);
         }
 
-        public CurveItem AddSpectrum(AbstractSpectrumGraphItem item)
+        public CurveItem AddSpectrum(AbstractSpectrumGraphItem item, bool refresh=true)
         {
             var pane = _displayState.GetOrCreateGraphPane(GraphControl, PaneKey.DEFAULT);
             pane.Title.Text = item.Title;
             var curveItem = GraphControl.AddGraphItem(pane, item);
             curveItem.Label.IsVisible = false;
             pane.Legend.IsVisible = false;
-            GraphControl.Refresh();
+            if (refresh)
+                GraphControl.Refresh();
             return curveItem;
         }
 
@@ -355,7 +375,6 @@ namespace pwiz.Skyline.Controls.Graphs
             public List<PaneKey> GraphPaneKeys { get; private set; }
             public bool AllowSplitPanes { get; protected set; }
             public bool ShowLegend { get; protected set; }
-            public bool AllowLabelOverlap { get; protected set; }
             public MSGraphPane GetGraphPane(MSGraphControl graphControl, PaneKey graphPaneKey)
             {
                 if (!AllowSplitPanes)
@@ -421,7 +440,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 graphPane.Legend.IsVisible = ShowLegend;
                 graphPane.Title.IsVisible = true;
                 graphPane.Title.Text = null;
-                graphPane.AllowLabelOverlap = AllowLabelOverlap;
+                graphPane.AllowLabelOverlap = true; // Always allow labels to overlap - they're transparent so it's OK to do so
             }
         }
 
@@ -429,7 +448,7 @@ namespace pwiz.Skyline.Controls.Graphs
         {
             private readonly bool _proteinSelected;
 
-            public ChromDisplayState(Settings settings, IEnumerable<TransitionGroup> transitionGroups, bool proteinSelected) : base(transitionGroups)
+            public ChromDisplayState(Settings settings, IEnumerable<TransitionGroup> transitionGroups, bool proteinSelected, bool forceLegendDisplay = false) : base(transitionGroups)
             {
                 AutoZoomChrom = GraphChromatogram.AutoZoom;
                 MinIntensity = settings.ChromatogramMinIntensity;
@@ -438,8 +457,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 PeakRelativeTime = settings.ChromatogramTimeRangeRelative;
                 AllowSplitPanes = settings.SplitChromatogramGraph;
                 ChromGraphItems = new List<KeyValuePair<PaneKey, ChromGraphItem>>();
-                ShowLegend = settings.ShowChromatogramLegend;
-                AllowLabelOverlap = settings.AllowLabelOverlap;
+                ShowLegend = forceLegendDisplay || settings.ShowChromatogramLegend;
                 _proteinSelected = proteinSelected;
             }
             
@@ -505,13 +523,13 @@ namespace pwiz.Skyline.Controls.Graphs
             {
                 if (Settings.Default.UsePowerOfTen)
                 {
-                    zedGraphPane.YAxis.Scale.Format = scientificNotationFormatString;
+                    zedGraphPane.YAxis.Scale.Format = SCIENTIFIC_NOTATION_FORMAT_STRING;
                     zedGraphPane.YAxis.Scale.MagAuto = false;
                     zedGraphPane.YAxis.Scale.Mag = 0;
                 }
                 else
                 {
-                    zedGraphPane.YAxis.Scale.Format = "g"; // Not L10N
+                    zedGraphPane.YAxis.Scale.Format = @"g";
                     zedGraphPane.YAxis.Scale.MagAuto = true;
                 }
             }
@@ -585,37 +603,37 @@ namespace pwiz.Skyline.Controls.Graphs
 
     public struct PaneKey : IComparable
     {
-        public static readonly PaneKey PRECURSORS = new PaneKey(null, null, false);
-        public static readonly PaneKey PRODUCTS = new PaneKey(null, null, true);
-        public static readonly PaneKey DEFAULT = new PaneKey(null, null, null);
+        public static readonly PaneKey PRECURSORS = new PaneKey(Adduct.EMPTY, null, false);
+        public static readonly PaneKey PRODUCTS = new PaneKey(Adduct.EMPTY, null, true);
+        public static readonly PaneKey DEFAULT = new PaneKey(Adduct.EMPTY, null, null);
 
         public PaneKey(TransitionGroupDocNode nodeGroup)
-            : this(nodeGroup != null ? nodeGroup.TransitionGroup.PrecursorCharge : (int?)null,
+            : this(nodeGroup != null ? nodeGroup.TransitionGroup.PrecursorAdduct : Adduct.EMPTY,
                    nodeGroup != null ? nodeGroup.TransitionGroup.LabelType : null,
                    false)
         {
         }
 
         public PaneKey(IsotopeLabelType isotopeLabelType)
-            : this(null, isotopeLabelType, false)
+            : this(Adduct.EMPTY, isotopeLabelType, false)
         {
         }
 
-        private PaneKey(int? precusorCharge, IsotopeLabelType isotopeLabelType, bool? isProducts)
+        private PaneKey(Adduct precursorAdduct, IsotopeLabelType isotopeLabelType, bool? isProducts)
             : this()
         {
-            PrecursorCharge = precusorCharge;
+            PrecursorAdduct = precursorAdduct.Unlabeled; // Interested only in the "+2Na" part of "M3C13+2Na"
             IsotopeLabelType = isotopeLabelType;
             IsProducts = isProducts;
         }
 
-        public int? PrecursorCharge { get; private set; }
+        public Adduct PrecursorAdduct { get; private set; }
         public IsotopeLabelType IsotopeLabelType { get; private set; }
         public bool? IsProducts { get; private set; }
 
-        private Tuple<int?, IsotopeLabelType, bool?> AsTuple()
+        private Tuple<Adduct, IsotopeLabelType, bool?> AsTuple()
         {
-            return new Tuple<int?, IsotopeLabelType, bool?>(PrecursorCharge, IsotopeLabelType, IsProducts);
+            return new Tuple<Adduct, IsotopeLabelType, bool?>(PrecursorAdduct, IsotopeLabelType, IsProducts);
         }
 
         public int CompareTo(object other)
@@ -625,8 +643,8 @@ namespace pwiz.Skyline.Controls.Graphs
 
         public bool IncludesTransitionGroup(TransitionGroupDocNode transitionGroupDocNode)
         {
-            if (PrecursorCharge.HasValue &&
-                PrecursorCharge != transitionGroupDocNode.TransitionGroup.PrecursorCharge)
+            if (!PrecursorAdduct.IsEmpty &&
+                !Equals(PrecursorAdduct, transitionGroupDocNode.TransitionGroup.PrecursorAdduct.Unlabeled)) // Compare adducts without any embedded isotope info
             {
                 return false;
             }

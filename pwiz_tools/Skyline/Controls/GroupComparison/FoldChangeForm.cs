@@ -18,19 +18,24 @@
  */
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
+using DigitalRune.Windows.Docking;
+using pwiz.Common.DataBinding;
+using pwiz.Common.DataBinding.Controls;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.GroupComparison;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
+using ZedGraph;
 
 namespace pwiz.Skyline.Controls.GroupComparison
 {
     public partial class FoldChangeForm : DockableFormEx
     {
-        private IDocumentContainer _documentContainer;
+        private IDocumentUIContainer _documentContainer;
         private string _groupComparisonName;
         private Form _owner;
         public FoldChangeForm()
@@ -44,10 +49,10 @@ namespace pwiz.Skyline.Controls.GroupComparison
             FoldChangeBindingSource = bindingSource;
             string groupComparisonName = bindingSource.GroupComparisonModel.GroupComparisonName ??
                                          bindingSource.GroupComparisonModel.GroupComparisonDef.Name;
-            SetGroupComparisonName(bindingSource.GroupComparisonModel.DocumentContainer, groupComparisonName);
+            SetGroupComparisonName(bindingSource.GroupComparisonModel.DocumentContainer as IDocumentUIContainer, groupComparisonName);
         }
 
-        public void SetGroupComparisonName(IDocumentContainer documentContainer, string groupComparisonName)
+        public void SetGroupComparisonName(IDocumentUIContainer documentContainer, string groupComparisonName)
         {
             _documentContainer = documentContainer;
             _groupComparisonName = groupComparisonName;
@@ -125,6 +130,15 @@ namespace pwiz.Skyline.Controls.GroupComparison
             return base.GetPersistentString() + '|' + Uri.EscapeDataString(_groupComparisonName);
         }
 
+        protected string GroupComparisonName
+        {
+            get
+            {
+                return _groupComparisonName;
+            }
+        }
+
+
         public static T FindForm<T>(IDocumentContainer documentContainer, string groupComparisonName) 
             where T : FoldChangeForm
         {
@@ -161,7 +175,114 @@ namespace pwiz.Skyline.Controls.GroupComparison
             return _groupComparisonName == foldChangeForm._groupComparisonName;
         }
 
-        public static FoldChangeBindingSource FindOrCreateBindingSource(IDocumentContainer documentContainer,
+        public void ShowFoldChangeForm<T>() where T : FoldChangeForm, new()
+        {
+            IEnumerable<FoldChangeForm> forms;
+            if (null != DockPanel)
+            {
+                forms = DockPanel.Contents.OfType<FoldChangeForm>();
+            }
+            else
+            {
+                forms = FormUtil.OpenForms.OfType<FoldChangeForm>();
+            }
+
+            FoldChangeForm otherOpenForm = null;
+            foreach (var form in forms)
+            {
+                if (form is T)
+                {
+                    if (SameBindingSource(form))
+                    {
+                        form.Activate();
+                        return;
+                    }
+                }
+                else if (otherOpenForm == null && !(form is FoldChangeGrid) && SameBindingSource(form))
+                {
+                    otherOpenForm = form;
+                }
+            }
+
+            var graph = new T();
+            graph.SetBindingSource(FoldChangeBindingSource);
+
+            var otherDockPane = FindPane(otherOpenForm);
+
+            if (otherOpenForm != null && otherDockPane != null)
+                graph.Show(otherDockPane, null);
+            else if (Pane != null && this is FoldChangeGrid)
+                graph.Show(Pane, DockPaneAlignment.Right, 0.5);
+            else
+                graph.Show(Owner);
+        }
+
+        private DockPane FindPane(IDockableForm form)
+        {
+            if (DockPanel == null)
+                return null;
+
+            int iPane = DockPanel.Panes.IndexOf(pane => !pane.IsHidden && pane.Contents.Contains(form));
+            return (iPane != -1 ? DockPanel.Panes[iPane] : null);
+        }
+        public void ShowChangeSettings()
+        {
+            foreach (var form in FormUtil.OpenForms.OfType<EditGroupComparisonDlg>())
+            {
+                if (ReferenceEquals(form.GroupComparisonModel, FoldChangeBindingSource.GroupComparisonModel))
+                {
+                    form.Activate();
+                    return;
+                }
+            }
+            var foldChangeSettings = new EditGroupComparisonDlg(FoldChangeBindingSource);
+            foldChangeSettings.Show(this);
+        }
+
+        protected virtual void BuildContextMenu(ZedGraphControl sender, ContextMenuStrip menuStrip, Point mousePt, ZedGraphControl.ContextMenuObjectState objState)
+        {
+            ZedGraphHelper.BuildContextMenu(sender, menuStrip, true);
+
+            var index = 0;
+            menuStrip.Items.Insert(index++, new ToolStripMenuItem(Resources.FoldChangeForm_BuildContextMenu_Grid, null, OnGridClick));
+            if (!(sender.ParentForm is FoldChangeVolcanoPlot))
+                menuStrip.Items.Insert(index++, new ToolStripMenuItem(Resources.FoldChangeForm_BuildContextMenu_Volcano_Plot, null, OnVolcanoPlotClick));
+            if(!(sender.ParentForm is FoldChangeBarGraph))
+                menuStrip.Items.Insert(index++, new ToolStripMenuItem(Resources.FoldChangeForm_BuildContextMenu_Bar_Graph, null, OnBarGraphClick));
+            menuStrip.Items.Insert(index++, new ToolStripMenuItem(Resources.FoldChangeForm_BuildContextMenu_Settings, null, OnSettingsClick));
+            menuStrip.Items.Insert(index++, new ToolStripSeparator());
+        }
+
+        private void OnSettingsClick(object sender, EventArgs eventArgs)
+        {
+            ShowChangeSettings();
+        }
+
+        private void OnVolcanoPlotClick(object o, EventArgs eventArgs)
+        {
+            ShowFoldChangeForm<FoldChangeVolcanoPlot>();
+        }
+
+        private void OnBarGraphClick(object o, EventArgs eventArgs)
+        {
+            ShowFoldChangeForm<FoldChangeBarGraph>();
+        }
+
+        private void OnGridClick(object o, EventArgs eventArgs)
+        {
+            Program.MainWindow.ShowGroupComparisonWindow(_groupComparisonName);
+        }
+
+        protected IEnumerable<FoldChangeBindingSource.FoldChangeRow> GetFoldChangeRows(
+            BindingListSource bindingListSource)
+        {
+            return bindingListSource.OfType<RowItem>()
+                .Select(rowItem => rowItem.Value)
+                .OfType<FoldChangeBindingSource.AbstractFoldChangeRow>()
+                .SelectMany(row => row.GetFoldChangeRows());
+        }
+
+        public static FoldChangeBindingSource FindOrCreateBindingSource(IDocumentUIContainer documentContainer,
             string groupComparisonName)
         {
             var form = FindForm<FoldChangeForm>(documentContainer, groupComparisonName);
@@ -173,22 +294,36 @@ namespace pwiz.Skyline.Controls.GroupComparison
             return new FoldChangeBindingSource(new GroupComparisonModel(documentContainer, groupComparisonName));
         }
 
-        public static FoldChangeForm RestoreFoldChangeForm(IDocumentContainer documentContainer, string persistentString)
+        public static FoldChangeForm RestoreFoldChangeForm(IDocumentUIContainer documentContainer, string persistentString)
         {
-            var formContructors = new[]
+            var parsed = PersistentString.Parse(persistentString);
+            if (parsed.Parts.Count < 2)
             {
-                FormConstructor.MakeFormConstructor(()=>new FoldChangeGrid()),
-                FormConstructor.MakeFormConstructor(()=>new FoldChangeBarGraph()),
-            };
-            foreach (var formConstructor in formContructors)
+                return null;
+            }
+
+            var formTypeName = parsed.Parts[0];
+            var groupComparisonName = parsed.Parts[1];
+            FoldChangeForm foldChangeForm;
+            foreach (var type in new[]
+                {typeof(FoldChangeGrid), typeof(FoldChangeBarGraph), typeof(FoldChangeVolcanoPlot)})
             {
-                string prefix = formConstructor.FormType.ToString() + '|';
-                if (persistentString.StartsWith(prefix))
+                if (type.FullName == formTypeName)
                 {
-                    string groupComparisonName = Uri.UnescapeDataString(persistentString.Substring(prefix.Length));
-                    var form = formConstructor.Constructor();
-                    form.SetGroupComparisonName(documentContainer, groupComparisonName);
-                    return form;
+                    var constructor = type.GetConstructor(new Type[0]);
+                    // ReSharper disable PossibleNullReferenceException
+                    foldChangeForm = (FoldChangeForm) constructor.Invoke(new object[0]);
+                    // ReSharper restore PossibleNullReferenceException
+                    foldChangeForm.SetGroupComparisonName(documentContainer, groupComparisonName);
+                    if (foldChangeForm is FoldChangeGrid grid)
+                    {
+                        if (parsed.Parts.Count >= 3)
+                        {
+                            grid.ViewToRestore = ViewName.Parse(parsed.Parts[2]);
+                        }
+                    }
+
+                    return foldChangeForm;
                 }
             }
             return null;
@@ -211,19 +346,14 @@ namespace pwiz.Skyline.Controls.GroupComparison
                 }
             }
         }
-
-        private class FormConstructor
+        private void FoldChangeForm_KeyDown(object sender, KeyEventArgs e)
         {
-            public Type FormType { get; private set; }
-            public Func<FoldChangeForm> Constructor { get; private set; }
-
-            public static FormConstructor MakeFormConstructor<T>(Func<T> constructor) where T:FoldChangeForm
+            switch (e.KeyCode)
             {
-                return new FormConstructor
-                {
-                    FormType = typeof (T),
-                    Constructor = constructor
-                };
+                case Keys.Escape:
+                    _documentContainer.FocusDocument();
+                    e.Handled = true;
+                    break;
             }
         }
     }

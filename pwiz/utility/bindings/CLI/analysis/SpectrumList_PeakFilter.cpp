@@ -25,7 +25,7 @@
 
 
 #pragma warning( push )
-#pragma warning( disable : 4635 )
+#pragma warning( disable : 4634 4635 )
 #include "spectrum_processing.hpp"
 #include "pwiz/analysis/spectrum_processing/SpectrumList_PeakFilter.hpp"
 #include "pwiz/analysis/spectrum_processing/ThresholdFilter.hpp"
@@ -154,6 +154,26 @@ public ref class ThresholdFilter : public SpectrumDataFilter
                     ((pwiz::analysis::ThresholdFilter::ThresholdingBy_Type) byType_,
                      threshold_,
                      (pwiz::analysis::ThresholdFilter::ThresholdingOrientation) orientation_));
+    }
+};
+
+
+public ref class IsolationWindowFilter : public SpectrumDataFilter
+{
+public:
+
+    IsolationWindowFilter(double defaultWindowWidth_, SpectrumList^ spectrumList_)
+    {
+        SpectrumDataFilter::base_ =
+            new pwiz::analysis::SpectrumDataFilterPtr(
+                new pwiz::analysis::IsolationWindowFilter(defaultWindowWidth_, *spectrumList_->base_));
+    }
+
+    IsolationWindowFilter(double defaultWindowWidth_, IsolationWindow^ window)
+    {
+        SpectrumDataFilter::base_ =
+            new pwiz::analysis::SpectrumDataFilterPtr(
+                new pwiz::analysis::IsolationWindowFilter(defaultWindowWidth_, *window->base_));
     }
 };
 

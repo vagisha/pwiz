@@ -108,7 +108,7 @@ namespace pwiz.Skyline.Model.Find
         /// </summary>
         void MoveForward()
         {
-            if (_chromInfoIndex + 1 < _chromInfos.Count())
+            if (_chromInfoIndex + 1 < _chromInfos.Count)
             {
                 _chromInfoIndex++;
                 return;
@@ -159,7 +159,7 @@ namespace pwiz.Skyline.Model.Find
             while (docNode is DocNodeParent)
             {
                 var docNodeParent = (DocNodeParent)CurrentDocNode;
-                int childCount = docNodeParent.Children.Count();
+                int childCount = docNodeParent.Children.Count;
                 if (childCount == 0)
                 {
                     break;
@@ -382,7 +382,7 @@ namespace pwiz.Skyline.Model.Find
             if (_chromInfoIndex >= 0)
             {
                 int resultsIndex = ResultsIndex;
-                var peptideDocNode = NodePath.FirstOrDefault(docNode => docNode is PeptideDocNode) as PeptideDocNode;
+                var peptideDocNode = NodePath.OfType<PeptideDocNode>().FirstOrDefault();
                 if (resultsIndex < 0)
                 {
                     return Resources.BookmarkEnumerator_GetLocationName_UnknownFile;
@@ -393,9 +393,9 @@ namespace pwiz.Skyline.Model.Find
                 }
                 var chromatogramSets = Document.Settings.MeasuredResults.Chromatograms;
                 var chromatogramSet = chromatogramSets[resultsIndex];
-                var resultDisplaySettings = new DisplaySettings(
-                    peptideDocNode, false, resultsIndex, displaySettings.RatioIndex); //, displaySettings.DisplayProteinsMode);
-                return CurrentDocNode.GetDisplayText(resultDisplaySettings) + " (" + chromatogramSet.Name + ")"; // Not L10N
+                var resultDisplaySettings = new DisplaySettings(displaySettings.NormalizedValueCalculator, 
+                    peptideDocNode, false, resultsIndex, displaySettings.NormalizeOption);
+                return CurrentDocNode.GetDisplayText(resultDisplaySettings) + @" (" + chromatogramSet.Name + @")";
             }
             return CurrentDocNode.GetDisplayText(displaySettings);
         }
@@ -405,7 +405,7 @@ namespace pwiz.Skyline.Model.Find
             string nodeType = GetNodeTypeName(CurrentDocNode);
             if (_chromInfoIndex >= 0)
             {
-                return nodeType + " " + Resources.BookmarkEnumerator_GetLocationType_Results; // Not L10N
+                return nodeType + @" " + Resources.BookmarkEnumerator_GetLocationType_Results;
             }
             return nodeType;
         }

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Alana Killeen <killea .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -22,7 +22,9 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.Crosslinking;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 
@@ -30,16 +32,32 @@ namespace pwiz.Skyline.Model
 {
     public class ModificationMatcher : AbstractModificationMatcher
     {
-        public IFormatProvider FormatProvider { get; set; }
-
         private IEnumerator<string> _sequences;
-
+        private int _sequenceCurrent;
+        private int _sequenceCount;
+        private IProgressMonitor _progressMonitor;
+        private IProgressStatus _status;
         private const int DEFAULT_ROUNDING_DIGITS = 6;
 
         public void CreateMatches(SrmSettings settings, IEnumerable<string> sequences,
-            MappedList<string, StaticMod> defSetStatic, MappedList<string, StaticMod> defSetHeavy)
+            MappedList<string, StaticMod> defSetStatic, MappedList<string, StaticMod> defSetHeavy, 
+            IProgressMonitor progressMonitor = null, IProgressStatus status = null)
         {
+            _progressMonitor = progressMonitor;
+            if (progressMonitor != null)
+            {
+                _status = (status ?? new ProgressStatus()).ChangeMessage(Resources.ModificationMatcher_CreateMatches_Matching_modifications);
+                var countable = sequences as ICollection<string>;
+                if (countable == null)
+                {
+                    countable = sequences.ToArray();
+                    sequences = countable;
+                }
+                _sequenceCount = countable.Count;
+            }
+
             _sequences = sequences.GetEnumerator();
+
             InitMatcherSettings(settings, defSetStatic, defSetHeavy);
             if (UnmatchedSequences.Count > 0)
             {
@@ -52,36 +70,71 @@ namespace pwiz.Skyline.Model
 
         public override bool MoveNextSequence()
         {
-            if(!_sequences.MoveNext())
+            if(!MoveNextSingleSequence())
                 return false;
             // Skip sequences that can be created from the current settings.
             TransitionGroupDocNode nodeGroup;
-            while (CreateDocNodeFromSettings(_sequences.Current, null, DIFF_GROUPS, out nodeGroup) != null)
+            // Check first if the sequence has any modifications, because creating doc nodes is expensive
+            while (!HasMods(_sequences.Current) ||
+                   CreateDocNodeFromSettings(new Target(_sequences.Current), null, DIFF_GROUPS, out nodeGroup) != null)
             {
-                if (!_sequences.MoveNext())
+                if (!MoveNextSingleSequence())
                     return false;
             }
             return true;
         }
 
+        private bool MoveNextSingleSequence()
+        {
+            if (!_sequences.MoveNext())
+                return false;
+
+            if (_progressMonitor != null)
+            {
+                _sequenceCurrent++;
+                if (_progressMonitor.IsCanceled)
+                    return false;
+                if (_sequenceCount > 0)
+                    _progressMonitor.UpdateProgress(_status = _status.UpdatePercentCompleteProgress(_progressMonitor, _sequenceCurrent, _sequenceCount));
+            }
+
+            return true;
+        }
+
         public override IEnumerable<AAModInfo> GetCurrentSequenceInfos()
+        {
+            if (_sequences.Current != null)
+            {
+                CrosslinkLibraryKey crosslinkLibraryKey =
+                    CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(_sequences.Current, 0);
+                if (crosslinkLibraryKey != null)
+                {
+                    return crosslinkLibraryKey.PeptideLibraryKeys.SelectMany(peptideLibraryKey =>
+                        EnumerateAaModInfos(peptideLibraryKey.ModifiedSequence));
+                }
+            }
+
+            return EnumerateAaModInfos(_sequences.Current ?? string.Empty);
+        }
+
+        private IEnumerable<AAModInfo> EnumerateAaModInfos(string sequence)
         {
             int prevIndexAA = -1;
             bool prevHeavy = false;
             int countModsPerAA = 0;
-            foreach (var info in EnumerateSequenceInfos(_sequences.Current ?? string.Empty, false))
+            foreach (var info in EnumerateSequenceInfos(sequence, false))
             {
                 int indexAA = info.IndexAA;
                 countModsPerAA = prevIndexAA != indexAA ? 1 : countModsPerAA + 1;
                 bool tooManyMods = countModsPerAA > 1 && prevHeavy == info.UserIndicatedHeavy;
                 prevIndexAA = indexAA;
                 prevHeavy = info.UserIndicatedHeavy;
-                if(!tooManyMods)
+                if (!tooManyMods)
                     yield return info;
                 else
                 {
                     var unmatchedSeq = GetSeqModUnmatchedStr(info.IndexAAInSeq);
-                    if(!UnmatchedSequences.Contains(unmatchedSeq))
+                    if (!UnmatchedSequences.Contains(unmatchedSeq))
                         UnmatchedSequences.Add(unmatchedSeq);
                 }
             }
@@ -91,6 +144,8 @@ namespace pwiz.Skyline.Model
         {
             string aas = FastaSequence.StripModifications(seq);
             bool isSpecificHeavy = FastaSequence.OPEN_MOD.All(paren => aas.Length > seq.Count(c => c == paren));
+            var lossOnlyMods = Settings.PeptideSettings.Modifications.StaticModifications
+                .Where(m =>m.HasLoss && !m.HasMod).ToArray();
             int indexAA = 0;
             int indexAAInSeq = 0;
             int i = 0;
@@ -98,10 +153,10 @@ namespace pwiz.Skyline.Model
             {
                 var aa = aas[indexAA];
                 int indexBracket = i + 1;
-                if (indexBracket < seq.Length && (FastaSequence.OPEN_MOD.Contains(seq[indexBracket]))) // Not L10N
+                if (indexBracket < seq.Length && (FastaSequence.OPEN_MOD.Contains(seq[indexBracket])))
                 {
                     char openBracket = seq[indexBracket];
-                    bool isHeavy = openBracket == '{'; // Not L10N
+                    bool isHeavy = openBracket == '{';
                     char closeBracket = FastaSequence.CLOSE_MOD[FastaSequence.OPEN_MOD.IndexOf(c => c == openBracket)];
                     int indexStart = indexBracket + 1;
                     int indexClose = seq.IndexOf(closeBracket, indexBracket);
@@ -115,7 +170,6 @@ namespace pwiz.Skyline.Model
                     string name = null;
                     double? mass = null;
                     int roundedTo = 0;
-                    double result;
                     // If passed in modification in UniMod notation, look up the id and find the name and mass
                     int uniModId;
                     if (TryGetIdFromUnimod(mod, out uniModId))
@@ -123,7 +177,7 @@ namespace pwiz.Skyline.Model
                         var staticMod = GetStaticMod(uniModId, aa, modTerminus);
                         if (staticMod == null)
                         {
-                            ThrowUnimodException(seq, uniModId, indexAA, indexBracket, indexClose);
+                            throw ThrowUnimodException(seq, uniModId, indexAA, indexBracket, indexClose);
                         }
                         name = staticMod.Name;
                         isHeavy = !UniMod.IsStructuralModification(name);
@@ -131,17 +185,18 @@ namespace pwiz.Skyline.Model
                         mass = staticMod.MonoisotopicMass;
                         roundedTo = DEFAULT_ROUNDING_DIGITS;
                     }
-                    else if (double.TryParse(mod, NumberStyles.Float, FormatProvider ?? NumberFormatInfo.CurrentInfo, out result))
+                    else 
                     {
-                        mass = result;
-                        int decPlace = mod.IndexOf(LocalizationHelper.CurrentCulture.NumberFormat.NumberDecimalSeparator,
-                            StringComparison.Ordinal);
-                        if (decPlace != -1)
-                            roundedTo = Math.Min(mod.Length - decPlace - 1, DEFAULT_ROUNDING_DIGITS);
-                    }
-                    else
-                    {
-                        name = mod;
+                        MassModification massModification = MassModification.Parse(mod);
+                        if (massModification != null)
+                        {
+                            mass = massModification.Mass;
+                            roundedTo = Math.Min(massModification.Precision, DEFAULT_ROUNDING_DIGITS);
+                        }
+                        else
+                        {
+                           name = mod;
+                        }
                     }
                     
                     if (mass.HasValue)
@@ -165,25 +220,43 @@ namespace pwiz.Skyline.Model
                         IndexAAInSeq = indexAAInSeq,
                     };
                 }
-                else if (includeUnmod)
+                else
                 {
-                    // If need unmodified amino acids (as when 
-                    // checking for equality), yield SequenceKeys for these AA's.
-                    var key = new AAModKey
+                    // Check for applicable loss-only modifications, since they don't appear in the modified sequence
+                    var lossMod = lossOnlyMods.FirstOrDefault(m => m.IsLoss(aa, indexAAInSeq, aas.Length));
+                    if (lossMod != null)
                     {
-                        AA = aa,
-                        Mass = 0
-                    };
-                    yield return new AAModInfo
+                        var info = new AAModInfo
+                        {
+                            ModKey = new AAModKey { Name = lossMod.Name, AA = aa, Terminus = lossMod.Terminus },
+                            IndexAA = indexAA,
+                            IndexAAInSeq = indexAAInSeq,
+                        };
+                        // Make sure this key finds a modification in the Matches dictionary
+                        if (!Matches.ContainsKey(info.ModKey))
+                            Matches.Add(info.ModKey, new AAModMatch {StructuralMod = lossMod});
+                        yield return info;
+                    }
+                    else if (includeUnmod)
                     {
-                        ModKey = key,
-                        IndexAA = indexAA,
-                    };
+                        // If need unmodified amino acids (as when 
+                        // checking for equality), yield SequenceKeys for these AA's.
+                        var key = new AAModKey
+                        {
+                            AA = aa,
+                            Mass = 0
+                        };
+                        yield return new AAModInfo
+                        {
+                            ModKey = key,
+                            IndexAA = indexAA,
+                        };
+                    }
                 }
                 // If the next character is a bracket, continue using the same amino
                 // acid and leave i where it is.
                 int iNext = i + 1;
-                if (iNext >= seq.Length || !FastaSequence.OPEN_MOD.Contains(seq[iNext])) // Not L10N
+                if (iNext >= seq.Length || !FastaSequence.OPEN_MOD.Contains(seq[iNext]))
                 {
                     i = indexAAInSeq = iNext;
                     indexAA++;
@@ -247,7 +320,7 @@ namespace pwiz.Skyline.Model
         /// <returns></returns>
         public static bool TryGetIdFromUnimod(string unimodString, out int uniModId)
         {
-            const string prefixString = "unimod:"; // Not L10N
+            const string prefixString = ModifiedSequence.UnimodPrefix;
             if (unimodString.ToLowerInvariant().StartsWith(prefixString))
             {
                 int prefixLength = prefixString.Length;
@@ -267,7 +340,7 @@ namespace pwiz.Skyline.Model
             {
                 var aa = aas[indexAA];
                 int indexBracket = i + 1;
-                if (indexBracket < seq.Length && (FastaSequence.OPEN_MOD.Contains(seq[indexBracket]))) // Not L10N
+                if (indexBracket < seq.Length && (FastaSequence.OPEN_MOD.Contains(seq[indexBracket])))
                 {
                     char openBracket = seq[indexBracket];
                     char closeBracket = FastaSequence.CLOSE_MOD[FastaSequence.OPEN_MOD.IndexOf(c => c == openBracket)];
@@ -292,14 +365,14 @@ namespace pwiz.Skyline.Model
                         }
                         string name = staticMod.Name;
                         bool isHeavy = !UniMod.DictStructuralModNames.ContainsKey(name);
-                        sb[indexBracket] = isHeavy ? '{' : '['; // Not L10N
-                        sb[indexClose] = isHeavy ? '}' : ']'; // Not L10N
+                        sb[indexBracket] = isHeavy ? '{' : '[';
+                        sb[indexClose] = isHeavy ? '}' : ']';
                     }
                 }
                 // If the next character is a bracket, continue using the same amino
                 // acid and leave i where it is.
                 int iNext = i + 1;
-                if (iNext >= seq.Length || !FastaSequence.OPEN_MOD.Contains(seq[iNext])) // Not L10N
+                if (iNext >= seq.Length || !FastaSequence.OPEN_MOD.Contains(seq[iNext]))
                 {
                     indexAA++;
                     i++;
@@ -308,7 +381,7 @@ namespace pwiz.Skyline.Model
             return sb.ToString();
         }
 
-        private static void ThrowUnimodException(string seq, int uniModId, int indexAA, int indexBracket, int indexClose)
+        private static Exception ThrowUnimodException(string seq, int uniModId, int indexAA, int indexBracket, int indexClose)
         {
             int indexFirst = Math.Max(0, indexBracket - 1);
             int indexLast = Math.Min(seq.Length, indexClose + 1);
@@ -351,7 +424,7 @@ namespace pwiz.Skyline.Model
             }
         }
 
-        public PeptideDocNode GetModifiedNode(string seq)
+        public override PeptideDocNode GetModifiedNode(string seq)
         {
             return GetModifiedNode(seq, null);
         }
@@ -360,25 +433,25 @@ namespace pwiz.Skyline.Model
         {
             var seqUnmod = FastaSequence.StripModifications(seq);
             var peptide = fastaSequence != null
-              ? fastaSequence.CreateFullPeptideDocNode(Settings, seqUnmod).Peptide
+              ? fastaSequence.CreateFullPeptideDocNode(Settings, new Target(seqUnmod)).Peptide
               : new Peptide(null, seqUnmod, null, null,
                             Settings.PeptideSettings.Enzyme.CountCleavagePoints(seqUnmod));
             // First, try to create the peptide using the current settings.
             TransitionGroupDocNode nodeGroup;
             PeptideDocNode nodePep = 
-                CreateDocNodeFromSettings(seq, peptide, SrmSettingsDiff.ALL, out nodeGroup);
+                CreateDocNodeFromSettings(new Target(seq), peptide, SrmSettingsDiff.ALL, out nodeGroup);
             if (nodePep != null)
                 return nodePep;
             // Create the peptideDocNode.
             nodePep = fastaSequence == null
               ? new PeptideDocNode(peptide)
-              : fastaSequence.CreateFullPeptideDocNode(Settings, seqUnmod);
+              : fastaSequence.CreateFullPeptideDocNode(Settings, new Target(seqUnmod));
             return CreateDocNodeFromMatches(nodePep, EnumerateSequenceInfos(seq, false));
         }
 
-        protected override bool IsMatch(string seq, PeptideDocNode nodePep, out TransitionGroupDocNode nodeGroup)
+        protected override bool IsMatch(Target target, PeptideDocNode nodePep, out TransitionGroupDocNode nodeGroup)
         {
-            string seqSimplified = SimplifyUnimodSequence(seq);
+            string seqSimplified = SimplifyUnimodSequence(target.Sequence);
             var seqLight = FastaSequence.StripModifications(seqSimplified, FastaSequence.RGX_HEAVY);
             var seqHeavy = FastaSequence.StripModifications(seqSimplified, FastaSequence.RGX_LIGHT);
             var calcLight = Settings.TryGetPrecursorCalc(IsotopeLabelType.light, nodePep.ExplicitMods);

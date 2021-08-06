@@ -34,7 +34,6 @@ using System.Windows.Forms;
 using System.IO;
 using DigitalRune.Windows.Docking;
 using NHibernate.Linq;
-using NHibernate.Util;
 using PopupControl;
 using IDPicker;
 using IDPicker.DataModel;
@@ -83,6 +82,35 @@ namespace IDPicker.Forms
 
             findTextBox.Tag = findTextBox.Text = "Find...";
             findTextBox.KeyUp += new KeyEventHandler(findTextBox_KeyUp);
+
+            iTRAQ_ReporterIonColumns = new List<DataGridViewTextBoxColumn>();
+            TMT_ReporterIonColumns = new List<DataGridViewTextBoxColumn>();
+
+            foreach (int ion in new int[] { 113, 114, 115, 116, 117, 118, 119, 121 })
+            {
+                var column = new DataGridViewTextBoxColumn
+                {
+                    HeaderText = "iTRAQ-" + ion.ToString(),
+                    Name = "iTRAQ-" + ion.ToString() + "Column",
+                    ReadOnly = true,
+                    Tag = iTRAQ_ReporterIonColumns.Count,
+                    Width = 100
+                };
+                iTRAQ_ReporterIonColumns.Add(column);
+            }
+
+            foreach (string ion in new string[] { "126", "127N", "127C", "128N", "128C", "129N", "129C", "130N", "130C", "131N", "131C", "132N", "132C", "133N", "133C", "134" })
+            {
+                var column = new DataGridViewTextBoxColumn
+                {
+                    HeaderText = "TMT-" + ion,
+                    Name = "TMT-" + ion + "Column",
+                    ReadOnly = true,
+                    Tag = TMT_ReporterIonColumns.Count,
+                    Width = 100
+                };
+                TMT_ReporterIonColumns.Add(column);
+            }
         }
 
         void findTextBox_KeyUp(object sender, KeyEventArgs e)
@@ -152,6 +180,9 @@ namespace IDPicker.Forms
             checkedPivots = pivotSetupControl.CheckedPivots;
         }
 
+        public List<DataGridViewTextBoxColumn> iTRAQ_ReporterIonColumns { get; }
+        public List<DataGridViewTextBoxColumn> TMT_ReporterIonColumns { get; }
+
         protected NHibernate.ISession session;
 
         protected DataFilter viewFilter; // what the user has filtered on
@@ -211,6 +242,21 @@ namespace IDPicker.Forms
         {
             public DataFilter DataFilter { get; protected set; }
             public IList<Row> ChildRows { get; set; }
+
+            public static string RollupSQL { get { return GetQuantitationRollupSql(Properties.GUI.Settings.Default.QuantitationRollupMethod); } }
+            protected static string GetQuantitationRollupSql(QuantitationRollupMethod method)
+            {
+                switch (method)
+                {
+                    case QuantitationRollupMethod.Sum: return "DISTINCT_DOUBLE_ARRAY_SUM";
+                    case QuantitationRollupMethod.Mean: return "DISTINCT_DOUBLE_ARRAY_MEAN";
+                    case QuantitationRollupMethod.Median: return "DISTINCT_DOUBLE_ARRAY_MEDIAN";
+                    case QuantitationRollupMethod.Tukey: return "DISTINCT_DOUBLE_ARRAY_TUKEY_BIWEIGHT_AVERAGE";
+                    case QuantitationRollupMethod.TukeyLog: return "DISTINCT_DOUBLE_ARRAY_TUKEY_BIWEIGHT_LOG_AVERAGE";
+                    default:
+                        throw new ArgumentException("unsupported rollup method " + method.ToString());
+                }
+            }
         }
 
         protected IList<Row> rows, basicRows;
@@ -934,5 +980,4 @@ namespace IDPicker.Forms
         }
         #endregion
     }
-
 }

@@ -152,7 +152,7 @@ PWIZ_API_DECL MSDataAnalyzerApplication::MSDataAnalyzerApplication(int argc, con
         while (is)
         {
             string filename;
-            getline(is, filename);
+            getlinePortable(is, filename);
             if (is) filenames.push_back(filename);
         }
     }
@@ -163,7 +163,7 @@ PWIZ_API_DECL void MSDataAnalyzerApplication::run(MSDataAnalyzer& analyzer, ostr
 {
     namespace bfs = boost::filesystem;
 
-    if (!filenames.empty())
+    if (!filenames.empty() && !bfs::exists(outputDirectory))
         bfs::create_directories(outputDirectory);
 
     FullReaderList readers;

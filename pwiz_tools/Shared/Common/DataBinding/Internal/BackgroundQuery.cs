@@ -18,11 +18,7 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.ComponentModel;
 using System.Threading;
-using System.Threading.Tasks;
-using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
 
 namespace pwiz.Common.DataBinding.Internal
@@ -32,18 +28,15 @@ namespace pwiz.Common.DataBinding.Internal
         private CancellationToken _rootCancellationToken;
         private CancellationTokenSource _cancellationTokenSource;
 
-        public BackgroundQuery(IRowSourceWrapper rowSource, TaskScheduler backgroundTaskScheduler, IQueryRequest queryRequest)
+        public BackgroundQuery(RowSourceWrapper rowSource, IQueryRequest queryRequest)
         {
             RowSource = rowSource;
-            BackgroundTaskScheduler = backgroundTaskScheduler;
             QueryRequest = queryRequest;
             _rootCancellationToken = QueryRequest.CancellationToken;
         }
 
-        public IRowSourceWrapper RowSource { get; private set; }
+        public RowSourceWrapper RowSource { get; private set; }
         public IQueryRequest QueryRequest { get; private set; }
-        public TaskScheduler BackgroundTaskScheduler { get; private set; }
-        public IList<RowItem> SourceRowItems { get; private set; }
 
         public void Start()
         {
@@ -55,12 +48,11 @@ namespace pwiz.Common.DataBinding.Internal
                 }
                 RowSource.RowSourceChanged += RowSourceChanged;
                 _rootCancellationToken.Register(() => RowSource.RowSourceChanged -= RowSourceChanged);
-                SourceRowItems = ImmutableList.ValueOf(RowSource.ListRowItems());
                 EnsureRunning();
             }
         }
 
-        private void RowSourceChanged(object sender, ListChangedEventArgs eventArgs)
+        private void RowSourceChanged()
         {
             Reset();
         }
@@ -70,7 +62,6 @@ namespace pwiz.Common.DataBinding.Internal
             lock (this)
             {
                 Stop();
-                SourceRowItems = ImmutableList.ValueOf(RowSource.ListRowItems());
                 EnsureRunning();
             }
         }
@@ -93,7 +84,7 @@ namespace pwiz.Common.DataBinding.Internal
                 {
                     _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(new[]{QueryRequest.CancellationToken});
                     var token = _cancellationTokenSource.Token;
-                    Task.Factory.StartNew(() => Run(token), token);
+                    CommonActionUtil.RunAsync(()=>Run(token));
                 }
             }
         }
@@ -102,10 +93,14 @@ namespace pwiz.Common.DataBinding.Internal
             LocalizationHelper.InitThread();
             try
             {
-                var queryResults = QueryRequest.InitialQueryResults
-                    .SetSourceRows(SourceRowItems);
-                queryResults = RunAll(new Pivoter.TickCounter(cancellationToken), queryResults);
-                QueryRequest.SetFinalQueryResults(queryResults);
+                using (QueryRequest.QueryLock.GetReadLock())
+                {
+                    var queryResults = QueryResults.Empty
+                        .SetParameters(QueryRequest.QueryParameters)
+                        .SetSourceRows(RowSource.ListRowItems());
+                    queryResults = RunAll(cancellationToken, queryResults);
+                    QueryRequest.SetFinalQueryResults(queryResults);
+                }
             }
             catch (OperationCanceledException)
             {

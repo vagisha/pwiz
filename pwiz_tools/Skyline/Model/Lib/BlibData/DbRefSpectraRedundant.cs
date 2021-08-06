@@ -30,6 +30,7 @@ namespace pwiz.Skyline.Model.Lib.BlibData
         public virtual string PeptideSeq { get; set; }
         public virtual double PrecursorMZ { get; set; }
         public virtual int PrecursorCharge { get; set; }
+        public virtual string PrecursorAdduct { get; set; }
         public virtual string PeptideModSeq { get; set; }
         public virtual char? PrevAA { get; set; }
         public virtual char? NextAA { get; set; }
@@ -40,13 +41,17 @@ namespace pwiz.Skyline.Model.Lib.BlibData
         public virtual string SpecIdInFile { get; set; }
         public virtual double Score { get; set; }
         public virtual ushort ScoreType { get; set; }
-        public virtual double? IonMobilityValue { get; set; } // Obsolete - see DriftTimeMsec, CollisionalCrossSectionSqA, HighEnergyDriftTimeOffsetMsec
-        public virtual int? IonMobilityType { get; set; }  // Obsolete - 
-        public virtual double? IonMobilityHighEnergyDriftTimeOffsetMsec { get; set; } // Obsolete - 
-        public virtual double? DriftTimeMsec { get; set; }
+        public virtual int? IonMobilityType { get; set; }   
+        public virtual double? IonMobility { get; set; }
+        public virtual double? IonMobilityHighEnergyOffset { get; set; }
         public virtual double? CollisionalCrossSectionSqA { get; set; }
-        public virtual double? HighEnergyDriftTimeOffsetMsec { get; set; }
         public virtual DbRefSpectraRedundantPeaks Peaks { get; set; }
+        public virtual ICollection<DbRefSpectraPeakAnnotations> PeakAnnotations { get; set; }
         public virtual ICollection<DbModification> Modifications { get; set; }
+        // Small molecule items
+        public virtual string MoleculeName { get; set; }
+        public virtual string ChemicalFormula { get; set; }
+        public virtual string InChiKey { get; set; }
+        public virtual string OtherKeys { get; set; }
     }
 }

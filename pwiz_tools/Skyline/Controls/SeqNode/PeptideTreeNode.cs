@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -60,7 +60,7 @@ namespace pwiz.Skyline.Controls.SeqNode
 
         public override string Heading
         {
-            get { return Resources.PeptideTreeNode_Heading_Title; }
+            get { return  DocNode.IsProteomic ? Resources.PeptideTreeNode_Heading_Title : Resources.PeptideTreeNode_Heading_Title_Molecule; }
         }
 
         public override string ChildHeading
@@ -112,45 +112,59 @@ namespace pwiz.Skyline.Controls.SeqNode
             return sequenceTree.ImageList.Images[GetTypeImageIndex(nodePep)];
         }
 
+        // This is the set of node images that have peptide/molecule specific versions
+        private static readonly Dictionary<SequenceTree.ImageId, SequenceTree.ImageId> NON_PROTEOMIC_IMAGE_INDEXES =
+            new Dictionary<SequenceTree.ImageId, SequenceTree.ImageId>
+            {
+                {SequenceTree.ImageId.peptide_irt_lib, SequenceTree.ImageId.molecule_irt_lib},
+                {SequenceTree.ImageId.peptide_irt, SequenceTree.ImageId.molecule_irt},
+                {SequenceTree.ImageId.peptide_standard_lib, SequenceTree.ImageId.molecule_standard_lib},
+                {SequenceTree.ImageId.peptide_standard, SequenceTree.ImageId.molecule_standard},
+                {SequenceTree.ImageId.peptide_lib, SequenceTree.ImageId.molecule_lib},
+                {SequenceTree.ImageId.peptide, SequenceTree.ImageId.molecule}
+            };   
+
         private static int GetTypeImageIndex(PeptideDocNode nodePep)
         {
+            SequenceTree.ImageId index;
             if (nodePep.IsDecoy)
             {
-                return (int) (nodePep.HasLibInfo
+                index = nodePep.HasLibInfo
                                   ? SequenceTree.ImageId.peptide_lib_decoy
-                                  : SequenceTree.ImageId.peptide_decoy);
+                                  : SequenceTree.ImageId.peptide_decoy;
             }
-            if (!nodePep.IsProteomic)
+            else if (nodePep.GlobalStandardType == StandardType.IRT)
             {
-                if (nodePep.GlobalStandardType == StandardType.GLOBAL_STANDARD ||
-                    nodePep.GlobalStandardType == StandardType.SURROGATE_STANDARD)
-                {
-                    return (int) SequenceTree.ImageId.molecule_standard;
-                }
-                return (int)SequenceTree.ImageId.molecule;
-            }
-            if (nodePep.GlobalStandardType == StandardType.IRT)
-            {
-                return (int) (nodePep.HasLibInfo
+                index = nodePep.HasLibInfo
                                   ? SequenceTree.ImageId.peptide_irt_lib
-                                  : SequenceTree.ImageId.peptide_irt);
+                                  : SequenceTree.ImageId.peptide_irt;
             }
-            if (nodePep.GlobalStandardType == StandardType.QC)
+            else if (nodePep.GlobalStandardType == StandardType.QC)
             {
-                return (int)(nodePep.HasLibInfo
-                                  ? SequenceTree.ImageId.peptide_qc_lib
-                                  : SequenceTree.ImageId.peptide_qc);
+                index = nodePep.HasLibInfo
+                    ? SequenceTree.ImageId.peptide_qc_lib
+                    : SequenceTree.ImageId.peptide_qc;
             }
-            if (nodePep.GlobalStandardType == StandardType.GLOBAL_STANDARD 
-                || nodePep.GlobalStandardType == StandardType.SURROGATE_STANDARD)
+            else if (nodePep.GlobalStandardType == StandardType.GLOBAL_STANDARD 
+                  || nodePep.GlobalStandardType == StandardType.SURROGATE_STANDARD)
             {
-                return (int)(nodePep.HasLibInfo
+                index = nodePep.HasLibInfo
                                   ? SequenceTree.ImageId.peptide_standard_lib
-                                  : SequenceTree.ImageId.peptide_standard);
+                                  : SequenceTree.ImageId.peptide_standard;
             }
-            return (int)(nodePep.HasLibInfo
-                              ? SequenceTree.ImageId.peptide_lib
-                              : SequenceTree.ImageId.peptide);
+            else
+            {
+                index = nodePep.HasLibInfo
+                    ?  SequenceTree.ImageId.peptide_lib
+                    :  SequenceTree.ImageId.peptide;
+            }
+
+            // If this is a small molecule node, see if there's a special version of its image
+            if (!nodePep.IsProteomic && NON_PROTEOMIC_IMAGE_INDEXES.TryGetValue(index, out var smallMolIndex))
+            {
+                return (int)smallMolIndex;
+            }
+            return (int)index;
         }
 
         public int PeakImageIndex
@@ -256,51 +270,37 @@ namespace pwiz.Skyline.Controls.SeqNode
 
             // Calculate text sequence values for the peptide display string
             var listTextSequences = new List<TextSequence>();
-            if (nodePep.Peptide.IsCustomIon)
-                listTextSequences.Add(CreatePlainTextSequence(nodePep.CustomIon.DisplayName, fonts));
+            if (nodePep.Peptide.IsCustomMolecule)
+                listTextSequences.Add(CreatePlainTextSequence(label, fonts));
             // If no modifications, use a single plain text sequence
-            else if (!heavyMods && !listTypeSequences[0].Text.Contains("[")) // Not L10N: For identifying modifications
+            else if (!heavyMods && !listTypeSequences[0].Text.Contains(@"[") && !nodePep.CrosslinkStructure.HasCrosslinks) // For identifying modifications
                 listTextSequences.Add(CreatePlainTextSequence(label, fonts));
             else
             {
-                string pepSequence = nodePep.Peptide.Sequence;
+                var peptideFormatter = PeptideFormatter.MakePeptideFormatter(settings, nodePep, fonts);
+                string pepSequence = peptideFormatter.UnmodifiedSequence;
                 int startPep = label.IndexOf(pepSequence, StringComparison.Ordinal);
                 int endPep = startPep + pepSequence.Length;
 
+
+                IEnumerable<TextSequence> rawTextSequences = new TextSequence[0];
                 // Add prefix plain-text if necessary
                 if (startPep > 0)
                 {
                     string prefix = label.Substring(0, startPep);
-                    listTextSequences.Add(CreatePlainTextSequence(prefix, fonts));
+                    rawTextSequences = rawTextSequences.Append(CreatePlainTextSequence(prefix, fonts));
                 }
+                    
+                rawTextSequences = rawTextSequences.Concat(Enumerable.Range(0, pepSequence.Length).Select(aaIndex=>peptideFormatter.GetTextSequenceAtAaIndex(DisplayModificationOption.Current, aaIndex)));
 
-                // Enumerate amino acid characters coallescing their font information
-                // into text sequences.
-                var prevCharFont = new CharFont('.', fonts.Plain, Color.Black); // Not L10N: Amino acid format
-                var indexes = new int[listTypeSequences.Count];
+                rawTextSequences = rawTextSequences.Concat(peptideFormatter.GetTextSequencesForLinkedPeptides(DisplayModificationOption.Current));
 
-                CharFont charFont;
-                var sb = new StringBuilder();
-                while ((charFont = GetCharFont(indexes, listTypeSequences, fonts)) != null)
-                {
-                    if (!charFont.IsSameDisplay(prevCharFont) && sb.Length > 0)
-                    {
-                        listTextSequences.Add(CreateTextSequence(sb, prevCharFont));
-                        sb.Remove(0, sb.Length);
-                    }
-                    sb.Append(charFont.Character);
-                    prevCharFont = charFont;
-                }
-                // Add the last segment
-                if (sb.Length > 0)
-                    listTextSequences.Add(CreateTextSequence(sb, prevCharFont));
-
-                // Add suffix plain-text if necessary
                 if (endPep < label.Length)
                 {
                     string suffix = label.Substring(endPep);
-                    listTextSequences.Add(CreatePlainTextSequence(suffix, fonts));
+                    rawTextSequences = rawTextSequences.Append(CreatePlainTextSequence(suffix, fonts));
                 }
+                listTextSequences.AddRange(TextSequence.Coalesce(rawTextSequences));
             }
 
             if (g != null)
@@ -322,45 +322,6 @@ namespace pwiz.Skyline.Controls.SeqNode
         }
 
         /// <summary>
-        /// Calculates font information for a single amino acid character in
-        /// the peptide, and increments indexes to next amino acid character.
-        /// </summary>
-        /// <param name="indexes">Index locations of the amino acid in each text sequence</param>
-        /// <param name="textSequences">List of text sequences for all label types being considered</param>
-        /// <param name="fonts">Modifications fonts</param>
-        /// <returns>The amino acid character and its font information</returns>
-        private static CharFont GetCharFont(int[] indexes, IList<TextSequence> textSequences, ModFontHolder fonts)
-        {
-            int iChar = indexes[0];
-            string text = textSequences[0].Text;
-            if (iChar >= text.Length)
-                return null;
-
-            char c = text[iChar];
-            Font font = fonts.Plain;
-            Color color = Color.Black;
-
-            string modString = NextAA(0, indexes, textSequences);
-            if (modString != null)
-                font = textSequences[0].Font;                
-
-            for (int i = 1; i < indexes.Length; i++)
-            {
-                string modStringHeavy = NextAA(i, indexes, textSequences);
-                if (modStringHeavy == null)
-                    continue;
-
-                if (Equals(color, Color.Black) && !Equals(modString, modStringHeavy))
-                {
-                    color = textSequences[i].Color;
-                    font = modString == null ? textSequences[i].Font : fonts.LightAndHeavy;
-                }
-            }
-
-            return new CharFont(c, font, color);
-        }
-
-        /// <summary>
         /// Increments a single amino acid index to the next amino acid in its
         /// text sequence, returning any intervening modification specification.
         /// </summary>
@@ -378,11 +339,11 @@ namespace pwiz.Skyline.Controls.SeqNode
             // Increment the index, and check for modification string after the amino acid
             int iNext = ++indexes[i];
             string text = textSequences[i].Text;
-            if (iNext >= text.Length || text[iNext] != '[') // Not L10N 
+            if (iNext >= text.Length || text[iNext] != '[')
                 return null;
 
             // Find modification end character
-            int iEndMod = text.IndexOf(']', iNext); // Not L10N 
+            int iEndMod = text.IndexOf(']', iNext);
             // Be unnecessarily safe, and do something reasonable, if no end found
             if (iEndMod == -1)
                 iEndMod = text.Length - 1;
@@ -407,8 +368,8 @@ namespace pwiz.Skyline.Controls.SeqNode
             return new TextSequence
                        {
                            Text = nodePep.IsProteomic
-                               ? calc.GetModifiedSequence(nodePep.Peptide.Sequence, true)
-                               : nodePep.CustomIon.DisplayName,
+                               ? calc.GetModifiedSequence(nodePep.Peptide.Target, SequenceModFormatType.mass_diff_narrow, false).Sequence
+                               : nodePep.CustomMolecule.DisplayName,
                            Font = fonts.GetModFont(labelType),
                            Color = ModFontHolder.GetModColor(labelType)
                        };
@@ -428,42 +389,6 @@ namespace pwiz.Skyline.Controls.SeqNode
                        };
         }
         
-        /// <summary>
-        /// Creates a text sequence for a peptide sequence with modifications
-        /// </summary>
-        private static TextSequence CreateTextSequence(StringBuilder sb, CharFont charFont)
-        {
-            return new TextSequence
-            {
-                Text = sb.ToString(),
-                Font = charFont.Font,
-                Color = charFont.Color
-            };
-        }
-
-        /// <summary>
-        /// Font and color for a single amino acid character in the peptide sequence
-        /// </summary>
-        private sealed class CharFont
-        {
-            public CharFont(char character, Font font, Color color)
-            {
-                Character = character;
-                Font = font;
-                Color = color;
-            }
-
-            public char Character { get; private set; }
-            public Font Font { get; private set; }
-            public Color Color { get; private set; }
-
-            public bool IsSameDisplay(CharFont charFont)
-            {
-                return ReferenceEquals(Font, charFont.Font) &&
-                       Equals(Color, charFont.Color);
-            }
-        }
-
         protected override int WidthCustom
         {
             get
@@ -573,11 +498,16 @@ namespace pwiz.Skyline.Controls.SeqNode
             var listChildrenNew = new List<DocNode>();
             foreach (TransitionGroup group in DocNode.GetTransitionGroups(DocSettings, mods, useFilter))
             {
-                // The maximum allowable precursor charge may be larger than it makes sense to show
-                // For custom ions we just show what's already there, so don't worry about charge
-                if (group.IsCustomIon || Math.Abs(group.PrecursorCharge) <= TransitionGroup.MAX_PRECURSOR_CHARGE_PICK ||
-                        DocSettings.TransitionSettings.Filter.PrecursorCharges.Contains(group.PrecursorCharge))
-                    listChildrenNew.Add(CreateChoice(group, mods));
+                // The maximum allowable precursor charge may be larger than it makes sense to show.
+                var charges = group.IsProteomic
+                    ? DocSettings.TransitionSettings.Filter.PeptidePrecursorCharges
+                    : DocSettings.TransitionSettings.Filter.SmallMoleculePrecursorAdducts;
+                if (Math.Abs(group.PrecursorAdduct.AdductCharge) <= TransitionGroup.MAX_PRECURSOR_CHARGE_PICK || charges.Contains(group.PrecursorAdduct))
+                {
+                    var nodeChoice = CreateChoice(group, mods);
+                    if (!useFilter || DocSettings.TransitionSettings.Libraries.HasMinIonCount(nodeChoice))
+                        listChildrenNew.Add(nodeChoice);
+                }
             }
             var nodePep = (PeptideDocNode)DocNode.ChangeChildren(listChildrenNew);
             nodePep.ChangeSettings(DocSettings, SrmSettingsDiff.PROPS);
@@ -586,7 +516,7 @@ namespace pwiz.Skyline.Controls.SeqNode
             return listChildrenNew;
         }
 
-        private DocNode CreateChoice(Identity childId, ExplicitMods mods)
+        private TransitionGroupDocNode CreateChoice(Identity childId, ExplicitMods mods)
         {
             TransitionGroup tranGroup = (TransitionGroup)childId;
             TransitionDocNode[] transitions = DocNode.GetMatchingTransitions(
@@ -618,6 +548,7 @@ namespace pwiz.Skyline.Controls.SeqNode
         public static bool HasPeptideTip(PeptideDocNode nodePep, SrmSettings settings)
         {
             return nodePep.IsDecoy ||
+                   !nodePep.IsProteomic ||
                    nodePep.Peptide.Begin.HasValue ||
                    nodePep.Rank.HasValue ||
                    nodePep.Note != null ||
@@ -653,12 +584,16 @@ namespace pwiz.Skyline.Controls.SeqNode
             {
                 Peptide peptide = nodePep.Peptide;
                 SizeF size;
-                if (peptide.IsCustomIon)
+                if (peptide.IsCustomMolecule)
                 {
-                    table.AddDetailRow(Resources.TransitionGroupTreeNode_RenderTip_Molecule, nodePep.CustomIon.Name, rt);
-                    table.AddDetailRow(Resources.TransitionTreeNode_RenderTip_Formula, nodePep.CustomIon.Formula, rt);
+                    table.AddDetailRow(Resources.TransitionGroupTreeNode_RenderTip_Molecule, nodePep.CustomMolecule.Name, rt);
+                    table.AddDetailRow(Resources.TransitionTreeNode_RenderTip_Formula, nodePep.CustomMolecule.Formula, rt);
                     table.AddDetailRow(Resources.PeptideTreeNode_RenderTip_Neutral_Mass,
-                        nodePep.CustomIon.GetMass(settings.TransitionSettings.Prediction.PrecursorMassType).ToString(LocalizationHelper.CurrentCulture), rt);
+                        nodePep.CustomMolecule.GetMass(settings.TransitionSettings.Prediction.PrecursorMassType).ToString(LocalizationHelper.CurrentCulture), rt);
+                    foreach (var id in nodePep.CustomMolecule.AccessionNumbers.AccessionNumbers)
+                    {
+                        table.AddDetailRow(id.Key, id.Value, rt); // Show InChiKey etc as available
+                    }
                     size = table.CalcDimensions(g);
                     table.Draw(g);
                     return new Size((int)Math.Round(size.Width + 2), (int)Math.Round(size.Height + 2));
@@ -666,8 +601,8 @@ namespace pwiz.Skyline.Controls.SeqNode
                 if (peptide.IsDecoy)
                 {
                     string sourceText = nodePep.SourceTextId
-                        .Replace(".0]", "]")    // Not L10N
-                        .Replace(".", LocalizationHelper.CurrentCulture.NumberFormat.NumberDecimalSeparator);   // Not L10N
+                        .Replace(@".0]", @"]")
+                        .Replace(@".", LocalizationHelper.CurrentCulture.NumberFormat.NumberDecimalSeparator);
                     table.AddDetailRow(Resources.PeptideTreeNode_RenderTip_Source, sourceText, rt);
                 }
 
@@ -681,7 +616,7 @@ namespace pwiz.Skyline.Controls.SeqNode
                 {
                     // Add a spacing row, if anything was added
                     if (table.Count > 0)
-                        table.AddDetailRow(" ", " ", rt); // Not L10N
+                        table.AddDetailRow(@" ", @" ", rt);
                     table.AddDetailRow(Resources.PeptideTreeNode_RenderTip_Previous, peptide.PrevAA.ToString(CultureInfo.InvariantCulture), rt);
                     table.AddDetailRow(Resources.PeptideTreeNode_RenderTip_First, peptide.Begin.Value.ToString(LocalizationHelper.CurrentCulture), rt);
                     table.AddDetailRow(Resources.PeptideTreeNode_RenderTip_Last, ((peptide.End ?? 1) - 1).ToString(LocalizationHelper.CurrentCulture), rt);
@@ -721,7 +656,7 @@ namespace pwiz.Skyline.Controls.SeqNode
         {
             foreach (var labelType in settings.PeptideSettings.Modifications.GetModificationTypes())
             {
-                if (nodePep.Peptide.IsCustomIon)
+                if (nodePep.Peptide.IsCustomMolecule)
                     continue;
                 // Only return the modified sequence, if the peptide actually as a child
                 // of this type.
@@ -731,10 +666,10 @@ namespace pwiz.Skyline.Controls.SeqNode
                 if (calc == null)
                     continue;
 
-                string modSequence = calc.GetModifiedSequence(nodePep.Peptide.Sequence, true); // Never have to worry about this being a custom ion, we already checked
+                string modSequence = calc.GetModifiedSequence(nodePep.Peptide.Target, true).Sequence; // Never have to worry about this being a custom molecule, we already checked
 
                 // Only return if the modified sequence contains modifications
-                if (modSequence.Contains('[')) // Not L10N
+                if (modSequence.Contains('['))
                     yield return new KeyValuePair<IsotopeLabelType, string>(labelType, modSequence);
             }            
         }
@@ -756,15 +691,17 @@ namespace pwiz.Skyline.Controls.SeqNode
                     sb.Append(text.Text);
                 else
                 {
-                    sb.Append("<Font"); // Not L10N
+                    sb.Append(@"<Font");
+                    // ReSharper disable LocalizableElement
                     if (text.Font.Bold && text.Font.Underline)
-                        sb.Append(" style=\"font-weight: bold; text-decoration: underline\""); // Not L10N
-                    else if (text.Font.Bold)
-                        sb.Append(" style=\"font-weight: bold\""); // Not L10N
+                        sb.Append(" style=\"font-weight: bold; text-decoration: underline\"");
+                   else if (text.Font.Bold)
+                        sb.Append(" style=\"font-weight: bold\"");
                     else if (text.Font.Underline)
-                        sb.Append(" style=\"text-decoration: underline\""); // Not L10N 
-                    sb.AppendFormat(" color = \"{0}\">{1}", text.Color.ToKnownColor(), text.Text); // Not L10N
-                    sb.Append("</font>"); // Not L10N
+                        sb.Append(" style=\"text-decoration: underline\"");
+                    sb.AppendFormat(" color = \"{0}\">{1}", text.Color.ToKnownColor(), text.Text);
+                    // ReSharper restore LocalizableElement
+                    sb.Append(@"</font>");
                 }
             }
             data.SetData(DataFormats.Html, HtmlFragment.ClipBoardText(sb.ToString()));

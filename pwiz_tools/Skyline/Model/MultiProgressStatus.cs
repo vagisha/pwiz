@@ -112,6 +112,7 @@ namespace pwiz.Skyline.Model
         }
 
         public int SegmentCount { get { return 1; } }
+        public int Segment { get {  return 1; } }
         public object Id { get; private set; }
         public int Tag { get; private set; }
 
@@ -126,6 +127,21 @@ namespace pwiz.Skyline.Model
 
         public bool IsComplete { get { return State == ProgressState.complete; } }
         public bool IsError { get { return State == ProgressState.error; } }
+
+        public bool HasWarnings
+        {
+            get { return ProgressList.Any(status => !string.IsNullOrEmpty(status.WarningMessage)); }
+        }
+
+        public string  WarningMessage
+        {
+            get
+            {
+                return TextUtil.LineSeparate(ProgressList.Select(status => status.WarningMessage)
+                    .Where(status => !string.IsNullOrEmpty(status)));
+            }
+        }
+
         public bool IsCanceled { get { return State == ProgressState.cancelled; } }
         public bool IsBegin { get { return State == ProgressState.begin; } }
 
@@ -188,6 +204,8 @@ namespace pwiz.Skyline.Model
             }
         }
 
+        public int ZoomedPercentComplete => PercentComplete;
+
         public bool ProgressEqual(IProgressStatus status)
         {
             var multiProgressStatus = status as MultiProgressStatus;
@@ -233,8 +251,8 @@ namespace pwiz.Skyline.Model
             var notFinal = ProgressList.Where(s => !s.IsFinal).ToArray();
             if (notFinal.Any())
             {
-                Assume.Fail(TextUtil.LineSeparate("Completing with non-final status:",  // Not L10N
-                    TextUtil.LineSeparate(notFinal.Select(s => string.Format("{0} {1}% - {2}", s.State, s.PercentComplete, s.FilePath))))); // Not L10N
+                Assume.Fail(TextUtil.LineSeparate(@"Completing with non-final status:",
+                    TextUtil.LineSeparate(notFinal.Select(s => string.Format(@"{0} {1}% - {2}", s.State, s.PercentComplete, s.FilePath)))));
             }
             return ChangeProp(ImClone(this), s => s._complete = true);
         }
@@ -255,7 +273,7 @@ namespace pwiz.Skyline.Model
         {
             foreach (var loadingStatus in ProgressList)
             {
-                if (loadingStatus.FilePath.Equals(filePath))
+                if (loadingStatus.FilePath.GetLocation().Equals(filePath.GetLocation()))
                     return loadingStatus;
             }
             return null;

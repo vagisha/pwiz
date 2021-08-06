@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Nick Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -18,7 +18,7 @@
  */
 using System;
 using NHibernate;
-using pwiz.ProteomeDatabase.Util;
+using pwiz.Common.Database.NHibernate;
 
 namespace pwiz.Skyline.Model.Lib.BlibData
 {
@@ -31,7 +31,7 @@ namespace pwiz.Skyline.Model.Lib.BlibData
 
         public static ISessionFactory CreateSessionFactory_Redundant(String path, bool createSchema)
         {
-            return SessionFactoryFactory.CreateSessionFactory(path, typeof(BlibDb), "mapping_redundant.xml", createSchema); // Not L10N
+            return SessionFactoryFactory.CreateSessionFactory(path, typeof(BlibDb), @"mapping_redundant.xml", createSchema);
         }
     }
 }

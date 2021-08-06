@@ -126,7 +126,7 @@
     <value>14, 201</value>
   </data>
   <data name="linkProteome.Size" type="System.Drawing.Size, System.Drawing">
-    <value>131, 13</value>
+    <value>55, 13</value>
   </data>
   <data name="linkProteome.TabIndex" type="System.Int32, mscorlib">
     <value>0</value>
@@ -151,7 +151,7 @@
     <value>Bottom, Right</value>
   </data>
   <data name="btnOk.Location" type="System.Drawing.Point, System.Drawing">
-    <value>434, 305</value>
+    <value>540, 305</value>
   </data>
   <data name="btnOk.Size" type="System.Drawing.Size, System.Drawing">
     <value>75, 23</value>
@@ -208,13 +208,13 @@
     <value>162, 12</value>
   </data>
   <data name="labelSoftwareVersion.Size" type="System.Drawing.Size, System.Drawing">
-    <value>66, 20</value>
+    <value>461, 20</value>
   </data>
   <data name="labelSoftwareVersion.TabIndex" type="System.Int32, mscorlib">
     <value>4</value>
   </data>
   <data name="labelSoftwareVersion.Text" xml:space="preserve">
-    <value>Skyline</value>
+    <value>Skyline (64ビット: 開発者ビルド) 19.0.0.000 (abc123456)</value>
   </data>
   <data name="&gt;&gt;labelSoftwareVersion.Name" xml:space="preserve">
     <value>labelSoftwareVersion</value>
@@ -241,43 +241,34 @@
     <value>Vertical</value>
   </data>
   <data name="textBox1.Size" type="System.Drawing.Size, System.Drawing">
-    <value>346, 112</value>
+    <value>452, 112</value>
   </data>
   <data name="textBox1.TabIndex" type="System.Int32, mscorlib">
     <value>5</value>
   </data>
   <data name="textBox1.Text" xml:space="preserve">
-    <value>AB Sciex
-WIFFファイルリーダーライブラリ
-Copyright © 2010 by AB Sciex LLC.
-著作権所有。
-http://www.absciex.com/
-
-Agilent Technologies
+    <value>Agilent Technologies
 Mass Hunterデータアクセスコンポーネント
-http://www.agilent.com
+Copyright © 2017 by Agilent Technologies
+https://www.agilent.com
 
 BiblioSpec
 スペクトルライブラリ構築
-http://proteome.gs.washington.edu/software/bibliospec
+https://skyline.ms/build-blib.url
 
 Bruker
 CompassXtractデータリーダーライブラリ
-Copyright © 2011 by Bruker Daltonik GmbH.
+Copyright © 2020 by Bruker Daltonik GmbH.
 著作権所有。
-http://www.bruker.com/
-
-Crawdad
-ピーク検出
-http://proteome.gs.washington.edu/software/crawdad
+https://www.bruker.com/
 
 DigitalRune Software
 ウィンドウズのドッキング
-http://www.digitalrune.com
+https://github.com/DigitalRune
 
 DotNetZipライブラリ
 ZIP圧縮および展開
-http://www.codeplex.com/DotNetZip
+https://www.nuget.org/packages/DotNetZip/
 
 James Newton-King
 Json.NET
@@ -285,54 +276,60 @@ http://james.newtonking.com
 
 JetBrains Software
 開発ツール： ReSharper、dotTrace、dotCover
-http://www.jetbrains.com/index.html
+https://www.jetbrains.com/
 
 Matrix Science
 Mascotパーサー
-http://www.matrixscience.com
+https://www.matrixscience.com
 
 NHibernate
 オブジェクト関係写像
-http://www.nhibernate.org
+https://nhibernate.info/
 
 ProteoWizard
 質量分析データのインポート
-http://proteowizard.sourceforge.net
+https://github.com/ProteoWizard
 
-Shimadzu Corporation
-Shimadzu's ファイルコンバータソフトウェア
-Copyright © 2014 by Shimadzu Coporation
+SCIEX
+WIFFファイルリーダーライブラリ
+Copyright © 2020 by AB Sciex LLC.
 著作権所有。
-http://www.shimadzu.com
+https://sciex.com/
+
+島津製作所
+島津製作所のファイルコンバータソフトウェア
+Copyright © 2020 by Shimadzu Coporation
+著作権所有。
+https://www.shimadzu.com
 
 SQLite
 単一ファイルおよびメモリ内RDBMS
-http://www.sqlite.org
+https://www.sqlite.org
 
 SQLite.NET
 SQLiteのADO.NETプロバイダ
-http://sqlite.phxsoftware.com
+https://system.data.sqlite.org/
 
 Thermo Fisher Scientific
 MSFileReaderファイル読み出しツール
-Copyright © 2009 by Thermo Fisher Scientific, Inc.
+Copyright © 2019 by Thermo Fisher Scientific, Inc.
 著作権所有。
-http://www.thermo.com
+https://www.thermofisher.com/
 
 Waters Technologies Corporation
 メソッドエクスポートライブラリ
 ウォーターズローデータアクセスコンポーネント
-Copyright © 2010 by Waters Corporation.
+Copyright © 2021 by Waters Corporation.
 著作権所有。
-http://www.waters.com
+https://www.waters.com/
 
 ZedGraph
 チャートのプロット
-http://zedgraph.org
+https://sourceforge.net/projects/zedgraph/
 
 Zlib
 データ圧縮
-http://www.zlib.net</value>
+https://www.zlib.net</value>
   </data>
   <data name="&gt;&gt;textBox1.Name" xml:space="preserve">
     <value>textBox1</value>
@@ -359,7 +356,7 @@ http://www.zlib.net</value>
     <value>6</value>
   </data>
   <data name="label2.Text" xml:space="preserve">
-    <value>ソフトウェア依存性クレジット：</value>
+    <value>ソフトウェアの著作権の所属先：</value>
   </data>
   <data name="&gt;&gt;label2.Name" xml:space="preserve">
     <value>label2</value>
@@ -404,13 +401,13 @@ http://www.zlib.net</value>
     <value>14, 315</value>
   </data>
   <data name="linkProteoWizard.Size" type="System.Drawing.Size, System.Drawing">
-    <value>144, 13</value>
+    <value>128, 13</value>
   </data>
   <data name="linkProteoWizard.TabIndex" type="System.Int32, mscorlib">
     <value>8</value>
   </data>
   <data name="linkProteoWizard.Text" xml:space="preserve">
-    <value>proteowizard.sourceforge.net</value>
+    <value>github.com/ProteoWizard</value>
   </data>
   <data name="&gt;&gt;linkProteoWizard.Name" xml:space="preserve">
     <value>linkProteoWizard</value>
@@ -467,12 +464,12 @@ http://www.zlib.net</value>
     <value>10</value>
   </data>
   <data name="linkLabel1.Text" xml:space="preserve">
-    <value>Copyright © 2008-2015 University of Washington, 著作権所有
+    <value>Copyright © 2008-2021 University of Washington, 無断複写・転載を禁じます。
 
 MacCoss Lab, Department of Genome Sciences, UW
 
-このソフトウェアは、連邦政府および民間からの助成金を受け、
-MacCoss Labにより作成されました。詳細については、
+ このソフトウェアは、連邦政府および民間からの助成金を受け、
+MacCoss labにより作成されました。詳細については、
 Skylineウェブサイトをご覧ください。</value>
   </data>
   <data name="&gt;&gt;linkLabel1.Name" xml:space="preserve">
@@ -494,7 +491,7 @@ Skylineウェブサイトをご覧ください。</value>
     <value>6, 13</value>
   </data>
   <data name="$this.ClientSize" type="System.Drawing.Size, System.Drawing">
-    <value>521, 344</value>
+    <value>627, 344</value>
   </data>
   <data name="$this.StartPosition" type="System.Windows.Forms.FormStartPosition, System.Windows.Forms">
     <value>CenterParent</value>

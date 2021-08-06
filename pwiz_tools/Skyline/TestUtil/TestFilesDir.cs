@@ -66,27 +66,35 @@ namespace pwiz.SkylineTestUtil
         /// <param name="relativePathZip">A root project relative path to the ZIP file</param>
         /// <param name="directoryName">Name of directory to create in the test results</param>
         /// <param name="persistentFiles">List of files we'd like to extract in the ZIP file's directory for (re)use</param>
-        public TestFilesDir(TestContext testContext, string relativePathZip, string directoryName, string[] persistentFiles)
+        /// <param name="isExtractHere">If false then the zip base name is used as the destination directory</param>
+        public TestFilesDir(TestContext testContext, string relativePathZip, string directoryName, string[] persistentFiles, bool isExtractHere = false)
         {
             TestContext = testContext;
             string zipBaseName = Path.GetFileNameWithoutExtension(relativePathZip);
             if (zipBaseName == null)
                 Assert.Fail("Null zip base name");  // Resharper
-            directoryName = directoryName != null
-                ? Path.Combine(directoryName, zipBaseName)
-                : zipBaseName;
+            directoryName = GetExtractDir(directoryName, zipBaseName, false);   // Only persistent files can be extract here
             FullPath = TestContext.GetTestPath(directoryName);
             if (Directory.Exists(FullPath))
             {
                 Helpers.TryTwice(() => Directory.Delete(FullPath, true));
             }
-            // where to place persistent (usually large, expensive to extract) files if any>
+            // where to place persistent (usually large, expensive to extract) files if any
             PersistentFiles = persistentFiles;
-            PersistentFilesDir = Path.GetDirectoryName(relativePathZip);
-            PersistentFilesDir = PersistentFilesDir != null
-                ? Path.Combine(PersistentFilesDir, zipBaseName)
-                : zipBaseName;
+            PersistentFilesDir = GetExtractDir(Path.GetDirectoryName(relativePathZip), zipBaseName, isExtractHere);
+
             TestContext.ExtractTestFiles(relativePathZip, FullPath, PersistentFiles, PersistentFilesDir);
+        }
+
+        private static string GetExtractDir(string directoryName, string zipBaseName, bool isExtractHere)
+        {
+            if (!isExtractHere)
+            {
+                directoryName = directoryName != null
+                    ? Path.Combine(directoryName, zipBaseName)
+                    : zipBaseName;
+            }
+            return directoryName;
         }
 
         public string FullPath { get; private set; }
@@ -136,6 +144,64 @@ namespace pwiz.SkylineTestUtil
             if (TextUtil.CsvSeparator == TextUtil.SEPARATOR_CSV)
                 return GetTestPath(relativePath);
             return GetTestPathIntl(relativePath);
+        }
+
+
+        public enum VendorDir
+        {
+            ABI,
+            Agilent,
+            Bruker,
+            Shimadzu,
+            Thermo,
+            UIMF,
+            UNIFI,
+            Waters,
+            DiaUmpire
+        }
+
+        /// <summary>
+        /// Returns full path to the specified vendor reader's test data directory
+        /// (e.g. pwiz/data/vendor_readers/Thermo/Reader_Thermo_Test.data)
+        /// </summary>
+        public static string GetVendorTestData(VendorDir vendorDir)
+        {
+            string projectDir = ExtensionTestContext.GetProjectDirectory("");
+            if (projectDir == null)
+                throw new InvalidOperationException("unable to find project directory with Skyline test files");
+
+            string vendorReaderPath;
+            string vendorStr = Enum.GetName(typeof(VendorDir), vendorDir) ?? throw new ArgumentException(@"VendorDir value unknown");
+            if (File.Exists(Path.Combine(projectDir, @"Skyline.sln")))
+            {
+                if (vendorDir == VendorDir.DiaUmpire)
+                {
+                    return Path.Combine(projectDir, @"..\..\pwiz\analysis\spectrum_processing\SpectrumList_DiaUmpireTest.data");
+                }
+                else
+                {
+                    vendorReaderPath = Path.Combine(projectDir, @"..\..\pwiz\data\vendor_readers");
+                    return Path.Combine(vendorReaderPath, vendorStr, $"Reader_{vendorStr}_Test.data");
+                }
+            }
+            else
+            {
+                vendorReaderPath = Path.Combine(projectDir, @".."); // one up from TestZipFiles, and no vendorStr intermediate directory
+                if (vendorDir == VendorDir.DiaUmpire)
+                    return Path.Combine(vendorReaderPath, "DiaUmpireTest.data");
+                else
+                    return Path.Combine(vendorReaderPath, $"Reader_{vendorStr}_Test.data");
+            }
+
+        }
+
+        /// <summary>
+        /// Returns full path to a file in the specified vendor reader's test data directory
+        /// (e.g. pwiz/data/vendor_readers/Thermo/Reader_Thermo_Test.data/test_file.raw)
+        /// </summary>
+        public static string GetVendorTestData(VendorDir vendorDir, string rawname)
+        {
+            return Path.Combine(GetVendorTestData(vendorDir), rawname);
         }
 
         /// <summary>

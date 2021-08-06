@@ -26,8 +26,8 @@ using System.Threading;
 using System.Xml;
 using System.Xml.Serialization;
 using pwiz.Common.Collections;
+using pwiz.Common.Database.NHibernate;
 using pwiz.Common.SystemUtil;
-using pwiz.ProteomeDatabase.Util;
 using pwiz.ProteowizardWrapper;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Results;
@@ -43,7 +43,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
         private const int SCHEMA_VERSION_CURRENT = 1;
 
         private const double PRECURSOR_TOLERANCE_CHROM = 0.7;
-        private const double PRECURSOR_TOLERANCE = 0.001;
+        private const double PRECURSOR_TOLERANCE = 0.005;
         private const double RT_TOLERANCE = 0.001;
 
         private int SchemaVersion { get; set; }
@@ -78,9 +78,9 @@ namespace pwiz.Skyline.Model.Lib.Midas
             FilePath = spec.FilePath;
         }
 
-        public override LibrarySpec CreateSpec(string path)
+        protected override LibrarySpec CreateSpec()
         {
-            return new MidasLibSpec(Name, path);
+            return new MidasLibSpec(Name, FilePath);
         }
 
         public override string SpecFilter
@@ -100,7 +100,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
             {
                 return new LibraryDetails
                 {
-                    Format = "MIDAS", // Not L10N
+                    Format = @"MIDAS",
                     Revision = Revision.ToString(LocalizationHelper.CurrentCulture),
                     SpectrumCount = 0,
                     DataFiles = LibraryFiles.FilePaths.Select(f => new SpectrumSourceFileDetails(f)).ToList()
@@ -131,7 +131,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
 
         public override string IsNotLoadedExplained
         {
-            get { return _spectra != null ? null : "MIDAS: no dictionary"; } // Not L10N
+            get { return _spectra != null ? null : @"MIDAS: no dictionary"; }
         }
 
         public override bool IsSameLibrary(Library library)
@@ -216,9 +216,10 @@ namespace pwiz.Skyline.Model.Lib.Midas
                     yield break;
 
                 var spectrum = msd.GetSpectrum(i);
-                if (!spectrum.Precursors.Any())
+                var ms1Precursors = spectrum.GetPrecursorsByMsLevel(1);
+                if (!ms1Precursors.Any())
                     continue;
-                var precursor = spectrum.Precursors.First();
+                var precursor = ms1Precursors.First();
                 yield return new DbSpectrum(new DbResultsFile(msd.FilePath), precursor.PrecursorMz.GetValueOrDefault(),
                     null, null, null, spectrum.RetentionTime.GetValueOrDefault(), spectrum.Mzs, spectrum.Intensities);
             }
@@ -256,9 +257,9 @@ namespace pwiz.Skyline.Model.Lib.Midas
             var precursors = (from nodePepGroup in doc.PeptideGroups
                               from nodePep in nodePepGroup.Peptides
                               from nodeTranGroup in nodePep.TransitionGroups
-                              select new Tuple<double, string, int>(
+                              select new Tuple<double, Target, int>(
                                   nodeTranGroup.PrecursorMz,
-                                  doc.Settings.GetPrecursorCalc(nodeTranGroup.TransitionGroup.LabelType, nodePep.ExplicitMods).GetModifiedSequence(nodePep.Peptide.Sequence, false),
+                                  doc.Settings.GetPrecursorCalc(nodeTranGroup.TransitionGroup.LabelType, nodePep.ExplicitMods).GetModifiedSequence(nodePep.Peptide.Target, false),
                                   nodeTranGroup.PrecursorCharge
                               )).ToList();
             if (!precursors.Any())
@@ -282,7 +283,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
                 var closest = precursors[j];
                 if (Math.Abs(precursor - closest.Item1) < PRECURSOR_TOLERANCE)
                 {
-                    spectrum.DocumentPeptide = closest.Item2;
+                    spectrum.DocumentPeptide = closest.Item2.Sequence;
                     spectrum.DocumentPrecursorCharge = closest.Item3;
                 }
             }
@@ -367,33 +368,44 @@ namespace pwiz.Skyline.Model.Lib.Midas
                 min <= spectrum.RetentionTime && spectrum.RetentionTime <= max);
         }
 
-        public IEnumerable<DbSpectrum> GetSpectraByPeptide(MsDataFileUri file, string sequence, int charge)
+        public IEnumerable<DbSpectrum> GetSpectraByPeptide(MsDataFileUri file, LibKey libKey)
         {
-            return GetSpectraByFile(file).Where(spectrum =>
-                !string.IsNullOrWhiteSpace(spectrum.DocumentPeptide) && spectrum.DocumentPeptide.Equals(sequence) &&
-                spectrum.DocumentPrecursorCharge.HasValue && spectrum.DocumentPrecursorCharge.Equals(charge));
+            foreach (var spectrum in GetSpectraByFile(file))
+            {
+                if (string.IsNullOrWhiteSpace(spectrum.DocumentPeptide))
+                {
+                    continue;
+                }
+                var key = new PeptideLibraryKey(spectrum.DocumentPeptide,
+                    spectrum.DocumentPrecursorCharge.GetValueOrDefault());
+                if (LibKeyIndex.KeysMatch(libKey.LibraryKey, key))
+                {
+                    yield return spectrum;
+                }
+            }
         }
 
         public override bool Contains(LibKey key)
         {
             if (!key.IsPrecursorKey)
-                return GetSpectraByPeptide(null, key.Sequence, key.Charge).Any();
+                return GetSpectraByPeptide(null, key).Any();
 
             var spectra = GetSpectraByPrecursor(null, key.PrecursorMz.GetValueOrDefault());
             var keyRt = key.RetentionTime;
             return !keyRt.HasValue ? spectra.Any() : spectra.Any(s => Equals(keyRt.Value, s.RetentionTime));
         }
 
-        public override bool ContainsAny(LibSeqKey key)
+        public override bool ContainsAny(Target target)
         {
+            var key = new PeptideLibraryKey(target.Sequence, 0);
             return _spectra.SelectMany(fileSpectra => fileSpectra.Value)
-                           .Where(spectra=> null != spectra.DocumentPeptide)
-                           .Any(spectra => new LibSeqKey(FastaSequence.StripModifications(spectra.DocumentPeptide)).Equals(key));
+                .Any(spectrum => null != spectrum.DocumentPeptide && key.UnmodifiedSequence ==
+                                 new PeptideLibraryKey(spectrum.DocumentPeptide, 0).UnmodifiedSequence);
         }
 
         public override bool TryGetLibInfo(LibKey key, out SpectrumHeaderInfo libInfo)
         {
-            libInfo = Contains(key) ? new BiblioSpecSpectrumHeaderInfo(Name, 1) : null;
+            libInfo = Contains(key) ? new BiblioSpecSpectrumHeaderInfo(Name, 1, null, null, null) : null;
             return libInfo != null;
         }
 
@@ -403,7 +415,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
             DbSpectrum[] spectra;
             if (!key.IsPrecursorKey)
             {
-                spectra = GetSpectraByPeptide(null, key.Sequence, key.Charge).ToArray();
+                spectra = GetSpectraByPeptide(null, key).ToArray();
             }
             else
             {
@@ -416,7 +428,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
                 return false;
 
             var spec = spectra.First();
-            var mi = spec.Mzs.Select((t, i) => new SpectrumPeaksInfo.MI {Mz = spec.Mzs[i], Intensity = (float) spec.Intensities[i]});
+            var mi = spec.Mzs.Select((t, i) => new SpectrumPeaksInfo.MI { Mz = spec.Mzs[i], Intensity = (float)spec.Intensities[i] }); // CONSIDER(bspratt): annotation?
             spectrum = new SpectrumPeaksInfo(mi.ToArray());
             return true;
         }
@@ -427,7 +439,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
             if (spec == null)
                 return null;
 
-            var mi = spec.Mzs.Select((t, i) => new SpectrumPeaksInfo.MI {Mz = spec.Mzs[i], Intensity = (float) spec.Intensities[i]});
+            var mi = spec.Mzs.Select((t, i) => new SpectrumPeaksInfo.MI { Mz = spec.Mzs[i], Intensity = (float)spec.Intensities[i] }); // CONSIDER(bspratt): annotation?
             return new SpectrumPeaksInfo(mi.ToArray());
         }
 
@@ -437,7 +449,7 @@ namespace pwiz.Skyline.Model.Lib.Midas
             DbSpectrum[] spectra;
             if (!key.IsPrecursorKey)
             {
-                spectra = GetSpectraByPeptide(filePath, key.Sequence, key.Charge).ToArray();
+                spectra = GetSpectraByPeptide(filePath, key).ToArray();
             }
             else
             {
@@ -471,40 +483,46 @@ namespace pwiz.Skyline.Model.Lib.Midas
             return false;
         }
 
-        public override bool TryGetDriftTimeInfos(LibKey key, MsDataFileUri filePath, out DriftTimeInfo[] driftTimes)
+        public override bool TryGetIonMobilityInfos(LibKey key, MsDataFileUri filePath, out IonMobilityAndCCS[] ionMobilities)
         {
-            driftTimes = null;
+            ionMobilities = null;
             return false;
         }
 
-        public override bool TryGetDriftTimeInfos(MsDataFileUri filePath, out LibraryDriftTimeInfo driftTimes)
+        public override bool TryGetIonMobilityInfos(LibKey[] targetIons, MsDataFileUri filePath, out LibraryIonMobilityInfo ionMobilities)
         {
-            driftTimes = null;
+            ionMobilities = null;
             return false;
         }
 
-        public override bool TryGetDriftTimeInfos(int fileIndex, out LibraryDriftTimeInfo driftTimes)
+        public override bool TryGetIonMobilityInfos(LibKey[] targetIons, int fileIndex, out LibraryIonMobilityInfo ionMobilities)
         {
-            driftTimes = null;
+            ionMobilities = null;
             return false;
         }
 
-        public override IEnumerable<SpectrumInfo> GetSpectra(LibKey key, IsotopeLabelType labelType, LibraryRedundancy redundancy)
+        public override bool TryGetIonMobilityInfos(LibKey[] targetIons, out LibraryIonMobilityInfo ionMobilities)
+        {
+            ionMobilities = null;
+            return false;
+        }
+
+        public override IEnumerable<SpectrumInfoLibrary> GetSpectra(LibKey key, IsotopeLabelType labelType, LibraryRedundancy redundancy)
         {
             if (redundancy == LibraryRedundancy.best)
                 yield break;
 
             if (!key.IsPrecursorKey)
             {
-                foreach (var spectrum in GetSpectraByPeptide(null, key.Sequence, key.Charge))
-                    yield return new SpectrumInfo(this, IsotopeLabelType.light, spectrum.ResultsFile.FilePath, spectrum.RetentionTime, null, false, spectrum);
+                foreach (var spectrum in GetSpectraByPeptide(null, key))
+                    yield return new SpectrumInfoLibrary(this, labelType, spectrum.ResultsFile.FilePath, spectrum.RetentionTime, null, null, false, spectrum);
                 yield break;
             }
 
             var keyRt = key.RetentionTime;
             foreach (var spectrum in GetSpectraByPrecursor(null, key.PrecursorMz.GetValueOrDefault()))
                 if (!keyRt.HasValue || Equals(keyRt.Value, spectrum.RetentionTime))
-                    yield return new SpectrumInfo(this, IsotopeLabelType.light, spectrum.ResultsFile.FilePath, spectrum.RetentionTime, null, false, spectrum);
+                    yield return new SpectrumInfoLibrary(this, labelType, spectrum.ResultsFile.FilePath, spectrum.RetentionTime, null, null, false, spectrum);
         }
 
         public override int? FileCount { get { return IsLoaded ? _spectra.Keys.Count : 0; } }
@@ -624,18 +642,26 @@ namespace pwiz.Skyline.Model.Lib.Midas
                 {
                     monitor.UpdateProgress(progress.ChangePercentComplete(i*percentResultsFiles/resultsFiles.Length));
 
-                    var sampleIndex = resultsFile.GetSampleIndex();
                     var filePath = resultsFile.GetFilePath();
-                    using (var msd = new MsDataFileImpl(filePath, sampleIndex == -1 ? 0 : sampleIndex, resultsFile.GetLockMassParameters(), requireVendorCentroidedMS2: true))
+                    if (File.Exists(filePath))
                     {
-                        if (ChromatogramDataProvider.HasChromatogramData(msd) && SpectraChromDataProvider.HasSpectrumData(msd))
+                        var sampleIndex = resultsFile.GetSampleIndex();
+                        using (var msd = new MsDataFileImpl(filePath, sampleIndex == -1 ? 0 : sampleIndex, resultsFile.GetLockMassParameters(), requireVendorCentroidedMS2: true))
                         {
-                            var chromPrecursors = ReadChromPrecursorsFromMsd(msd, monitor).ToList();
-                            newSpectra.AddRange(ReadDbSpectraFromMsd(msd, monitor));
-                            MatchSpectraToChrom(newSpectra, chromPrecursors, monitor);
+                            if (ChromatogramDataProvider.HasChromatogramData(msd) && SpectraChromDataProvider.HasSpectrumData(msd))
+                            {
+                                var chromPrecursors = ReadChromPrecursorsFromMsd(msd, monitor).ToList();
+                                newSpectra.AddRange(ReadDbSpectraFromMsd(msd, monitor));
+                                MatchSpectraToChrom(newSpectra, chromPrecursors, monitor);
+                            }
                         }
+
+                        MatchSpectraToPeptides(newSpectra, doc, monitor);
                     }
-                    MatchSpectraToPeptides(newSpectra, doc, monitor);
+                    else
+                    {
+                        failedFiles.Add(resultsFile);
+                    }
                 }
                 catch (Exception x)
                 {

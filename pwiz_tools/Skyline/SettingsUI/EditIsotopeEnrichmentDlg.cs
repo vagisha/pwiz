@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Properties;
@@ -36,13 +37,15 @@ namespace pwiz.Skyline.SettingsUI
         private static readonly IList<KeyValuePair<string, string>> LIST_NAME_SYMBOL =
             new[]
                 {
-                    new KeyValuePair<string, string>("2H", BioMassCalc.H2), // Not L10N
-                    new KeyValuePair<string, string>("13C", BioMassCalc.C13), // Not L10N
-                    new KeyValuePair<string, string>("15N", BioMassCalc.N15), // Not L10N
-                    new KeyValuePair<string, string>("17O", BioMassCalc.O17), // Not L10N
-                    new KeyValuePair<string, string>("18O", BioMassCalc.O18), // Not L10N
-                    new KeyValuePair<string, string>("37Cl", BioMassCalc.Cl37), // Not L10N
-                    new KeyValuePair<string, string>("81Br", BioMassCalc.Br81), // Not L10N
+                    new KeyValuePair<string, string>(@"2H", BioMassCalc.H2),
+                    new KeyValuePair<string, string>(@"13C", BioMassCalc.C13),
+                    new KeyValuePair<string, string>(@"15N", BioMassCalc.N15),
+                    new KeyValuePair<string, string>(@"17O", BioMassCalc.O17),
+                    new KeyValuePair<string, string>(@"18O", BioMassCalc.O18),
+// NOT YET - no demonstrated need
+//                    new KeyValuePair<string, string>(@"37Cl", BioMassCalc.Cl37),
+//                    new KeyValuePair<string, string>(@"81Br", BioMassCalc.Br81),
+//                    new KeyValuePair<string, string>(@"14C", BioMassCalc.C14),
                 };
 
         private IsotopeEnrichments _enrichments;
@@ -158,7 +161,7 @@ namespace pwiz.Skyline.SettingsUI
         private void InvalidCell(DataGridViewCell cell,
             string message, params object[] args)
         {            
-            MessageBox.Show(string.Format(message, args));
+            MessageDlg.Show(FormUtil.FindTopLevelOwner(this),string.Format(message, args));
             gridEnrichments.Focus();
             gridEnrichments.ClearSelection();
             cell.Selected = true;

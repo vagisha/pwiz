@@ -22,16 +22,20 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using pwiz.Common.DataBinding;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
+using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
 using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.EditUI
 {
-    public partial class RenameProteinsDlg : FormEx
+    public partial class RenameProteinsDlg : ModeUIInvariantFormEx,  // This dialog is inherently proteomic, never wants the "peptide"->"molecule" translation
+                    IAuditLogModifier<RenameProteinsDlg.RenameProteinsSettings>
     {
         private readonly SrmDocument _document;
         private readonly GridViewDriver _gridViewDriver;
@@ -48,6 +52,37 @@ namespace pwiz.Skyline.EditUI
         }
 
         public IDictionary<string, string> DictNameToName { get; private set; }
+
+        public RenameProteinsSettings FormSettings
+        {
+            get
+            {
+                return new RenameProteinsSettings(DictNameToName.Keys
+                    .Select(old => new RenameProteins(old, DictNameToName[old])).ToList());
+            }
+        }
+
+        public class RenameProteinsSettings : AuditLogOperationSettings<RenameProteinsSettings>
+        {
+            public RenameProteinsSettings(List<RenameProteins> renamedProteins)
+            {
+                RenamedProteins = renamedProteins;
+            }
+
+            protected override AuditLogEntry CreateEntry(SrmDocumentPair docPair)
+            {
+                var baseEntry = base.CreateEntry(docPair);
+
+                var entry = AuditLogEntry.CreateCountChangeEntry(MessageType.renamed_single_protein,
+                    MessageType.renamed_proteins, docPair.NewDocumentType, RenamedProteins,
+                    rename => MessageArgs.Create(rename.CurrentName, rename.NewName), null);
+
+                return entry.Merge(baseEntry, false);
+            }
+
+            [Track]
+            public List<RenameProteins> RenamedProteins { get; private set; }
+        }
 
         public int NameCount
         {
@@ -215,7 +250,6 @@ namespace pwiz.Skyline.EditUI
             protected override void DoPaste()
             {
                 var renameList = new List<RenameProteins>();
-
                 GridView.DoPaste(MessageParent, ValidateRow,
                                  values =>
                                  renameList.Add(new RenameProteins
@@ -239,35 +273,29 @@ namespace pwiz.Skyline.EditUI
                 }
                 return true;
             }
-
-            public void Populate(IEnumerable<RenameProteins> values)
-            {
-                Items.RaiseListChangedEvents = false;
-                try
-                {
-                    Items.Clear();
-                    foreach (var value in values)
-                    {
-                        Items.Add(value);
-                    }
-                }
-                finally
-                {
-                    Items.RaiseListChangedEvents = true;
-                }
-                Items.ResetBindings();
-            }
         }
 
         public class RenameProteins
         {
+            public RenameProteins(string currentName, string newName)
+            {
+                CurrentName = currentName;
+                NewName = newName;
+            }
+
+            public RenameProteins()
+            {
+            }
+
+            [Track]
             public string CurrentName { get; set; }
+            [Track]
             public string NewName { get; set; }
         }
 
         // CONSIDER bspratt - wouldn't a button for restoring the original name be useful too?
 
-        private void UseAccessionOrPreferredNameorGene(ProteinDisplayMode mode)
+        private void UseAccessionOrPreferredNameorGene(ProteinMetadataManager.ProteinDisplayMode mode)
         {
             var dictNodeToNewName = new Dictionary<string, string>();
             foreach (var nodePepGroup in _document.MoleculeGroups)
@@ -278,13 +306,13 @@ namespace pwiz.Skyline.EditUI
                     string text = null;
                     switch (mode)
                     {
-                        case ProteinDisplayMode.ByAccession:
+                        case ProteinMetadataManager.ProteinDisplayMode.ByAccession:
                             text = nodePepGroup.ProteinMetadata.Accession;
                             break;
-                        case ProteinDisplayMode.ByPreferredName:
+                        case ProteinMetadataManager.ProteinDisplayMode.ByPreferredName:
                             text = nodePepGroup.ProteinMetadata.PreferredName;
                             break;
-                        case ProteinDisplayMode.ByGene:
+                        case ProteinMetadataManager.ProteinDisplayMode.ByGene:
                             text = nodePepGroup.ProteinMetadata.Gene;
                             break;
                     }
@@ -310,17 +338,17 @@ namespace pwiz.Skyline.EditUI
 
         private void Accession_Click(object sender, EventArgs e)
         {
-            UseAccessionOrPreferredNameorGene(ProteinDisplayMode.ByAccession);
+            UseAccessionOrPreferredNameorGene(ProteinMetadataManager.ProteinDisplayMode.ByAccession);
         }
 
         private void PreferredName_Click(object sender, EventArgs e)
         {
-            UseAccessionOrPreferredNameorGene(ProteinDisplayMode.ByPreferredName);
+            UseAccessionOrPreferredNameorGene(ProteinMetadataManager.ProteinDisplayMode.ByPreferredName);
         }
 
         private void Gene_Click(object sender, EventArgs e)
         {
-            UseAccessionOrPreferredNameorGene(ProteinDisplayMode.ByGene);
+            UseAccessionOrPreferredNameorGene(ProteinMetadataManager.ProteinDisplayMode.ByGene);
         }
 
 
@@ -337,6 +365,5 @@ namespace pwiz.Skyline.EditUI
         }
 
         #endregion
-
     }
 }

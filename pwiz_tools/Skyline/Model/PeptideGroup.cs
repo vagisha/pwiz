@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -25,6 +25,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using pwiz.Common.Collections;
 using pwiz.ProteomeDatabase.API;
+using pwiz.Skyline.Model.Crosslinking;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -35,7 +36,7 @@ namespace pwiz.Skyline.Model
 {
     public class PeptideGroup : Identity
     {
-        public const string DECOYS = "Decoys"; // Not L10N
+        public const string DECOYS = "Decoys";
 
         public virtual string Name { get { return null; } }
         public virtual string Description { get { return null; } }
@@ -132,36 +133,32 @@ namespace pwiz.Skyline.Model
 
     public class FastaSequence : PeptideGroup
     {
-        public static readonly char[] OPEN_MOD = { '[', '{', '(' }; // Not L10N
-        public static readonly char[] CLOSE_MOD = { ']', '}', ')' }; // Not L10N
+        public static readonly char[] OPEN_MOD = { '[', '{', '(' };
+        public static readonly char[] CLOSE_MOD = { ']', '}', ')' };
 
-        public const string PEPTIDE_SEQUENCE_SEPARATOR = "::"; // Not L10N
-        public static readonly Regex RGX_ALL = new Regex(@"(\[.*?\]|\{.*?\}|\(.*?\))"); // Not L10N
-        public static readonly Regex RGX_LIGHT = new Regex(@"\[.*?\]"); // Not L10N
-        public static readonly Regex RGX_HEAVY = new Regex(@"\{.*?\}"); // Not L10N
-        public static readonly Regex RGX_DASH = new Regex(@"^-"); // Not L10N
-
-        public static bool IsSequence(string seq)
-        {
-            return IsSequence(StripModifications(seq), AminoAcid.IsAA);
-        }
+        public const string PEPTIDE_SEQUENCE_SEPARATOR = "::";
+        public static readonly Regex RGX_ALL = new Regex(@"(\[.*?\]|\{.*?\}|\(.*?\))");
+        public static readonly Regex RGX_LIGHT = new Regex(@"\[.*?\]");
+        public static readonly Regex RGX_HEAVY = new Regex(@"\{.*?\}");
+        public static readonly Regex RGX_DASH = new Regex(@"^-");
 
         public static bool IsExSequence(string seq)
         {
-            return IsSequence(StripModifications(seq), AminoAcid.IsExAA);
-        }
-
-        private static bool IsSequence(string seq, Func<char, bool> check)
-        {
+            seq = StripModifications(seq);
             if (seq.Length == 0)
                 return false;
 
             foreach (char c in seq)
             {
-                if (!check(c))
+                if (!AminoAcid.IsExAA(c))
                     return false;
             }
             return true;
+        }
+
+        public static bool IsValidPeptideSequence(string seq)
+        {
+            return IsExSequence(seq) || null != CrosslinkSequenceParser.TryParseCrosslinkLibraryKey(seq, 0);
         }
 
         private readonly string _name;
@@ -189,6 +186,7 @@ namespace pwiz.Skyline.Model
         }
 
         public override string Name { get { return _name; } }
+        public string DisplayName => string.IsNullOrEmpty(_name) ? _sequence : _name;
         public override string Description { get { return _description; } }
         public override string Sequence { get { return _sequence; } }
         public new bool IsDecoy { get { return _isDecoy; } }
@@ -203,9 +201,9 @@ namespace pwiz.Skyline.Model
             get
             {
                 StringBuilder sb = new StringBuilder();
-                sb.Append(">").Append(Name).Append(" ").Append(Description); // Not L10N
+                sb.Append(@">").Append(Name).Append(@" ").Append(Description);
                 foreach (var alt in Alternatives)
-                    sb.Append((char)1).Append(alt.Name ?? String.Empty).Append(" ").Append(alt.Description ?? String.Empty); // Not L10N
+                    sb.Append((char)1).Append(alt.Name ?? String.Empty).Append(@" ").Append(alt.Description ?? String.Empty);
 
                 for (int i = 0; i < Sequence.Length; i++)
                 {
@@ -213,12 +211,12 @@ namespace pwiz.Skyline.Model
                         sb.AppendLine();
                     sb.Append(Sequence[i]);
                 }
-                sb.Append("*"); // Not L10N
+                sb.Append(@"*");
                 return sb.ToString();
             }
         }
 
-        public IEnumerable<PeptideDocNode> CreatePeptideDocNodes(SrmSettings settings, bool useFilter, string peptideSequence)
+        public IEnumerable<PeptideDocNode> CreatePeptideDocNodes(SrmSettings settings, bool useFilter, Target peptideSequence)
         {
             PeptideSettings pepSettings = settings.PeptideSettings;
             DigestSettings digest = pepSettings.DigestSettings;
@@ -233,7 +231,7 @@ namespace pwiz.Skyline.Model
             }
             foreach (var peptide in pepSettings.Enzyme.Digest(this, digest, maxLen, minLen))
             {
-                if (null != peptideSequence && peptideSequence != peptide.Sequence)
+                if (null != peptideSequence && !Equals(peptideSequence, peptide.Target))
                 {
                     continue;
                 }
@@ -242,7 +240,7 @@ namespace pwiz.Skyline.Model
             }
         }
 
-        public IEnumerable<PeptideDocNode> CreateFullPeptideDocNodes(SrmSettings settings, bool useFilter, string peptideSequence)
+        public IEnumerable<PeptideDocNode> CreateFullPeptideDocNodes(SrmSettings settings, bool useFilter, Target peptideSequence)
         {
             if (settings.PeptideSettings.Libraries.RankId == null)
             {
@@ -261,21 +259,25 @@ namespace pwiz.Skyline.Model
             }
         }
 
-        public PeptideDocNode CreateFullPeptideDocNode(SrmSettings settings, String peptideSequence)
+        public PeptideDocNode CreateFullPeptideDocNode(SrmSettings settings, Target peptideSequence)
         {
             peptideSequence = StripModifications(peptideSequence);
             foreach (var peptideDocNode in CreateFullPeptideDocNodes(settings, false, peptideSequence))
             {
-                if (peptideSequence == peptideDocNode.Peptide.Sequence)
+                if (peptideSequence == peptideDocNode.Peptide.Target)
                     return peptideDocNode;
             }
 
-            int begin = Sequence.IndexOf(peptideSequence, StringComparison.Ordinal);
+            if (!peptideSequence.IsProteomic) // Can't (yet?) predict small mol fragments
+                return null;
+
+            var sequence = peptideSequence.Sequence;
+            int begin = Sequence.IndexOf(sequence, StringComparison.Ordinal);
             if (begin < 0)
                 return null;
 
-            var peptide = new Peptide(this, peptideSequence, begin, begin + peptideSequence.Length,
-                settings.PeptideSettings.Enzyme.CountCleavagePoints(peptideSequence));
+            var peptide = new Peptide(this, peptideSequence.Sequence, begin, begin + sequence.Length,
+                settings.PeptideSettings.Enzyme.CountCleavagePoints(sequence));
 
             return new PeptideDocNode(peptide)
                 .ChangeSettings(settings, SrmSettingsDiff.ALL);
@@ -288,9 +290,35 @@ namespace pwiz.Skyline.Model
             for (int i = 0; i < seq.Length; i++)
             {
                 char c = seq[i];
-                if (!AminoAcid.IsExAA(c) && c != '*' && c != '-') // Not L10N
+                if (!AminoAcid.IsExAA(c) && c != '*' && c != '-')
                     throw new InvalidDataException(string.Format(Resources.FastaSequence_ValidateSequence_A_protein_sequence_may_not_contain_the_character__0__at__1__, seq[i], i));
             }
+        }
+
+        /// <summary>
+        /// Returns the fraction of amino acids in the protein sequence which could belong to one
+        /// or more of the peptide sequences. If the protein sequence has repeats, and a particular
+        /// peptide sequence can be found within it multiple times, the peptide is considered to
+        /// cover all of its repeats.
+        /// </summary>
+        public static double CalculateSequenceCoverage(string proteinSequence, IEnumerable<string> peptideSequences)
+        {
+            var bools = new bool[proteinSequence.Length];
+            foreach (var peptide in peptideSequences)
+            {
+                if (string.IsNullOrEmpty(peptide))
+                {
+                    continue;
+                }
+                int ichNext = -1;
+                while ((ichNext = proteinSequence.IndexOf(peptide, ichNext + 1, StringComparison.Ordinal)) >= 0)
+                {
+                    ReadOnlyList.Create(peptide.Length, i => true).CopyTo(bools, ichNext);
+                }
+            }
+
+            double coveredCount = bools.Count(b => b);
+            return coveredCount / proteinSequence.Length;
         }
 
         private void Validate()
@@ -354,9 +382,22 @@ namespace pwiz.Skyline.Model
             return Comparer<int>.Default.Compare(pep1.Order, pep2.Order);
         }
 
+        public static Target StripModifications(Target seq)
+        {
+            return StripModifications(seq, RGX_ALL);
+        }
+
         public static string StripModifications(string seq)
         {
             return StripModifications(seq, RGX_ALL);
+        }
+
+        public static Target StripModifications(Target target, Regex rgx)
+        {
+            if (!target.IsProteomic)
+                return target;
+            var result = StripModifications(target.Sequence, rgx);
+            return target.ChangeSequence(result);
         }
 
         public static string StripModifications(string seq, Regex rgx)
@@ -368,7 +409,9 @@ namespace pwiz.Skyline.Model
             string result = rgx.Replace(seq, String.Empty);
             // Some potential modified sequences begin with [3Lt]-AAAA. The above replace
             // will remove the bracketed modification, but not the dash.
-            if (!result.Contains("\n")) // Not L10N
+            // ReSharper disable LocalizableElement
+            if (!result.Contains("\n"))
+            // ReSharper restore LocalizableElement
                 result = RemoveLeadingDash(result);
             else
             {
@@ -387,7 +430,7 @@ namespace pwiz.Skyline.Model
 
         private static string RemoveLeadingDash(string line)
         {
-            if (line.StartsWith("-")) // Not L10N
+            if (line.StartsWith(@"-"))
                 line = line.Substring(1);
             return line;
         }
@@ -410,6 +453,12 @@ namespace pwiz.Skyline.Model
                 }
             }
             return seq;
+        }
+
+        public FastaSequence AddAlternative(ProteinMetadata proteinMetadata)
+        {
+            var alternativesNew = new List<ProteinMetadata>(Alternatives) {proteinMetadata};
+            return new FastaSequence(_name, _description, alternativesNew, _sequence, _isDecoy);
         }
     }
 

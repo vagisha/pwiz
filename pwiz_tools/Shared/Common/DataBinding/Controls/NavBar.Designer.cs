@@ -40,7 +40,6 @@
             this.bindingNavigatorMoveNextItem = new System.Windows.Forms.ToolStripButton();
             this.bindingNavigatorMoveLastItem = new System.Windows.Forms.ToolStripButton();
             this.bindingNavigatorSeparator2 = new System.Windows.Forms.ToolStripSeparator();
-            this.bindingNavigatorAddNewItem = new System.Windows.Forms.ToolStripButton();
             this.navBarDeleteItem = new System.Windows.Forms.ToolStripButton();
             this.navBarButtonExport = new System.Windows.Forms.ToolStripButton();
             this.toolStripSeparator1 = new System.Windows.Forms.ToolStripSeparator();
@@ -50,8 +49,13 @@
             this.toolStripSeparator2 = new System.Windows.Forms.ToolStripSeparator();
             this.lblFilterApplied = new System.Windows.Forms.ToolStripLabel();
             this.bindingNavigator1 = new System.Windows.Forms.BindingNavigator(this.components);
-            this.navBarButtonCopyAll = new System.Windows.Forms.ToolStripButton();
+            this.btnGroupTotal = new System.Windows.Forms.ToolStripSplitButton();
+            this.navBarButtonCluster = new System.Windows.Forms.ToolStripSplitButton();
+            this.navBarButtonClusterGrid = new System.Windows.Forms.ToolStripMenuItem();
+            this.advancedToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripSeparator3 = new System.Windows.Forms.ToolStripSeparator();
+            this.navBarButtonCopyAll = new System.Windows.Forms.ToolStripButton();
+            this.navBarButtonActions = new System.Windows.Forms.ToolStripDropDownButton();
             ((System.ComponentModel.ISupportInitialize)(this.bindingNavigator1)).BeginInit();
             this.bindingNavigator1.SuspendLayout();
             this.SuspendLayout();
@@ -112,15 +116,10 @@
             this.bindingNavigatorSeparator2.Name = "bindingNavigatorSeparator2";
             resources.ApplyResources(this.bindingNavigatorSeparator2, "bindingNavigatorSeparator2");
             // 
-            // bindingNavigatorAddNewItem
-            // 
-            this.bindingNavigatorAddNewItem.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
-            resources.ApplyResources(this.bindingNavigatorAddNewItem, "bindingNavigatorAddNewItem");
-            this.bindingNavigatorAddNewItem.Name = "bindingNavigatorAddNewItem";
-            // 
             // navBarDeleteItem
             // 
             this.navBarDeleteItem.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.navBarDeleteItem.Image = global::pwiz.Common.Properties.Resources.Delete;
             resources.ApplyResources(this.navBarDeleteItem, "navBarDeleteItem");
             this.navBarDeleteItem.Name = "navBarDeleteItem";
             this.navBarDeleteItem.Click += new System.EventHandler(this.NavBarDeleteItemOnClick);
@@ -170,12 +169,14 @@
             // 
             // bindingNavigator1
             // 
-            this.bindingNavigator1.AddNewItem = this.bindingNavigatorAddNewItem;
+            this.bindingNavigator1.AddNewItem = null;
             this.bindingNavigator1.CountItem = this.bindingNavigatorCountItem;
             this.bindingNavigator1.DeleteItem = null;
             this.bindingNavigator1.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
             this.bindingNavigator1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.navBarButtonViews,
+            this.btnGroupTotal,
+            this.navBarButtonCluster,
             this.bindingNavigatorMoveFirstItem,
             this.bindingNavigatorMovePreviousItem,
             this.bindingNavigatorSeparator,
@@ -185,11 +186,11 @@
             this.bindingNavigatorMoveNextItem,
             this.bindingNavigatorMoveLastItem,
             this.bindingNavigatorSeparator2,
-            this.bindingNavigatorAddNewItem,
             this.navBarDeleteItem,
             this.toolStripSeparator3,
             this.navBarButtonCopyAll,
             this.navBarButtonExport,
+            this.navBarButtonActions,
             this.toolStripSeparator1,
             this.toolStripLabel1,
             this.tbxFind,
@@ -204,6 +205,42 @@
             this.bindingNavigator1.Name = "bindingNavigator1";
             this.bindingNavigator1.PositionItem = this.bindingNavigatorPositionItem;
             // 
+            // btnGroupTotal
+            // 
+            this.btnGroupTotal.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            resources.ApplyResources(this.btnGroupTotal, "btnGroupTotal");
+            this.btnGroupTotal.Name = "btnGroupTotal";
+            this.btnGroupTotal.ButtonClick += new System.EventHandler(this.btnGroupTotal_Click);
+            this.btnGroupTotal.DropDownOpening += new System.EventHandler(this.btnGroupTotal_DropDownOpening);
+            // 
+            // navBarButtonCluster
+            // 
+            this.navBarButtonCluster.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
+            this.navBarButtonCluster.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+            this.navBarButtonClusterGrid,
+            this.advancedToolStripMenuItem});
+            resources.ApplyResources(this.navBarButtonCluster, "navBarButtonCluster");
+            this.navBarButtonCluster.Name = "navBarButtonCluster";
+            this.navBarButtonCluster.ButtonClick += new System.EventHandler(this.navBarButtonCluster_ButtonClick);
+            this.navBarButtonCluster.DropDownOpening += new System.EventHandler(this.navBarButtonCluster_DropDownOpening);
+            // 
+            // navBarButtonClusterGrid
+            // 
+            this.navBarButtonClusterGrid.Name = "navBarButtonClusterGrid";
+            resources.ApplyResources(this.navBarButtonClusterGrid, "navBarButtonClusterGrid");
+            this.navBarButtonClusterGrid.Click += new System.EventHandler(this.navBarButtonClusterGrid_Click);
+            // 
+            // advancedToolStripMenuItem
+            // 
+            this.advancedToolStripMenuItem.Name = "advancedToolStripMenuItem";
+            resources.ApplyResources(this.advancedToolStripMenuItem, "advancedToolStripMenuItem");
+            this.advancedToolStripMenuItem.Click += new System.EventHandler(this.advancedToolStripMenuItem_Click);
+            // 
+            // toolStripSeparator3
+            // 
+            this.toolStripSeparator3.Name = "toolStripSeparator3";
+            resources.ApplyResources(this.toolStripSeparator3, "toolStripSeparator3");
+            // 
             // navBarButtonCopyAll
             // 
             this.navBarButtonCopyAll.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Image;
@@ -211,10 +248,12 @@
             this.navBarButtonCopyAll.Name = "navBarButtonCopyAll";
             this.navBarButtonCopyAll.Click += new System.EventHandler(this.NavBarButtonCopyAllOnClick);
             // 
-            // toolStripSeparator3
+            // navBarButtonActions
             // 
-            this.toolStripSeparator3.Name = "toolStripSeparator3";
-            resources.ApplyResources(this.toolStripSeparator3, "toolStripSeparator3");
+            this.navBarButtonActions.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.Text;
+            resources.ApplyResources(this.navBarButtonActions, "navBarButtonActions");
+            this.navBarButtonActions.Name = "navBarButtonActions";
+            this.navBarButtonActions.DropDownOpening += new System.EventHandler(this.navBarButtonActions_DropDownOpening);
             // 
             // NavBar
             // 
@@ -242,7 +281,6 @@
         private System.Windows.Forms.ToolStripButton bindingNavigatorMoveNextItem;
         private System.Windows.Forms.ToolStripButton bindingNavigatorMoveLastItem;
         private System.Windows.Forms.ToolStripSeparator bindingNavigatorSeparator2;
-        private System.Windows.Forms.ToolStripButton bindingNavigatorAddNewItem;
         private System.Windows.Forms.ToolStripButton navBarDeleteItem;
         private System.Windows.Forms.ToolStripButton navBarButtonExport;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator1;
@@ -254,8 +292,10 @@
         private System.Windows.Forms.BindingNavigator bindingNavigator1;
         private System.Windows.Forms.ToolStripSeparator toolStripSeparator3;
         private System.Windows.Forms.ToolStripButton navBarButtonCopyAll;
-
-
-
+        private System.Windows.Forms.ToolStripSplitButton btnGroupTotal;
+        private System.Windows.Forms.ToolStripDropDownButton navBarButtonActions;
+        private System.Windows.Forms.ToolStripSplitButton navBarButtonCluster;
+        private System.Windows.Forms.ToolStripMenuItem advancedToolStripMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem navBarButtonClusterGrid;
     }
 }

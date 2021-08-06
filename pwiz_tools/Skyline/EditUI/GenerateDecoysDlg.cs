@@ -27,7 +27,7 @@ using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.EditUI
 {
-    public partial class GenerateDecoysDlg : FormEx
+    public partial class GenerateDecoysDlg : ModeUIInvariantFormEx // This dialog is inherently proteomic, never wants the "peptide"->"molecule" translation
     {
         private readonly SrmDocument _document;
 
@@ -77,7 +77,7 @@ namespace pwiz.Skyline.EditUI
             int numComparableGroups = RefinementSettings.SuggestDecoyCount(_document);
             if (numComparableGroups == 0)
             {
-                helper.ShowTextBoxError(textNumberOfDecoys, Resources.GenerateDecoysError_No_peptide_precursor_models_for_decoys_were_found_, null);
+                helper.ShowTextBoxError(textNumberOfDecoys, Resources.GenerateDecoysError_No_peptide_precursor_models_for_decoys_were_found_);
                 return;
             }
             if (!Equals(DecoysMethod, DecoyGeneration.SHUFFLE_SEQUENCE) && numComparableGroups < numDecoys)

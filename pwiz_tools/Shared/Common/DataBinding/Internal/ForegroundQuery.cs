@@ -18,7 +18,6 @@
  */
 
 using System;
-using System.ComponentModel;
 using System.Threading;
 
 namespace pwiz.Common.DataBinding.Internal
@@ -27,13 +26,13 @@ namespace pwiz.Common.DataBinding.Internal
     {
         private CancellationToken _cancellationToken;
 
-        public ForegroundQuery(IRowSourceWrapper rowSource, IQueryRequest queryRequest)
+        public ForegroundQuery(RowSourceWrapper rowSource, IQueryRequest queryRequest)
         {
             RowSource = rowSource;
             QueryRequest = queryRequest;
         }
 
-        public IRowSourceWrapper RowSource { get; private set; }
+        public RowSourceWrapper RowSource { get; private set; }
         public IQueryRequest QueryRequest { get; private set; }
 
         public void Start()
@@ -44,7 +43,7 @@ namespace pwiz.Common.DataBinding.Internal
             Run();
         }
 
-        private void RowSourceChanged(object sender, ListChangedEventArgs listChangedEventArgs)
+        private void RowSourceChanged()
         {
             Run();
         }
@@ -53,12 +52,11 @@ namespace pwiz.Common.DataBinding.Internal
         {
             try
             {
-                var tickCounter = new Pivoter.TickCounter(_cancellationToken, 10000000);
                 var queryResults = QueryResults.Empty
                     .SetParameters(QueryRequest.QueryParameters)
                     .SetSourceRows(RowSource.ListRowItems());
 
-                queryResults = RunAll(tickCounter, queryResults);
+                queryResults = RunAll(QueryRequest.CancellationToken, queryResults);
                 QueryRequest.SetFinalQueryResults(queryResults);
             }
             catch (OperationCanceledException)

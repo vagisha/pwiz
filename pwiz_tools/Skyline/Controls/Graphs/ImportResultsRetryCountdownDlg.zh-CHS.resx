@@ -187,7 +187,7 @@
     <value>1</value>
   </data>
   <data name="lblSeconds.Text" xml:space="preserve">
-    <value>导入失败！ {0} 秒后将会自动重试。</value>
+    <value>导入失败！{0} 秒后将会自动重试。</value>
   </data>
   <data name="&gt;&gt;lblSeconds.Name" xml:space="preserve">
     <value>lblSeconds</value>

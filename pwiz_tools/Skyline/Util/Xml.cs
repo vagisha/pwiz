@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -24,8 +24,10 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
+using System.Xml.Linq;
 using System.Xml.Schema;
 using System.Xml.Serialization;
+using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.Hibernate;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util.Extensions;
@@ -177,13 +179,13 @@ namespace pwiz.Skyline.Util
 
             while (reader.NodeType != XmlNodeType.EndElement)
             {
-                reader.ReadStartElement("item"); // Not L10N
+                reader.ReadStartElement(@"item");
 
-                reader.ReadStartElement("key"); // Not L10N
+                reader.ReadStartElement(@"key");
                 TKey key = (TKey)keySerializer.Deserialize(reader);
                 reader.ReadEndElement();
 
-                reader.ReadStartElement("value"); // Not L10N
+                reader.ReadStartElement(@"value");
                 TValue value = (TValue)valueSerializer.Deserialize(reader);
                 reader.ReadEndElement();
 
@@ -202,13 +204,13 @@ namespace pwiz.Skyline.Util
 
             foreach (TKey key in Keys)
             {
-                writer.WriteStartElement("item"); // Not L10N
+                writer.WriteStartElement(@"item");
 
-                writer.WriteStartElement("key"); // Not L10N
+                writer.WriteStartElement(@"key");
                 keySerializer.Serialize(writer, key);
                 writer.WriteEndElement();
 
-                writer.WriteStartElement("value"); // Not L10N
+                writer.WriteStartElement(@"value");
                 TValue value = this[key];
                 valueSerializer.Serialize(writer, value);
                 writer.WriteEndElement();
@@ -226,7 +228,7 @@ namespace pwiz.Skyline.Util
     /// </summary>
     public static class XmlUtil
     {
-        public const string XML_DIRECTIVE = "<?xml version=\"1.0\" encoding=\"utf-16\"?>\r\n";  // Not L10N
+        public const string XML_DIRECTIVE = "<?xml version=\"1.0\" encoding=\"utf-16\"?>\r\n";
 
         public static string ToAttr<TStruct>(TStruct? value)
             where TStruct : struct
@@ -390,6 +392,11 @@ namespace pwiz.Skyline.Util
         public static void WriteAttribute(this XmlWriter writer, string name, int value)
         {
             writer.WriteAttributeString(name, value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        public static void WriteAttribute(this XmlWriter writer, string name, TypedMass value)
+        {
+            writer.WriteAttributeString(name, value.Value.ToString(Formats.RoundTrip, CultureInfo.InvariantCulture));
         }
 
         public static void WriteAttribute(this XmlWriter writer, string name, double value)
@@ -880,6 +887,80 @@ namespace pwiz.Skyline.Util
             return null;
         }
 
+        /// <summary>
+        /// Converts non-printable characters to escaped strings,
+        /// such as '0x01' -> "\x01". Although the XmlReader correctly
+        /// escapes characters using the ampersand semicolon format,
+        /// (most) non-printable characters are simply not allowed in xml 1.0.
+        ///
+        /// This is necessary since FASTA sequences might contain
+        /// non-printable characters. (<see cref="PeptideGroupBuilder"/>)
+        /// </summary>
+        /// <param name="str">string to escape</param>
+        /// <returns>escaped string</returns>
+        public static string EscapeNonPrintableChars(this string str)
+        {
+            if (!str.Contains(IsUnprintable))
+                return str;
+
+            var sb = new StringBuilder();
+            foreach (var c in str)
+            {
+                if (IsUnprintable(c))
+                    // ReSharper disable LocalizableElement
+                    sb.Append("\\x").Append(((int)c).ToString("X" + sizeof(char) * 2));
+                    // ReSharper restore LocalizableElement
+                else
+                    sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        private static bool IsUnprintable(char c)
+        {
+            return c < 0x20 && c != '\r' && c != '\n' && c != '\t';
+        }
+
+        /// <summary>
+        /// Replaces all instancs of escaped characters in the
+        /// given string with their corresponding character.
+        /// </summary>
+        /// <param name="str">string to unescape</param>
+        /// <returns>unescaped string</returns>
+        public static string UnescapeNonPrintableChars(this string str)
+        {
+            // ReSharper disable LocalizableElement
+            if (str.IndexOf("\\x", StringComparison.Ordinal) == -1)
+                return str;
+            // ReSharper restore LocalizableElement
+            const int charLen = sizeof(char) * 2;
+            var sb = new StringBuilder();
+            for (var i = 0; i < str.Length; ++i)
+            {
+                var index = i;
+                if (str[index++] == '\\')
+                {
+                    if (index < str.Length && str[index++] == 'x')
+                    {
+                        if (index + charLen < str.Length)
+                        {
+                            var num = str.Substring(index, charLen);
+                            int characterValue;
+                            if (int.TryParse(num, out characterValue))
+                            {
+                                sb.Append((char)characterValue);
+                                i += index + charLen;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                sb.Append(str[i]);
+            }
+            return sb.ToString();
+        }
+
         public static string GetInvalidDataMessage(string path, Exception x)
         {
             StringBuilder sb = new StringBuilder();
@@ -923,13 +1004,13 @@ namespace pwiz.Skyline.Util
             return sb.ToString();
         }
 
-        public static readonly Regex REGEX_XML_ERROR = new Regex(@"\((\d+), ?(\d+)\)"); // Not L10N
+        public static readonly Regex REGEX_XML_ERROR = new Regex(@"\((\d+), ?(\d+)\)");
 
         public static bool TryGetXmlLineColumn(string message, out int line, out int column)
         {
             line = column = 0;
 
-            if (!message.Contains("XML")) // Not L10N
+            if (!message.Contains(@"XML"))
                 return false;
 
             Match match = REGEX_XML_ERROR.Match(message);
@@ -966,6 +1047,19 @@ namespace pwiz.Skyline.Util
                 return false;   // Can't tell, really
             }
             return true;
+        }
+    }
+
+    public static class XElementUtil
+    {
+        public static IEnumerable<XElement> Elements(this XElement xElement, Enum name)
+        {
+            return xElement.Elements(name.ToString());
+        }
+
+        public static XAttribute Attribute(this XElement xElement, Enum name)
+        {
+            return xElement.Attribute(name.ToString());
         }
     }
 
@@ -1042,7 +1136,7 @@ namespace pwiz.Skyline.Util
             // Unit tests depend on exceptions being thrown.
 //            try
 //            {
-                return (TElem)typeof(TElem).InvokeMember("Deserialize", // Not L10N
+                return (TElem)typeof(TElem).InvokeMember(@"Deserialize",
                                                  BindingFlags.Public | BindingFlags.Static | BindingFlags.InvokeMethod,
                                                  null, null, new object[] { reader }, CultureInfo.InvariantCulture); 
 //            }

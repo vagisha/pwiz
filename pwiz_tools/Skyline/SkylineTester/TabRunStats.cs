@@ -53,6 +53,8 @@ namespace SkylineTester
         public void Process(string logFile, string logFileCompare)
         {
             var testDictionary = GetStatsFromLog(logFile);
+            if (testDictionary == null)
+                return;
             var compareDictionary = GetStatsFromLog(logFileCompare);
             var keys = testDictionary.Keys.ToList();
             if (compareDictionary != null)
@@ -65,7 +67,9 @@ namespace SkylineTester
                     }
                 }
             }
-            MainWindow.DataGridRunStats.Columns[MainWindow.DataGridRunStats.Columns.Count - 1].Visible = compareDictionary != null;
+            // Hide columns which are for comparison only
+            for (int col = 1; col <= 2; col++)
+                MainWindow.DataGridRunStats.Columns[MainWindow.DataGridRunStats.Columns.Count - col].Visible = compareDictionary != null;
 
             MainWindow.DataGridRunStats.Rows.Clear();
             foreach (var key in keys)
@@ -82,14 +86,17 @@ namespace SkylineTester
                     TestData valRight = null;
                     compareDictionary.TryGetValue(key, out valRight);
                     var durLeftI = valLeft == null ? 0 : valLeft.Duration / valLeft.Iterations;
+                    var durLeftTotal = valLeft == null ? 0 : valLeft.Duration;
                     var durRightI = valRight == null ? 0 : valRight.Duration / valRight.Iterations;
+                    var durRightTotal = valRight == null ? 0 : valRight.Duration;
                     var durLeftD = valLeft == null ? 0 : valLeft.Duration / (double)valLeft.Iterations;
                     var durRightD = valRight == null ? 0 : valRight.Duration / (double)valRight.Iterations;
                     MainWindow.DataGridRunStats.Rows.Add(key,
                         string.Format("{0}/{1}", valLeft == null ? 0 : valLeft.Iterations, valRight == null ? 0 : valRight.Iterations),
                         string.Format("{0}/{1}", valLeft == null ? 0 : valLeft.Duration, valRight == null ? 0 : valRight.Duration),
                         string.Format("{0}/{1}", durLeftI, durRightI),
-                        (valRight == null || valLeft == null) ? "N/A" : string.Format("{0:0.00}", (durRightD == 0 ? 1 : durLeftD / durRightD)));
+                        (valRight == null || valLeft == null) ? "N/A" : string.Format("{0:0.00}", (durRightD == 0 ? 1 : durLeftD / durRightD)),
+                        string.Format("{0}",  durLeftTotal - durRightTotal));
                 }
             }
         }
@@ -104,13 +111,13 @@ namespace SkylineTester
             var testDictionary = new Dictionary<string, TestData>();
 
             var startTest = new Regex(@"\r\n\[\d\d:\d\d\] +(\d+).(\d+) +(\S+) +\((\w\w)\) ", RegexOptions.Compiled);
-            var endTest = new Regex(@" \d+ failures, ([\.\d]+)/([\.\d]+) MB, (\d+) sec\.\r\n", RegexOptions.Compiled);
+            var endTest = new Regex(@" \d+ failures, .* (\d+) sec\.\r\n", RegexOptions.Compiled);
 
             for (var startMatch = startTest.Match(log); startMatch.Success; startMatch = startMatch.NextMatch())
             {
                 var name = startMatch.Groups[3].Value;
                 var endMatch = endTest.Match(log, startMatch.Index);
-                var duration = endMatch.Groups[3].Value;
+                var duration = endMatch.Groups[1].Value;
 
                 TestData testData;
                 if (!testDictionary.TryGetValue(name, out testData))

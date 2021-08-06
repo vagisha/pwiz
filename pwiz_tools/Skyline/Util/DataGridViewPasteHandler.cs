@@ -21,10 +21,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
+using pwiz.Common.DataBinding.Controls;
+using pwiz.Common.DataBinding.Layout;
 using pwiz.Common.SystemUtil;
-using pwiz.Skyline.Controls;
-using pwiz.Skyline.Model;
-using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Alerts;
+using pwiz.Skyline.Model.AuditLog;
+using pwiz.Skyline.Model.Databinding;
 using pwiz.Skyline.Properties;
 
 namespace pwiz.Skyline.Util
@@ -36,23 +38,41 @@ namespace pwiz.Skyline.Util
     /// </summary>
     public class DataGridViewPasteHandler
     {
-        private DataGridViewPasteHandler(SkylineWindow skylineWindow, DataGridView dataGridView)
+        private DataGridViewPasteHandler(BoundDataGridView boundDataGridView)
         {
-            SkylineWindow = skylineWindow;
-            DataGridView = dataGridView;
+            DataGridView = boundDataGridView;
             DataGridView.KeyDown += DataGridViewOnKeyDown;
         }
 
         /// <summary>
         /// Attaches a DataGridViewPasteHandler to the specified DataGridView.
         /// </summary>
-        public static DataGridViewPasteHandler Attach(SkylineWindow skylineWindow, DataGridView dataGridView)
+        public static DataGridViewPasteHandler Attach(BoundDataGridView boundDataGridView)
         {
-            return new DataGridViewPasteHandler(skylineWindow, dataGridView);
+            return new DataGridViewPasteHandler(boundDataGridView);
         }
 
-        public DataGridView DataGridView { get; private set; }
-        public SkylineWindow SkylineWindow { get; private set; }
+        public BoundDataGridView DataGridView { get; private set; }
+
+        public enum BatchModifyAction { Paste, Clear, FillDown }
+
+        public class BatchModifyInfo : AuditLogOperationSettings<BatchModifyInfo> // TODO: this is a little lazy, consider rewriting
+        {
+            public BatchModifyInfo(BatchModifyAction batchModifyAction, string viewName, RowFilter rowFilter, string extraInfo = null)
+            {
+                BatchModifyAction = batchModifyAction;
+                ViewName = viewName;
+                Filter = rowFilter;
+                ExtraInfo = extraInfo;
+            }
+
+            public BatchModifyAction BatchModifyAction { get; private set; }
+            [Track(defaultValues:typeof(DefaultValuesNull))]
+            public string ViewName { get; private set; }
+            [TrackChildren]
+            public RowFilter Filter { get; private set; }
+            public string ExtraInfo { get; private set; }
+        }
 
         private void DataGridViewOnKeyDown(object sender, KeyEventArgs e)
         {
@@ -64,7 +84,11 @@ namespace pwiz.Skyline.Util
             {
                 return;
             }
-            if (SkylineWindow.IsPasteKeys(e.KeyData))
+            var bindingListSource = DataGridView.DataSource as BindingListSource;
+            var rowFilter = bindingListSource == null ? RowFilter.Empty : bindingListSource.RowFilter;
+            var viewName = bindingListSource == null ? null : bindingListSource.ViewInfo.Name;
+
+            if (Equals(e.KeyData, Keys.Control | Keys.V))
             {
                 var clipboardText = ClipboardHelper.GetClipboardText(DataGridView);
                 if (null == clipboardText)
@@ -74,27 +98,37 @@ namespace pwiz.Skyline.Util
                 using (var reader = new StringReader(clipboardText))
                 {
                     e.Handled = PerformUndoableOperation(Resources.DataGridViewPasteHandler_DataGridViewOnKeyDown_Paste,
-                        monitor => Paste(monitor, reader));
+                        monitor => Paste(monitor, reader),
+                        new BatchModifyInfo(BatchModifyAction.Paste, viewName,
+                            rowFilter, clipboardText));
                 }
             }
             else if (e.KeyCode == Keys.Delete && 0 == e.Modifiers)
             {
-                e.Handled = PerformUndoableOperation(Resources.DataGridViewPasteHandler_DataGridViewOnKeyDown_Clear_cells, ClearCells);
+                e.Handled = PerformUndoableOperation(
+                    Resources.DataGridViewPasteHandler_DataGridViewOnKeyDown_Clear_cells, ClearCells,
+                    new BatchModifyInfo(BatchModifyAction.Clear, viewName, rowFilter));
             }
         }
 
-        private bool PerformUndoableOperation(string description, Func<ILongWaitBroker, bool> operation)
+        public bool PerformUndoableOperation(string description, Func<ILongWaitBroker, bool> operation, BatchModifyInfo batchModifyInfo)
         {
-            using (var undoTransaction = SkylineWindow.BeginUndo(description))
+            var skylineDataSchema = GetDataSchema();
+            if (skylineDataSchema == null)
             {
-                bool resultsGridSynchSelectionOld = Settings.Default.ResultsGridSynchSelection;
-                bool enabledOld = DataGridView.Enabled;
-                try
+                return false;
+            }
+            bool resultsGridSynchSelectionOld = Settings.Default.ResultsGridSynchSelection;
+            bool enabledOld = DataGridView.Enabled;
+            try
+            {
+                Settings.Default.ResultsGridSynchSelection = false;
+                var cellAddress = DataGridView.CurrentCellAddress;
+                DataGridView.Enabled = false;
+                DataGridView.CurrentCell = DataGridView.Rows[cellAddress.Y].Cells[cellAddress.X];
+                lock (skylineDataSchema.SkylineWindow.GetDocumentChangeLock())
                 {
-                    var originalDocument = SkylineWindow.DocumentUI;
-                    SkylineWindow.ModifyDocumentNoUndo(doc => doc.BeginDeferSettingsChanges());
-                    DataGridView.Enabled = false;
-                    Settings.Default.ResultsGridSynchSelection = false;
+                    skylineDataSchema.BeginBatchModifyDocument();
                     var longOperationRunner = new LongOperationRunner
                     {
                         ParentControl = FormUtil.FindTopLevelOwner(DataGridView),
@@ -102,52 +136,28 @@ namespace pwiz.Skyline.Util
                     };
                     if (longOperationRunner.CallFunction(operation))
                     {
-                        bool success = false;
-                        SkylineWindow.ModifyDocumentNoUndo(doc =>
-                        {
-                            var newDoc = EndDeferSettingsChangesOnDocument(originalDocument.Settings, doc);
-                            if (newDoc != null)
-                            {
-                                success = true;
-                                return newDoc;
-                            }
-                            // If the user cancelled updating the settings, then we have to revert back
-                            // to what the document was before any changes were made.
-                            return originalDocument;
-                        });
-                        if (success)
-                        {
-                            undoTransaction.Commit();
-                        }
+                        skylineDataSchema.CommitBatchModifyDocument(description, batchModifyInfo);
                         return true;
                     }
-                    return false;
                 }
-                finally
-                {
-                    DataGridView.Enabled = enabledOld;
-                    Settings.Default.ResultsGridSynchSelection = resultsGridSynchSelectionOld;
-                }
+                return false;
+            }
+            finally
+            {
+                DataGridView.Enabled = enabledOld;
+                Settings.Default.ResultsGridSynchSelection = resultsGridSynchSelectionOld;
+                skylineDataSchema.RollbackBatchModifyDocument();
             }
         }
 
-        private SrmDocument EndDeferSettingsChangesOnDocument(SrmSettings originalSettings, SrmDocument document)
+        private SkylineDataSchema GetDataSchema()
         {
-            string message = Resources.DataGridViewPasteHandler_EndDeferSettingsChangesOnDocument_Updating_settings;
-            using (var longWaitDlg = new LongWaitDlg
+            var bindingListSource = DataGridView.DataSource as BindingListSource;
+            if (bindingListSource == null || bindingListSource.ViewInfo == null)
             {
-                Message = message
-            })
-            {
-                SrmDocument newDocument = null;
-                longWaitDlg.PerformWork(SkylineWindow, 1000, progressMonitor =>
-                {
-                    var srmSettingsChangeMonitor = new SrmSettingsChangeMonitor(progressMonitor, 
-                        message);
-                    newDocument = document.EndDeferSettingsChanges(originalSettings, srmSettingsChangeMonitor);
-                });
-                return newDocument;
+                return null;
             }
+            return bindingListSource.ViewInfo.DataSchema as SkylineDataSchema;
         }
 
         /// <summary>
@@ -191,7 +201,7 @@ namespace pwiz.Skyline.Util
                 var row = DataGridView.Rows[iRow];
                 using (var values = SplitLine(line).GetEnumerator())
                 {
-                    for (int iCol = iFirstCol; iCol < columnsByDisplayIndex.Count(); iCol++)
+                    for (int iCol = iFirstCol; iCol < columnsByDisplayIndex.Length; iCol++)
                     {
                         if (!values.MoveNext())
                         {
@@ -321,7 +331,9 @@ namespace pwiz.Skyline.Util
             {
                 string message = string.Format(Resources.DataGridViewPasteHandler_TryConvertValue_Error_converting___0___to_required_type___1_, strValue,
                                                exception.Message);
-                MessageBox.Show(DataGridView, message, Program.Name);
+
+                // CONSIDER(bspratt): this is probably not the proper parent. See "Issue 775: follow up on possible improper parenting of MessageDlg"
+                MessageDlg.Show(DataGridView, message);
                 convertedValue = null;
                 return false;
             }

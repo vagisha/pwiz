@@ -20,13 +20,15 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Drawing;
+using System.Linq;
+using System.Windows.Forms;
 using pwiz.Common.Collections;
 using pwiz.Common.DataBinding;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.Databinding;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Properties;
-using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.Controls.Databinding
@@ -37,10 +39,22 @@ namespace pwiz.Skyline.Controls.Databinding
         private readonly SkylineWindow _skylineWindow;
         private IList<AnnotationDef> _annotations;
 
-        public DocumentGridForm(SkylineViewContext viewContext)
+        public DocumentGridForm() : this(null, null) {} // For designer
+
+        public DocumentGridForm(SkylineViewContext viewContext) :
+            this(viewContext, null)
+        {
+        }
+
+        public DocumentGridForm(SkylineViewContext viewContext, string text) 
         {
             InitializeComponent();
+            if (!string.IsNullOrEmpty(text))
+                Text = text;
             _originalFormTitle = Text;
+            if (viewContext == null)    // For designer
+                return;
+            BindingListSource.QueryLock = viewContext.SkylineDataSchema.QueryLock;
             BindingListSource.SetViewContext(viewContext);
             BindingListSource.ListChanged += BindingListSourceOnListChanged;
             _skylineWindow = viewContext.SkylineDataSchema.SkylineWindow;
@@ -83,11 +97,6 @@ namespace pwiz.Skyline.Controls.Databinding
         public DocumentGridForm(IDocumentContainer documentContainer) 
             : this(new DocumentGridViewContext(new SkylineDataSchema(documentContainer, SkylineDataSchema.GetLocalizedSchemaLocalizer())))
         {
-            var skylineWindow = documentContainer as SkylineWindow;
-            if (null != skylineWindow)
-            {
-                DataGridViewPasteHandler.Attach(skylineWindow, DataGridView);
-            }
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -117,6 +126,14 @@ namespace pwiz.Skyline.Controls.Databinding
             set
             {
                 BindingListSource.SetView(value, BindingListSource.ViewContext.GetRowSource(value));
+            }
+        }
+
+        public override DataGridId DataGridId
+        {
+            get
+            {
+                return new DataGridId(DataGridType.DOCUMENT_GRID, null);
             }
         }
 
@@ -154,10 +171,56 @@ namespace pwiz.Skyline.Controls.Databinding
             {
                 var viewName = BindingListSource.ViewInfo.ViewGroup.Id.ViewName(BindingListSource.ViewInfo.Name);
                 var newViewInfo = documentGridViewContext.GetViewInfo(viewName);
-                if (null != newViewInfo && !Equals(newViewInfo.ViewSpec, BindingListSource.ViewSpec))
+                if (null != newViewInfo && !ColumnsEqual(newViewInfo, BindingListSource.ViewInfo))
                 {
                     BindingListSource.SetView(newViewInfo, BindingListSource.RowSource);
                 }
+            }
+        }
+
+        private bool ColumnsEqual(ViewInfo viewInfo1, ViewInfo viewInfo2)
+        {
+            if (!Equals(viewInfo1.ViewSpec, viewInfo2.ViewSpec))
+            {
+                return false;
+            }
+
+            if (viewInfo1.DisplayColumns.Count != viewInfo2.DisplayColumns.Count)
+            {
+                return false;
+            }
+
+            for (int icol = 0; icol < viewInfo1.DisplayColumns.Count; icol++)
+            {
+                if (!viewInfo1.DisplayColumns[icol].ColumnDescriptor.GetAttributes()
+                    .SequenceEqual(viewInfo2.DisplayColumns[icol].ColumnDescriptor.GetAttributes()))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        //Adjusts column width to make sure the headers are displayed in a single line. Used for tutorials testing.
+        public void ExpandColumns()
+        {
+            using (Graphics g = DataGridView.CreateGraphics())
+            {
+                foreach (DataGridViewColumn col in DataGridView.Columns)
+                {
+                    col.Width = (int)g.MeasureString(col.HeaderText, DataGridView.Font).Width + 40;
+                }
+            }
+        }
+
+        private void DocumentGridForm_KeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.Escape:
+                    _skylineWindow.FocusDocument();
+                    break;
             }
         }
     }

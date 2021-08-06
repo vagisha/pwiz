@@ -45,13 +45,17 @@ public enum class QuantitationMethod
     ITRAQ8plex,
     TMT2plex,
     TMT6plex,
-    TMT10plex
+    TMT10plex,
+    TMT11plex,
+    TMTpro16plex
 };
 
 
 public ref struct Embedder abstract
 {
 
+static property int MAX_ITRAQ_REPORTER_IONS { int get(); }
+static property int MAX_TMT_REPORTER_IONS { int get(); }
 
 ref struct QuantitationConfiguration
 {
@@ -114,6 +118,12 @@ static void EmbedScanTime(String^ idpDbFilepath,
                           String^ sourceExtensionPriorityList,
                           IDictionary<int, QuantitationConfiguration^>^ quantitationMethodBySource,
                           pwiz::CLI::util::IterationListenerRegistry^ ilr);
+
+/// adds a mapping of source group to sample names; the sample names are in ascending order of isobaric quantitation channel reporter ion mass
+static void EmbedIsobaricSampleMapping(String^ idpDbFilepath, IDictionary<String^, IList<String^>^>^ isobaricSampleMap);
+
+/// retrieves the mapping of source group to sample names; the sample names are in ascending order of isobaric quantitation channel reporter ion mass
+static IDictionary<String^, IList<String^>^>^ GetIsobaricSampleMapping(String^ idpDbFilepath);
 
 /// checks whether the given idpDB has embedded gene metadata (although it may not necessarily be the most up-to-date)
 static bool HasGeneMetadata(String^ idpDbFilepath);

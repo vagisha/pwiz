@@ -17,10 +17,10 @@
  * limitations under the License.
  */
 using System;
-using System.Collections;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.DataBinding;
 using pwiz.Common.SystemUtil;
@@ -59,7 +59,7 @@ namespace pwiz.SkylineTestUtil
             Assert.IsNotNull(viewInfo);
         }
 
-        public IEnumerable GetRowSource(ViewInfo viewInfo)
+        public IRowSource GetRowSource(ViewInfo viewInfo)
         {
             var type = viewInfo.ParentColumn.PropertyType;
             if (type == typeof (Protein))
@@ -93,14 +93,14 @@ namespace pwiz.SkylineTestUtil
         {
             var documentContainer = new MemoryDocumentContainer();
             Assert.IsTrue(documentContainer.SetDocument(doc, documentContainer.Document));
-            var skylineDataSchema = new SkylineDataSchema(documentContainer, new DataSchemaLocalizer(cultureInfo));
+            var skylineDataSchema = new SkylineDataSchema(documentContainer, new DataSchemaLocalizer(cultureInfo, cultureInfo));
             var viewSpec = ReportSharing.ConvertAll(new[] {new ReportOrViewSpec(reportSpec)}, doc).First();
             var viewContext = new DocumentGridViewContext(skylineDataSchema);
             using (var writer = new StreamWriter(fileName))
             {
                 IProgressStatus status = new ProgressStatus();
-                viewContext.Export(new SilentProgressMonitor(), ref status,
-                    viewContext.GetViewInfo(ViewGroup.BUILT_IN, viewSpec), writer, viewContext.GetCsvWriter());
+                viewContext.Export(CancellationToken.None, new SilentProgressMonitor(), ref status,
+                    viewContext.GetViewInfo(ViewGroup.BUILT_IN, viewSpec.ViewSpec), writer, viewContext.GetCsvWriter());
             }
         }
     }

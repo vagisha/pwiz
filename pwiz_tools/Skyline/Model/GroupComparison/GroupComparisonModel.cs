@@ -20,16 +20,17 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using pwiz.Common.DataAnalysis.Matrices;
+using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.Model.GroupComparison
 {
     public class GroupComparisonModel
     {
         private readonly object _lock = new object();
-        private IDocumentContainer _documentContainer;
+        private readonly IDocumentContainer _documentContainer;
         private GroupComparisonDef _groupComparisonDef = GroupComparisonDef.EMPTY;
         private GroupComparer _groupComparer;
         private CancellationTokenSource _cancellationTokenSource;
@@ -57,10 +58,11 @@ namespace pwiz.Skyline.Model.GroupComparison
             }
             set
             {
-                if (!string.IsNullOrEmpty(GroupComparisonName))
-                {
-                    throw new InvalidOperationException();
-                }
+                // TODO(tobiasr): ask nick why this might be a problem
+//                if (!string.IsNullOrEmpty(GroupComparisonName))
+//                {
+//                    throw new InvalidOperationException();
+//                }
                 lock (_lock)
                 {
                     if (Equals(GroupComparisonDef, value))
@@ -72,6 +74,21 @@ namespace pwiz.Skyline.Model.GroupComparison
                 }
                 FireModelChanged();
             }
+        }
+
+        public SrmDocument ApplyChangesToDocument(SrmDocument doc, GroupComparisonDef groupDef)
+        {
+            var groupComparisons = doc.Settings.DataSettings.GroupComparisonDefs.ToList();
+            int index = groupComparisons.FindIndex(def => def.Name == GroupComparisonName);
+            if (index < 0 || Equals(groupDef, groupComparisons[index]))
+                return doc;
+
+            groupComparisons[index] = groupDef;
+            doc =
+                doc.ChangeSettings(
+                    doc.Settings.ChangeDataSettings(
+                        doc.Settings.DataSettings.ChangeGroupComparisonDefs(groupComparisons)));
+            return doc;
         }
 
         public string GroupComparisonName { get; private set; }
@@ -150,7 +167,7 @@ namespace pwiz.Skyline.Model.GroupComparison
                     }
                     if (!_modelChangedListeners.Add(value))
                     {
-                        throw new ArgumentException("Listener already added"); // Not L10N
+                        throw new ArgumentException(@"Listener already added");
                     }
                     RestartCalculation();
                 }
@@ -161,7 +178,7 @@ namespace pwiz.Skyline.Model.GroupComparison
                 {
                     if (!_modelChangedListeners.Remove(value))
                     {
-                        throw new ArgumentException("Listener not added"); // Not L10N
+                        throw new ArgumentException(@"Listener not added");
                     }
                     if (_modelChangedListeners.Count == 0)
                     {
@@ -234,26 +251,24 @@ namespace pwiz.Skyline.Model.GroupComparison
                 _percentComplete = 0;
                 GroupComparer groupComparer = _groupComparer;
                 var cancellationToken = _cancellationTokenSource.Token;
-                AddErrorHandler(Task.Factory.StartNew(() =>
-                {
-                    var results = ComputeComparisonResults(groupComparer, srmDocument, cancellationToken);
-                    lock (_lock)
+                RunAsync(() =>
                     {
-                        if (!cancellationToken.IsCancellationRequested)
+                        var results = ComputeComparisonResults(groupComparer, srmDocument, cancellationToken);
+                        lock (_lock)
                         {
-                            Results = results;
-                            _percentComplete = 100;
+                            if (!cancellationToken.IsCancellationRequested)
+                            {
+                                Results = results;
+                                _percentComplete = 100;
+                            }
                         }
-                    }
-                }, _cancellationTokenSource.Token));
+                    });
             }
         }
 
-        // ReSharper disable UnusedMethodReturnValue.Local
-        private Task AddErrorHandler(Task task)
-        // ReSharper restore UnusedMethodReturnValue.Local
+        private void RunAsync(Action action)
         {
-            return task.ContinueWith(t => Program.ReportException(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+            ActionUtil.RunAsync(action, @"Group Comparison");
         }
 
         private void FireModelChanged()
@@ -278,33 +293,51 @@ namespace pwiz.Skyline.Model.GroupComparison
             List<GroupComparisonResult> results = new List<GroupComparisonResult>();
             if (groupComparer.IsValid)
             {
-                var peptideGroups = document.MoleculeGroups.ToArray();
-                for (int i = 0; i < peptideGroups.Length; i++)
-                {
-                    int percentComplete = 100 * i / peptideGroups.Length;
-                    lock (_lock)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        _percentComplete = percentComplete;
-                    }
-                    var peptideGroup = peptideGroups[i];
-                    IEnumerable<PeptideDocNode> peptides;
-                    if (groupComparer.ComparisonDef.PerProtein)
-                    {
-                        peptides = new PeptideDocNode[] {null};
-                    }
-                    else
-                    {
-                        peptides = peptideGroup.Molecules;
-                    }
-                    foreach (var peptide in peptides)
-                    {
-                        results.AddRange(groupComparer.CalculateFoldChanges(peptideGroup, peptide));
-                    }
-                }
+                results = ComputeResults(groupComparer, document, cancellationToken, _lock);
             }
             DateTime endTime = DateTime.Now;
             return new GroupComparisonResults(groupComparer, results, startTime, endTime);
+        }
+
+        public static List<GroupComparisonResult> ComputeResults(GroupComparer groupComparer, SrmDocument document,
+            CancellationToken? cancellationToken, object _lock, SrmSettingsChangeMonitor progressMonitor = null)
+        {
+            var results = new List<GroupComparisonResult>();
+            var peptideGroups = document.MoleculeGroups.ToArray();
+            for (int i = 0; i < peptideGroups.Length; i++)
+            {
+                if (_lock != null)
+                {
+                    lock (_lock)
+                    {
+                        if (cancellationToken.HasValue)
+                            cancellationToken.Value.ThrowIfCancellationRequested();
+                    }
+                }
+
+                var peptideGroup = peptideGroups[i];
+                IEnumerable<PeptideDocNode> peptides;
+                if (groupComparer.ComparisonDef.PerProtein)
+                {
+                    peptides = new PeptideDocNode[] { null };
+                }
+                else
+                {
+                    peptides = peptideGroup.Molecules;
+                }
+                foreach (var peptide in peptides)
+                {
+                    if (progressMonitor != null && progressMonitor.IsCanceled())
+                        throw new OperationCanceledException();
+                    if (progressMonitor != null)
+                    {
+                        progressMonitor.ProcessMolecule(peptide);
+                    }
+                    results.AddRange(groupComparer.CalculateFoldChanges(peptideGroup, peptide));
+                }
+            }
+
+            return results;
         }
 
         private class ModelChangeSupport : IDisposable

@@ -18,6 +18,7 @@
  */
 using System.Collections.Generic;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Model.Find
 {
@@ -28,7 +29,7 @@ namespace pwiz.Skyline.Model.Find
     {
         public override string Name
         {
-            get { return "mismatched_isotope_transitions"; } // Not L10N
+            get { return @"mismatched_isotope_transitions"; }
         }
 
         public override string DisplayName
@@ -36,17 +37,17 @@ namespace pwiz.Skyline.Model.Find
             get { return Resources.MismatchedIsotopeTransitionsFinder_DisplayName_Mismatched_transitions; }
         }
 
-        private Dictionary<int, TransitionMatchInfo> _dictChargeToMatchInfo;
+        private Dictionary<Adduct, TransitionMatchInfo> _dictChargeToMatchInfo;
 
         protected override bool IsMatch(PeptideDocNode nodePep)
         {
             // Populate look-ups for later to be able to determine if transitions
             // are fully matched or not.
-            _dictChargeToMatchInfo = new Dictionary<int, TransitionMatchInfo>();
+            _dictChargeToMatchInfo = new Dictionary<Adduct, TransitionMatchInfo>();
             foreach (var nodeGroup in nodePep.TransitionGroups)
             {
                 TransitionMatchInfo matchInfo;
-                int charge = nodeGroup.TransitionGroup.PrecursorCharge;
+                var charge = nodeGroup.TransitionGroup.PrecursorAdduct.Unlabeled; // Ignore any isotope labels embedded in adduct (e.g. read M5C13+2H as M+2H)
                 if (!_dictChargeToMatchInfo.TryGetValue(charge, out matchInfo))
                 {
                     matchInfo = new TransitionMatchInfo();
@@ -66,7 +67,7 @@ namespace pwiz.Skyline.Model.Find
         protected override bool IsMatch(TransitionGroupDocNode nodeGroup, TransitionDocNode nodeTran)
         {
             TransitionMatchInfo matchInfo;
-            if (!_dictChargeToMatchInfo.TryGetValue(nodeGroup.TransitionGroup.PrecursorCharge, out matchInfo))
+            if (!_dictChargeToMatchInfo.TryGetValue(nodeGroup.TransitionGroup.PrecursorAdduct.Unlabeled, out matchInfo))  // Ignore any isotope labels embedded in adduct (e.g. read M5C13+2H as M+2H)
                 return true;    // Unexpected missing charge state
             return !matchInfo.IsFullyMatched(nodeTran, nodeGroup);
         }
@@ -74,12 +75,12 @@ namespace pwiz.Skyline.Model.Find
         private class TransitionMatchInfo
         {
             private readonly HashSet<IsotopeLabelType> _labelTypeSet;
-            private readonly Dictionary<TransitionLossEquivalentKey, int> _dictTransitionCount;
+            private readonly Dictionary<PeptideDocNode.TransitionKey, int> _dictTransitionCount;
 
             public TransitionMatchInfo()
             {
                 _labelTypeSet = new HashSet<IsotopeLabelType>();
-                _dictTransitionCount = new Dictionary<TransitionLossEquivalentKey, int>();
+                _dictTransitionCount = new Dictionary<PeptideDocNode.TransitionKey, int>();
             }
 
             public void AddTransitionGroup(TransitionGroupDocNode nodeGroup)
@@ -93,7 +94,7 @@ namespace pwiz.Skyline.Model.Find
             /// </summary>
             public void AddTransition(TransitionDocNode nodeTran, TransitionGroupDocNode parent)
             {
-                var tranKey = nodeTran.EquivalentKey(parent);
+                var tranKey = GetTransitionKey(nodeTran, parent);
                 if (!_dictTransitionCount.ContainsKey(tranKey))
                     _dictTransitionCount.Add(tranKey, 0);
                 _dictTransitionCount[tranKey]++;
@@ -102,9 +103,15 @@ namespace pwiz.Skyline.Model.Find
             public bool IsFullyMatched(TransitionDocNode nodeTran, TransitionGroupDocNode parent)
             {
                 int count;
-                if (!_dictTransitionCount.TryGetValue(nodeTran.EquivalentKey(parent), out count))
+                if (!_dictTransitionCount.TryGetValue(GetTransitionKey(nodeTran, parent), out count))
                     return true;
                 return count == _labelTypeSet.Count;
+            }
+
+            private PeptideDocNode.TransitionKey GetTransitionKey(TransitionDocNode nodeTran,
+                TransitionGroupDocNode parent)
+            {
+                return new PeptideDocNode.TransitionKey(parent, nodeTran.Key(parent), IsotopeLabelType.light);
             }
         }
     }

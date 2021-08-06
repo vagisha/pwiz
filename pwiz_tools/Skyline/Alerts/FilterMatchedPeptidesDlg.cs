@@ -19,6 +19,8 @@
 
 using System;
 using System.Windows.Forms;
+using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
@@ -26,12 +28,19 @@ using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Alerts
 {
-    public sealed partial class FilterMatchedPeptidesDlg : FormEx
+    public sealed partial class FilterMatchedPeptidesDlg : ModeUIInvariantFormEx,  // This dialog is inherently proteomic, never needs to be adapted for small mol or mixed UI mode
+              IAuditLogModifier<FilterMatchedPeptidesDlg.FilterMatchedPeptidesSettings>
     {
-
-        public FilterMatchedPeptidesDlg(int numWithDuplicates, int numUnmatched, int numFiltered, bool single)
+        public FilterMatchedPeptidesDlg(int numWithDuplicates, int numUnmatched, int numFiltered, bool single, bool hasSmallMolecules)
         {
             InitializeComponent();
+
+            HasSmallMolecules = hasSmallMolecules;
+            if (HasSmallMolecules)
+            {
+                Text = Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_Filter_Molecules;
+                radioKeepFiltered.Text = Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_Include_all_molecules;
+            }
 
             UnmatchedCount = numUnmatched;
             DuplicateMatchesCount = numWithDuplicates;
@@ -85,11 +94,23 @@ namespace pwiz.Skyline.Alerts
             }
             if (numFiltered != 0)
             {
+                var filterMatchedPeptidesDlgFilterMatchedPeptidesDlgThisPeptideDoesNotMatchTheCurrentFilterSettings = 
+                    hasSmallMolecules
+                    ? Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_This_molecule_does_not_match_the_current_filter_settings
+                    : Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_This_peptide_does_not_match_the_current_filter_settings;
+                var filterMatchedPeptidesDlgFilterMatchedPeptidesDlg1PeptideNotMatchingTheCurrentFilterSettings = 
+                    hasSmallMolecules
+                        ?  Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_1_molecule_not_matching_the_current_filter_settings
+                    : Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_1_peptide_not_matching_the_current_filter_settings;
+                var filterMatchedPeptidesDlgFilterMatchedPeptidesDlg0PeptidesNotMatchingTheCurrentFilterSettings = 
+                    hasSmallMolecules
+                        ? Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg__0__molecules_not_matching_the_current_filter_settings
+                    : Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg__0__peptides_not_matching_the_current_filter_settings;
                 msgFilteredPeptides.Text = single
-                                               ? Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_This_peptide_does_not_match_the_current_filter_settings
+                                               ? filterMatchedPeptidesDlgFilterMatchedPeptidesDlgThisPeptideDoesNotMatchTheCurrentFilterSettings
                                                : (numFiltered == 1
-                                                      ? Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg_1_peptide_not_matching_the_current_filter_settings
-                                                      : string.Format(Resources.FilterMatchedPeptidesDlg_FilterMatchedPeptidesDlg__0__peptides_not_matching_the_current_filter_settings,
+                                                      ? filterMatchedPeptidesDlgFilterMatchedPeptidesDlg1PeptideNotMatchingTheCurrentFilterSettings
+                                                      : string.Format(filterMatchedPeptidesDlgFilterMatchedPeptidesDlg0PeptidesNotMatchingTheCurrentFilterSettings,
                                                           numFiltered));
             }
             else
@@ -171,5 +192,54 @@ namespace pwiz.Skyline.Alerts
         public int UnmatchedCount { get; set; }
         
         public int FilteredCount { get; set; }
+
+        public bool HasSmallMolecules { get; set; }
+
+        public class FilterMatchedPeptidesSettings : AuditLogOperationSettings<FilterMatchedPeptidesSettings>, IAuditLogComparable
+        {
+            public FilterMatchedPeptidesSettings(bool noDuplicates, bool firstOccurence, bool addToAll,
+                bool filterUnmatched, bool addUnmatched, bool doNotAddFiltered, bool keepFiltered)
+            {
+                NoDuplicates = noDuplicates;
+                FirstOccurence = firstOccurence;
+                AddToAll = addToAll;
+                FilterUnmatched = filterUnmatched;
+                AddUnmatched = addUnmatched;
+                DoNotAddFiltered = doNotAddFiltered;
+                KeepFiltered = keepFiltered;
+            }
+
+            [Track]
+            public bool NoDuplicates { get; private set; }
+            [Track]
+            public bool FirstOccurence { get; private set; }
+            [Track]
+            public bool AddToAll { get; private set; }
+
+            [Track]
+            public bool FilterUnmatched { get; private set; }
+            [Track]
+            public bool AddUnmatched { get; private set; }
+
+            [Track]
+            public bool DoNotAddFiltered { get; private set; }
+            [Track]
+            public bool KeepFiltered { get; private set; }
+
+            public object GetDefaultObject(ObjectInfo<object> info)
+            {
+                return new FilterMatchedPeptidesSettings(false, false, false, false, false, false, false);
+            }
+        }
+
+        public FilterMatchedPeptidesSettings FormSettings
+        {
+            get
+            {
+                return new FilterMatchedPeptidesSettings(radioNoDuplicates.Checked, radioFirstOccurence.Checked,
+                    radioAddToAll.Checked, radioFilterUnmatched.Checked, radioAddUnmatched.Checked,
+                    radioDoNotAddFiltered.Checked, radioKeepFiltered.Checked);
+            }
+        }
     }
 }

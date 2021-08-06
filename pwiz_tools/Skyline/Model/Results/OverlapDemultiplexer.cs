@@ -97,7 +97,7 @@ namespace pwiz.Skyline.Model.Results
             int overlapStartSearch = 0;
             foreach (IsoWin currentIso in isoWinArray)
             {
-                for (int overlapIndex = overlapStartSearch; overlapIndex < _deconvRegions.Count(); ++overlapIndex)
+                for (int overlapIndex = overlapStartSearch; overlapIndex < _deconvRegions.Count; ++overlapIndex)
                 {
                     var currentOverlap = _deconvRegions[overlapIndex];
                     if (currentIso.Start >= currentOverlap.Stop)
@@ -171,7 +171,7 @@ namespace pwiz.Skyline.Model.Results
                     var interpolator = MathNet.Numerics.Interpolate.CubicSpline(scanTimes, scanIntensities);
                     if (CurrentScan >= NumScans || CurrentScan < 0)
                     {
-                        throw new InvalidDataException(string.Format("Current scan does not fall within bounds on scan {0}", ScanNumbers[currentScan]));  // Not L10N
+                        throw new InvalidDataException(string.Format(@"Current scan does not fall within bounds on scan {0}", ScanNumbers[currentScan]));
                     }
                     if (!ScanTimes[CurrentScan].HasValue)
                     {

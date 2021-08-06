@@ -39,7 +39,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include "sqlite3.h"
-#include <time.h>
+#include <ctime>
 #include <vector>
 #include <set>
 #include <queue>
@@ -49,8 +49,10 @@
 #include "Verbosity.h"
 #include "BlibUtils.h"
 #include "PSM.h"
+#include "pwiz/utility/misc/String.hpp"
+#include "pwiz/utility/misc/Stream.hpp"
+#include "pwiz/utility/misc/Container.hpp"
 
-using namespace std;
 
 namespace BiblioSpec {
 
@@ -75,6 +77,7 @@ enum BUILD_INPUT
     PEAKS,
     BYONIC,
     PEPTIDE_SHAKER,
+    GENERIC_QVALUE_INPUT,
 
     // Keep this last
     NUM_BUILD_INPUTS
@@ -97,6 +100,7 @@ class BlibBuilder : public BlibMaker
   void setCurFile(int i);
   int getCurFile() const;
   string getMaxQuantModsPath();
+  string getMaxQuantParamsPath();
   double getPusherInterval() const;
   const set<string>* getTargetSequences();
   const set<string>* getTargetSequencesModified();
@@ -110,8 +114,13 @@ class BlibBuilder : public BlibMaker
                    double* pM, 
                    float* pI);
   int getCacheThreshold(){ return fileSizeThresholdForCaching; }
-  static string generateModifiedSeq(const char* unmodSeq, const vector<SeqMod>& mods);
+  string generateModifiedSeq(const char* unmodSeq, const vector<SeqMod>& mods);
   virtual double getCutoffScore() const;
+  static string getModifiedSequenceWithPrecision(const char* unmodSeq, const vector<SeqMod>& mods, bool isHighPrecision);
+  static string getLowPrecisionModSeq(const char* unmodSeq, const vector<SeqMod>& mods) 
+  {
+    return getModifiedSequenceWithPrecision(unmodSeq, mods, false);
+  }
 
  protected:
   int parseNextSwitch(int i, int argc, char* argv[]);
@@ -127,12 +136,14 @@ class BlibBuilder : public BlibMaker
   vector<char*> input_files;
   int curFile;
   string maxQuantModsPath;
+  string maxQuantParamsPath;
   double forcedPusherInterval;
   set<string>* targetSequences;
   set<string>* targetSequencesModified;
   queue<STDIN_LIST> stdinput;
   istream* stdinStream;
 
+  static string parseSequence(const string& sequence, bool modified);
   int readSequences(set<string>** seqSet, bool modified = false);
 };
 

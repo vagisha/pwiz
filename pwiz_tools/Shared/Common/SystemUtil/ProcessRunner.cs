@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -28,14 +29,17 @@ namespace pwiz.Common.SystemUtil
     {
         string StatusPrefix { get; set; }
         string HideLinePrefix { get; set; }
-        void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status);
         void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status,
-                 TextWriter writer);
+            ProcessPriorityClass priorityClass = ProcessPriorityClass.Normal);
+        void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status,
+                 TextWriter writer, ProcessPriorityClass priorityClass = ProcessPriorityClass.Normal);
     }
 
     public class ProcessRunner : IProcessRunner
     {
         public string StatusPrefix { get; set; }
+
+        public Encoding OutputEncoding { get; set; }
 
         public string MessagePrefix { get; set; }
         private readonly List<string> _messageLog = new List<string>();
@@ -48,22 +52,28 @@ namespace pwiz.Common.SystemUtil
         /// </summary>
         public string HideLinePrefix { get; set; }
 
-        public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status)
+        public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status,
+            ProcessPriorityClass priorityClass = ProcessPriorityClass.Normal)
         {
-            Run(psi, stdin, progress,ref status, null);
+            Run(psi, stdin, progress,ref status, null, priorityClass);
         }
 
-        public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status, TextWriter writer)
+        public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status, TextWriter writer,
+            ProcessPriorityClass priorityClass = ProcessPriorityClass.Normal)
         {
             // Make sure required streams are redirected.
             psi.RedirectStandardOutput = true;
             psi.RedirectStandardError = true;
+            psi.RedirectStandardInput = stdin != null;
+            if (OutputEncoding != null)
+                psi.StandardOutputEncoding = psi.StandardErrorEncoding = OutputEncoding;
 
             _messageLog.Clear();
 
             var proc = Process.Start(psi);
             if (proc == null)
-                throw new IOException(string.Format("Failure starting {0} command.", psi.FileName)); // Not L10N
+                throw new IOException(string.Format(@"Failure starting {0} command.", psi.FileName));
+            proc.PriorityClass = priorityClass;
             if (stdin != null)
             {
                 try
@@ -82,10 +92,10 @@ namespace pwiz.Common.SystemUtil
             string line;
             while ((line = reader.ReadLine(progress)) != null)
             {
-                if (writer != null && !line.StartsWith(HideLinePrefix))
+                if (writer != null && (HideLinePrefix == null || !line.StartsWith(HideLinePrefix)))
                     writer.WriteLine(line);
 
-                if (progress == null || line.ToLowerInvariant().StartsWith("error")) // Not L10N
+                if (progress == null || line.ToLowerInvariant().StartsWith(@"error"))
                 {
                     sbError.AppendLine(line);
                 }
@@ -98,11 +108,11 @@ namespace pwiz.Common.SystemUtil
                         return;
                     }
 
-                    if (!string.IsNullOrEmpty(MessagePrefix) && line.StartsWith(MessagePrefix))
+                    if (MessagePrefix != null && line.StartsWith(MessagePrefix))
                     {
                         _messageLog.Add(line.Substring(MessagePrefix.Length));
                     }
-                    else if (line.EndsWith("%")) // Not L10N
+                    else if (line.EndsWith(@"%"))
                     {
                         double percent;
                         string[] parts = line.Split(' ');
@@ -135,7 +145,15 @@ namespace pwiz.Common.SystemUtil
                 if (line != null)
                     sbError.AppendLine(line);
                 if (sbError.Length == 0)
-                    throw new IOException("Error occurred running process."); // Not L10N
+                    sbError.AppendLine(@"Error occurred running process.");
+                string processPath = Path.GetDirectoryName(psi.FileName)?.Length == 0
+                    ? Path.Combine(Environment.CurrentDirectory, psi.FileName)
+                    : psi.FileName;
+                // ReSharper disable LocalizableElement
+                sbError.AppendFormat("\r\nCommand-line: {0} {1}\r\nWorking directory: {2}{3}", processPath,
+                // ReSharper restore LocalizableElement
+                    string.Join(" ", proc.StartInfo.Arguments), psi.WorkingDirectory,
+                    stdin != null ? "\r\nStandard input:\r\n" + stdin : "");
                 throw new IOException(sbError.ToString());
             }
             // Make to complete the status, if the process succeeded, but never
@@ -162,12 +180,14 @@ namespace pwiz.Common.SystemUtil
             public bool shouldCancel { get; set; }
             public string StatusPrefix { get; set; }
             public string HideLinePrefix { get; set; }
-            public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status)
+            public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status,
+                ProcessPriorityClass priorityClass = ProcessPriorityClass.Normal)
             {
-                Run(psi, stdin, progress, ref status, null);
+                Run(psi, stdin, progress, ref status, null, priorityClass);
             }
 
-            public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status, TextWriter writer)
+            public void Run(ProcessStartInfo psi, string stdin, IProgressMonitor progress, ref IProgressStatus status, TextWriter writer,
+                ProcessPriorityClass priorityClass = ProcessPriorityClass.Normal)
             {
                 if (shouldCancel)
                 {

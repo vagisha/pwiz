@@ -29,7 +29,7 @@ namespace pwiz.Skyline.Model.Find
     {
         public override string Name
         {
-            get { return "unintegrated_transitions"; } // Not L10N
+            get { return @"unintegrated_transitions"; }
         }
 
         public override string DisplayName
@@ -47,7 +47,8 @@ namespace pwiz.Skyline.Model.Find
             {
                 return null;
             }
-            if (transitionChromInfo.IsEmpty)
+            bool integrateAll = bookmarkEnumerator.Document.Settings.TransitionSettings.Integration.IsIntegrateAll;
+            if (!transitionChromInfo.IsGoodPeak(integrateAll))
             {
                 return new FindMatch(Resources.UnintegratedTransitionFinder_Match_Unintegrated_transition);
             }

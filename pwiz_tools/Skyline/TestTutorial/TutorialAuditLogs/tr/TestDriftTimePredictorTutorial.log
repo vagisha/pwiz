@@ -1,0 +1,61 @@
+Undo Redo : Imported results from 2 files
+Summary   : Imported results from 2 files
+All Info  :
+Imported results from 2 files
+Import results settings > File names : contains "BSA_Frag_100nM_18May15_Fir_15-04-02.d"
+Import results settings > File names : contains "Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01.d"
+Import results settings > Add single-injection replicates in files is True
+Import results settings > Files to import simultaneously is "Many"
+Extra Info: File names = 
+[
+    "BSA_Frag_100nM_18May15_Fir_15-04-02.d",
+    "Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01.d"
+],
+Add single-injection replicates in files = True,
+Files to import simultaneously = "Many"
+
+Undo Redo : Edited note of K.TCVADESHAGCEK.S [75, 87]
+Summary   : Targets > gi|1351907|sp|P02769.4|ALBU_BOVIN > K.TCVADESHAGCEK.S [75, 87] > Note changed to "Lost in yeast samples"
+All Info  :
+Edited note of K.TCVADESHAGCEK.S [75, 87]
+Targets > gi|1351907|sp|P02769.4|ALBU_BOVIN > K.TCVADESHAGCEK.S [75, 87] > Note changed from Missing to "Lost in yeast samples"
+
+Undo Redo : Managed results
+Summary   : Managed results
+All Info  :
+Managed results
+Removed replicate Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01
+
+Undo Redo : Transition Settings changed
+Summary   : Settings > Transition Settings changed
+All Info  :
+Transition Settings changed
+Settings > Transition Settings -- Full-Scan > Retention time filter type changed from "Include all matching scans" to "Use only scans within time frame of predicted RT"
+Settings > Transition Settings -- Full-Scan > Retention time filter length changed from "0" to "3"
+Settings > Transition Settings -- Ion mobility > Ion mobility library changed from "None" to "BSA"
+Settings > Transition Settings -- Ion mobility > Ion mobility library > File path is "BSA.imsdb"
+Settings > Transition Settings -- Ion mobility > Ion mobility library > Contents changed > Items added is "38"
+Settings > Transition Settings -- Ion mobility > Ion mobility library > Contents changed > LSID is "urn:lsid:proteome.gs.washington.edu:ion_mobility_library:skyline:BSA:297a2b6d-4248-4751-a22d-f5d0d365dc30:1.1"
+Settings > Transition Settings -- Ion mobility > Ion mobility library > Contents changed > Timestamp is "2020-07-10T11:00:01-07:00"
+Settings > Transition Settings -- Ion mobility > Ion mobility filter window width calculation type changed from "None" to "Resolving power"
+Settings > Transition Settings -- Ion mobility > Resolving power changed from "0" to "50"
+
+Undo Redo : Imported results from "Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01.d"
+Summary   : Imported results from "Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01.d"
+All Info  :
+Imported results from "Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01.d"
+Import results settings > File names : contains "Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01.d"
+Import results settings > Add single-injection replicates in files is True
+Import results settings > Files to import simultaneously is "Many"
+Choose RT Prediction Replicates > Replicates : contains "BSA_Frag_100nM_18May15_Fir_15-04-02"
+Extra Info: File names = 
+[
+    "Yeast_0pt1ug_BSA_100nM_18May15_Fir_15-04-01.d"
+],
+Add single-injection replicates in files = True,
+Files to import simultaneously = "Many"
+Replicates = 
+[
+    "BSA_Frag_100nM_18May15_Fir_15-04-02"
+]
+

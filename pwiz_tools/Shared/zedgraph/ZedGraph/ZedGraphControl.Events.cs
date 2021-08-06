@@ -196,7 +196,7 @@ namespace ZedGraph
 		/// </summary>
 		/// <param name="sender">The source <see cref="ZedGraphControl"/> object</param>
 		/// <param name="pane">The <see cref="GraphPane"/> object that contains the cursor of interest</param>
-        /// <param name="mousePt">The <see cref="Point"/> object that represents the cursor value location</param>
+		/// <param name="mousePt">The <see cref="Point"/> object that represents the cursor value location</param>
 		/// <seealso cref="CursorValueEvent" />
 		public delegate string CursorValueHandler( ZedGraphControl sender, GraphPane pane,
 			Point mousePt );
@@ -554,7 +554,8 @@ namespace ZedGraph
 		/// <param name="e"></param>
 		protected void ZedGraphControl_KeyDown( object sender, System.Windows.Forms.KeyEventArgs e )
 		{
-			SetCursor();
+			if(e.KeyCode == Keys.Shift)
+				SetCursor();
 
 			if ( e.KeyCode == Keys.Escape )
 			{
@@ -612,6 +613,8 @@ namespace ZedGraph
 			_isPanning = false;
 			_isEditing = false;
 			_isSelecting = false;
+
+			Invalidate();
 
 			Cursor.Current = Cursors.Default;
 		}
@@ -715,18 +718,18 @@ namespace ZedGraph
 					if ( nearestObj is CurveItem && iPt >= 0 )
 					{
 						CurveItem curve = (CurveItem)nearestObj;
-                        string label = "";
+						string label = "";
 						// Provide Callback for User to customize the tooltips
 						if ( this.PointValueEvent != null )
 						{
-                            label = this.PointValueEvent(this, pane, curve, iPt);
-                            if (label != null && label.Length > 0)
-                            {
-                                if ( this.pointToolTip.GetToolTip( this ) != label )
-                                {
-                                    this.pointToolTip.SetToolTip( this, label );
-                                    this.pointToolTip.Active = true;
-                                }
+							label = this.PointValueEvent(this, pane, curve, iPt);
+							if (label != null && label.Length > 0)
+							{
+								if ( this.pointToolTip.GetToolTip( this ) != label )
+								{
+									this.pointToolTip.SetToolTip( this, label );
+									this.pointToolTip.Active = true;
+								}
 							}
 							else
 								this.pointToolTip.Active = false;
@@ -736,7 +739,7 @@ namespace ZedGraph
 
 							if ( curve is PieItem )
 							{
-                                label = ( (PieItem)curve ).Value.ToString( _pointValueFormat );
+								label = ( (PieItem)curve ).Value.ToString( _pointValueFormat );
 							}
 							//							else if ( curve is OHLCBarItem || curve is JapaneseCandleStickItem )
 							//							{
@@ -777,11 +780,11 @@ namespace ZedGraph
 								}
 							}
 
-                            if ( this.pointToolTip.GetToolTip( this ) != label )
-                            {
-                                this.pointToolTip.SetToolTip( this, label );
-                                this.pointToolTip.Active = true;
-                            }
+							if ( this.pointToolTip.GetToolTip( this ) != label )
+							{
+								this.pointToolTip.SetToolTip( this, label );
+								this.pointToolTip.Active = true;
+							}
 						}
 					}
 					else
@@ -800,18 +803,18 @@ namespace ZedGraph
 			GraphPane pane = _masterPane.FindPane( mousePt );
 			if ( pane != null && pane.Chart._rect.Contains( mousePt ) )
 			{
-                string label = "";
+				string label = "";
 				// Provide Callback for User to customize the tooltips
 				if ( this.CursorValueEvent != null )
 				{
-                    label = this.CursorValueEvent(this, pane, mousePt);
-                    if (label != null && label.Length > 0)
+					label = this.CursorValueEvent(this, pane, mousePt);
+					if (label != null && label.Length > 0)
 					{
-                        if ( this.pointToolTip.GetToolTip( this ) != label )
-                        {
-                            this.pointToolTip.SetToolTip( this, label );
-                            this.pointToolTip.Active = true;
-                        }
+						if ( this.pointToolTip.GetToolTip( this ) != label )
+						{
+							this.pointToolTip.SetToolTip( this, label );
+							this.pointToolTip.Active = true;
+						}
 					}
 					else
 						this.pointToolTip.Active = false;
@@ -824,12 +827,12 @@ namespace ZedGraph
 					string yStr = MakeValueLabel( pane.YAxis, y, -1, true );
 					string y2Str = MakeValueLabel( pane.Y2Axis, y2, -1, true );
 
-                    label = string.Format(  "( {0}, {1}, {2} )", xStr, yStr, y2Str );
+					label = string.Format(  "( {0}, {1}, {2} )", xStr, yStr, y2Str );
 					if ( this.pointToolTip.GetToolTip( this ) != label )
-                    {
-                        this.pointToolTip.SetToolTip( this, "( " + xStr + ", " + yStr + ", " + y2Str + " )" );
-					    this.pointToolTip.Active = true;
-                    }
+					{
+						this.pointToolTip.SetToolTip( this, "( " + xStr + ", " + yStr + ", " + y2Str + " )" );
+						this.pointToolTip.Active = true;
+					}
 				}
 			}
 			else
@@ -919,23 +922,23 @@ namespace ZedGraph
 
 			pane.ReverseTransform( centerPt, out x, out x2, out y, out y2 );
 
-		    bool verticalZoom = x < pane.XAxis.Scale.Min && y[0] > pane.YAxis.Scale.Min;
+			bool verticalZoom = x < pane.XAxis.Scale.Min && y[0] > pane.YAxis.Scale.Min;
 
 			if ( _isEnableHZoom && !verticalZoom )
 			{
 				ZoomScale( pane.XAxis, zoomFraction, x, isZoomOnCenter );
 				ZoomScale( pane.X2Axis, zoomFraction, x2, isZoomOnCenter );
 			}
-            if ((_isEnableVZoom || verticalZoom) && y[0] > pane.YAxis.Scale.Min)
-            {
-                var oldMin = pane.YAxis.Scale.Min;
+			if ((_isEnableVZoom || verticalZoom) && y[0] > pane.YAxis.Scale.Min)
+			{
+				var oldMin = pane.YAxis.Scale.Min;
 				for ( int i = 0; i < pane.YAxisList.Count; i++ )
 					ZoomScale( pane.YAxisList[i], zoomFraction, y[i], isZoomOnCenter );
 				for ( int i = 0; i < pane.Y2AxisList.Count; i++ )
 					ZoomScale( pane.Y2AxisList[i], zoomFraction, y2[i], isZoomOnCenter );
-                if (!_isEnableVPan)
-                    pane.YAxis.Scale.Min = oldMin;
-            }
+				if (!_isEnableVPan)
+					pane.YAxis.Scale.Min = oldMin;
+			}
 
 			using ( Graphics g = this.CreateGraphics() )
 			{
@@ -1015,6 +1018,7 @@ namespace ZedGraph
 				double maxLin = axis._scale._maxLinearized;
 				double f1 = 1 / zoomFraction - 1;
 
+				centerVal = axis.Scale.Linearize(centerVal);
 				if ( !isZoomOnCenter )
 					centerVal = ( maxLin + minLin ) / 2.0;
 
@@ -1201,16 +1205,9 @@ namespace ZedGraph
 
 		private void HandleZoomDrag( Point mousePt )
 		{
-			// Hide the previous rectangle by calling the
-			// DrawReversibleFrame method with the same parameters.
-			Rectangle rect = CalcScreenRect( _dragStartPt, _dragEndPt );
-			ControlPaint.DrawReversibleFrame( rect, this.BackColor, FrameStyle.Dashed );
-
 			// Bound the zoom to the ChartRect
-			_dragEndPt = Point.Round( BoundPointToRect( mousePt, _dragPane.Chart._rect ) );
-			rect = CalcScreenRect( _dragStartPt, _dragEndPt );
-			// Draw the new rectangle by calling DrawReversibleFrame again.
-			ControlPaint.DrawReversibleFrame( rect, this.BackColor, FrameStyle.Dashed );
+			_dragEndPt = Point.Round(BoundPointToRect(mousePt, _dragPane.Chart._rect));
+			Invalidate();
 		}
 
 		private const double ZoomResolution = 1e-300;
@@ -1361,15 +1358,13 @@ namespace ZedGraph
 
 		private Rectangle CalcScreenRect( Point mousePt1, Point mousePt2 )
 		{
-			Point screenPt = PointToScreen( mousePt1 );
-			Size size = new Size( mousePt2.X - mousePt1.X, mousePt2.Y - mousePt1.Y );
-			Rectangle rect = new Rectangle( screenPt, size );
+			Rectangle rect = new Rectangle(Math.Min(mousePt1.X, mousePt2.X), Math.Min(mousePt1.Y, mousePt2.Y), Math.Abs(mousePt2.X - mousePt1.X), Math.Abs(mousePt2.Y - mousePt1.Y));
 
 			if ( _isZooming )
 			{
 				Rectangle chartRect = Rectangle.Round( _dragPane.Chart._rect );
 
-				Point chartPt = PointToScreen( chartRect.Location );
+				Point chartPt = chartRect.Location;
 
 				if ( !_isEnableVZoom )
 				{

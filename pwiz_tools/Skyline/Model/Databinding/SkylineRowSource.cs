@@ -19,7 +19,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using pwiz.Common.Collections;
 using pwiz.Skyline.Model.Databinding.Collections;
 using pwiz.Skyline.Model.Databinding.Entities;
@@ -38,8 +37,7 @@ namespace pwiz.Skyline.Model.Databinding
         }
 
         public string Caption { get; private set; }
-        public abstract IBindingList GetList(SkylineDataSchema dataSchema);
-
+        
         public static SkylineRowSource<T> MakeRowSource<T>(string caption,
                                                            Func<SkylineDataSchema, NodeList<T>> makeNodeList)
             where T : SkylineDocNode
@@ -48,13 +46,13 @@ namespace pwiz.Skyline.Model.Databinding
         }
 
         public static readonly SkylineRowSource<Protein> Proteins
-            = MakeRowSource("Proteins", schema=>new Proteins(schema)); // Not L10N
+            = MakeRowSource(@"Proteins", schema=>new Proteins(schema));
         public static readonly SkylineRowSource<Entities.Peptide> Peptides 
-            = MakeRowSource("Peptides", schema => new Peptides(schema, new[]{IdentityPath.ROOT})); // Not L10N
+            = MakeRowSource(@"Peptides", schema => new Peptides(schema, new[]{IdentityPath.ROOT}));
         public static readonly SkylineRowSource<Precursor> Precursors
-            = MakeRowSource("Precursors", schema => new Precursors(schema, new[] { IdentityPath.ROOT })); // Not L10N
+            = MakeRowSource(@"Precursors", schema => new Precursors(schema, new[] { IdentityPath.ROOT }));
         public static readonly SkylineRowSource<Entities.Transition> Transitions 
-            = MakeRowSource("Transitions", schema => new Transitions(schema, new[] {IdentityPath.ROOT})); // Not L10N
+            = MakeRowSource(@"Transitions", schema => new Transitions(schema, new[] {IdentityPath.ROOT}));
 
         public static readonly IList<SkylineRowSource> RowSources =
             ImmutableList.ValueOf(new SkylineRowSource[] {Proteins, Peptides, Precursors, Transitions});
@@ -66,11 +64,6 @@ namespace pwiz.Skyline.Model.Databinding
         public SkylineRowSource(string caption, Func<SkylineDataSchema, NodeList<T>> getListFunc) : base(caption)
         {
             _getListFunc = getListFunc;
-        }
-
-        public override IBindingList GetList(SkylineDataSchema dataSchema)
-        {
-            return GetNodeList(dataSchema);
         }
         public NodeList<T> GetNodeList(SkylineDataSchema dataSchema)
         {

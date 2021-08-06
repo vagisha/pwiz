@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Nicholas Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -17,44 +17,101 @@
  * limitations under the License.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Serialization;
 using pwiz.Common.Collections;
+using pwiz.Common.DataBinding.Layout;
+using pwiz.Common.SystemUtil;
 
 namespace pwiz.Common.DataBinding
 {
     [XmlRoot("views")]
-    public class ViewSpecList : IXmlSerializable
+    public class ViewSpecList : Immutable, IXmlSerializable
     {
         public static readonly ViewSpecList EMPTY = new ViewSpecList(ImmutableList.Empty<ViewSpec>());
 
         public ViewSpecList(IEnumerable<ViewSpec> viewSpecs)
+            : this(viewSpecs.Select(vs=>new ViewSpecLayout(vs, ViewLayoutList.EMPTY)))
         {
-            ViewSpecs = ImmutableList.ValueOf(viewSpecs);
         }
 
-        
-        public ImmutableList<ViewSpec> ViewSpecs { get;private set; }
+        public ViewSpecList(IEnumerable<ViewSpec> viewSpecs, IEnumerable<ViewLayoutList> viewLayouts) 
+            : this(MakeViewSpecLayouts(viewSpecs, viewLayouts))
+        {
+        }
+
+        public ViewSpecList(IEnumerable<ViewSpecLayout> viewSpecLayouts)
+        {
+            ViewSpecLayouts = ImmutableList.ValueOfOrEmpty(viewSpecLayouts);
+        }
+
+        public IEnumerable<ViewSpec> ViewSpecs
+        {
+            get { return Views.Select(vsl => vsl.ViewSpec); }
+        }
+
+        [TrackChildren]
+        public IEnumerable<ViewLayoutList> ViewLayouts
+        {
+            get { return Views.Select(vsl => vsl.ViewLayoutList).Where(vll => !vll.IsEmpty); }
+        }
+
+        [TrackChildren]
+        public ImmutableList<ViewSpecLayout> Views
+        {
+            get { return ViewSpecLayouts; }
+        }
+
+        public ImmutableList<ViewSpecLayout> ViewSpecLayouts { get; private set; }
 
         public ViewSpecList FilterRowSources(ICollection<string> rowSources)
         {
-            return new ViewSpecList(ViewSpecs.Where(viewSpec=>rowSources.Contains(viewSpec.RowSource)));
+            return Filter(viewSpec => rowSources.Contains(viewSpec.RowSource));
+        }
+
+        public ViewSpecList Filter(Func<ViewSpec, bool> viewPredicate)
+        {
+            return new ViewSpecList(Views.Where(vsl => viewPredicate(vsl.ViewSpec)));
         }
 
         public ViewSpec GetView(string name)
         {
-            return ViewSpecs.FirstOrDefault(viewSpec => viewSpec.Name == name);
+            return GetViewSpecLayout(name)?.ViewSpec;
         }
 
-        public ViewSpecList ReplaceView(string oldName, ViewSpec newView)
+        public ViewSpecLayout GetViewSpecLayout(string name)
         {
-            List<ViewSpec> items = new List<ViewSpec>();
+            return ViewSpecLayouts.FirstOrDefault(viewSpecLayout => viewSpecLayout.Name == name);
+        }
+
+        public ViewLayoutList GetViewLayouts(string name)
+        {
+            return ViewLayouts.FirstOrDefault(layout => layout.ViewName == name) ??
+                   ViewLayoutList.EMPTY.ChangeViewName(name);
+        }
+
+        [Pure]
+        public ViewSpecList SaveViewLayouts(ViewLayoutList viewLayoutList)
+        {
+            IEnumerable<ViewLayoutList> newLayouts = ViewLayouts.Where(layout => layout.ViewName != viewLayoutList.ViewName);
+            if (!viewLayoutList.IsEmpty)
+            {
+                newLayouts = new[] {viewLayoutList}.Concat(newLayouts);
+            }
+            return new ViewSpecList(ViewSpecs, newLayouts);
+        }
+
+        public ViewSpecList ReplaceView(string oldName, ViewSpecLayout newView)
+        {
+            List<ViewSpecLayout> items = new List<ViewSpecLayout>();
             bool found = false;
-            foreach (var item in ViewSpecs)
+            foreach (var item in ViewSpecLayouts)
             {
                 if (item.Name != oldName)
                 {
@@ -76,12 +133,12 @@ namespace pwiz.Common.DataBinding
 
         public ViewSpecList RenameView(string oldName, string newName)
         {
-            var viewSpec = GetView(oldName);
+            var viewSpec = GetViewSpecLayout(oldName);
             if (null == viewSpec)
             {
                 return this;
             }
-            return ReplaceView(oldName, viewSpec.SetName(newName));
+            return ReplaceView(oldName, viewSpec.ChangeName(newName));
         }
 
         public ViewSpecList DeleteViews(IEnumerable<string> names)
@@ -90,7 +147,7 @@ namespace pwiz.Common.DataBinding
             return new ViewSpecList(ViewSpecs.Where(spec=>!nameSet.Contains(spec.Name)));
         }
 
-        public ViewSpecList AddOrReplaceViews(IEnumerable<ViewSpec> viewSpecs)
+        public ViewSpecList AddOrReplaceViews(IEnumerable<ViewSpecLayout> viewSpecs)
         {
             var result = this;
             foreach (var viewSpec in viewSpecs)
@@ -117,23 +174,29 @@ namespace pwiz.Common.DataBinding
 
         private void ReadXml(XmlReader reader)
         {
-            if (ViewSpecs != null)
+            if (Views != null)
             {
                 throw new ReadOnlyException();
             }
+
             if (reader.IsEmptyElement)
             {
-                ViewSpecs = ImmutableList.Empty<ViewSpec>();
-                reader.ReadElementString("views"); // Not L10N
+                ViewSpecLayouts = ImmutableList.Empty<ViewSpecLayout>();
+                reader.ReadElementString(@"views");
                 return;
             }
             reader.Read();
             var viewItems = new List<ViewSpec>();
+            var layouts = new List<ViewLayoutList>();
             while (true)
             {
-                if (reader.IsStartElement("view")) // Not L10N
+                if (reader.IsStartElement(@"view"))
                 {
                     viewItems.Add(ViewSpec.ReadXml(reader));
+                }
+                else if (reader.IsStartElement(@"layouts"))
+                {
+                    layouts.Add(ViewLayoutList.ReadXml(reader));
                 }
                 else if (reader.NodeType == XmlNodeType.EndElement)
                 {
@@ -142,18 +205,25 @@ namespace pwiz.Common.DataBinding
                 }
                 else
                 {
-                    reader.Read();
+                    reader.Skip();
                 }
             }
-            ViewSpecs = ImmutableList.ValueOf(viewItems);
+
+            ViewSpecLayouts = ImmutableList.ValueOf(MakeViewSpecLayouts(viewItems, layouts));
         }
 
         public void WriteXml(XmlWriter writer)
         {
             foreach (var viewItem in ViewSpecs)
             {
-                writer.WriteStartElement("view"); // Not L10N
+                writer.WriteStartElement(@"view");
                 viewItem.WriteXml(writer);
+                writer.WriteEndElement();
+            }
+            foreach (var viewLayoutList in ViewLayouts)
+            {
+                writer.WriteStartElement(@"layouts");
+                viewLayoutList.WriteXml(writer);
                 writer.WriteEndElement();
             }
         }
@@ -169,7 +239,7 @@ namespace pwiz.Common.DataBinding
         #region Equality Members
         protected bool Equals(ViewSpecList other)
         {
-            return Equals(ViewSpecs, other.ViewSpecs);
+            return Equals(ViewSpecLayouts, other.ViewSpecLayouts);
         }
 
         public override bool Equals(object obj)
@@ -182,11 +252,24 @@ namespace pwiz.Common.DataBinding
 
         public override int GetHashCode()
         {
-            // unchecked
-            {
-                return ViewSpecs.GetHashCode();
-            }
+            return ViewSpecLayouts.GetHashCode();
         }
         #endregion
+
+        private static IEnumerable<ViewSpecLayout> MakeViewSpecLayouts(IEnumerable<ViewSpec> viewSpecs,
+            IEnumerable<ViewLayoutList> viewLayouts)
+        {
+            Dictionary<string, ViewLayoutList> layoutsByName = viewLayouts?.ToDictionary(layout => layout.ViewName);
+            foreach (var viewSpec in viewSpecs)
+            {
+                ViewLayoutList layouts = null;
+                if (viewSpec.Name != null)
+                {
+                    layoutsByName?.TryGetValue(viewSpec.Name, out layouts);
+                }
+                yield return new ViewSpecLayout(viewSpec, layouts);
+
+            }
+        }
     }
 }

@@ -31,8 +31,13 @@
 #include "pwiz/data/msdata/Diff.hpp"
 #include "pwiz/data/proteome/ProteomeDataFile.hpp"
 #include "boost/assign.hpp"
+#include "boost/variant.hpp"
+#include "boost/variant/get.hpp"
+#include "boost/bind.hpp"
 #include "Embedder.hpp"
+#include "SchemaUpdater.hpp"
 #include "Parser.hpp"
+#include "sqlite3pp.h"
 
 
 using namespace pwiz::cv;
@@ -40,6 +45,7 @@ using namespace pwiz::util;
 using namespace pwiz::chemistry;
 using namespace boost::assign;
 using namespace IDPicker;
+namespace sqlite = sqlite3pp;
 
 
 struct ImportSettingsHandler : public Parser::ImportSettingsCallback
@@ -109,14 +115,27 @@ void createExampleWithArrays(const vector<double>& mzArray, const vector<double>
         for (size_t i = 0; i < 500; ++i)
         {
             sl->spectra.push_back(SpectrumPtr(new Spectrum));
-            sl->spectra.back()->id = "controllerType=0 controllerNumber=1 scan=" + lexical_cast<string>(i + 1);
-            sl->spectra.back()->index = i;
-            sl->spectra.back()->set((i % 10 == 0) ? MS_MS1_spectrum : MS_MSn_spectrum);
-            sl->spectra.back()->set(MS_ms_level, (i % 10 == 0) ? 1 : 2);
-            sl->spectra.back()->set(MS_centroid_spectrum);
-            sl->spectra.back()->setMZIntensityArrays(mzArray, intensityArray, MS_number_of_detector_counts);
-            sl->spectra.back()->scanList.scans.push_back(Scan());
-            sl->spectra.back()->scanList.scans[0].set(MS_scan_start_time, (i+1) / 100.0, UO_second);
+            auto& s = *sl->spectra.back();
+            s.id = "controllerType=0 controllerNumber=1 scan=" + lexical_cast<string>(i + 1);
+            s.index = i;
+            if (i % 10 == 0)
+            {
+                s.set(MS_MS1_spectrum);
+                s.set(MS_ms_level, 1);
+            }
+            else
+            {
+                s.set(MS_MSn_spectrum);
+                s.set(MS_ms_level, 2);
+                s.precursors.push_back(Precursor(123.45));
+                size_t precursorScanIndex = i / 10;
+                s.precursors.back().spectrumID = sl->spectrumIdentity(precursorScanIndex).id;
+            }
+
+            s.set(MS_centroid_spectrum);
+            s.setMZIntensityArrays(mzArray, intensityArray, MS_number_of_detector_counts);
+            s.scanList.scans.push_back(Scan());
+            s.scanList.scans[0].set(MS_scan_start_time, (i+1) / 100.0, UO_second);
         }
 
         bfs::create_directories("testEmbedder.dir");
@@ -136,20 +155,26 @@ string testReporterIons(const vector<double>& expectedIntensities, const string&
             throw runtime_error("[testReporterIons] no non-null SpectrumQuantitation rows");
         sqlite3pp::query::rows row = *itr;
         int reporterIonCount = row.column_bytes(0) / sizeof(double);
+        unit_assert_operator_equal(expectedIntensities.size(), reporterIonCount);
         const void* reporterIonBlob = row.get<const void*>(0);
         const double* reporterIonArray = reinterpret_cast<const double*>(reporterIonBlob);
         vector<double> reporterIons(reporterIonArray, reporterIonArray + reporterIonCount);
-        unit_assert_operator_equal(expectedIntensities.size(), reporterIons.size());
-        if (reporterIonCount > 0) unit_assert_operator_equal(expectedIntensities[0], reporterIons[0]);
-        if (reporterIonCount > 1) unit_assert_operator_equal(expectedIntensities[1], reporterIons[1]);
-        if (reporterIonCount > 2) unit_assert_operator_equal(expectedIntensities[2], reporterIons[2]);
-        if (reporterIonCount > 3) unit_assert_operator_equal(expectedIntensities[3], reporterIons[3]);
-        if (reporterIonCount > 4) unit_assert_operator_equal(expectedIntensities[4], reporterIons[4]);
-        if (reporterIonCount > 5) unit_assert_operator_equal(expectedIntensities[5], reporterIons[5]);
-        if (reporterIonCount > 6) unit_assert_operator_equal(expectedIntensities[6], reporterIons[6]);
-        if (reporterIonCount > 7) unit_assert_operator_equal(expectedIntensities[7], reporterIons[7]);
-        if (reporterIonCount > 8) unit_assert_operator_equal(expectedIntensities[8], reporterIons[8]);
-        if (reporterIonCount > 9) unit_assert_operator_equal(expectedIntensities[9], reporterIons[9]);
+        if (reporterIonCount > 0) unit_assert_equal(expectedIntensities[0], reporterIons[0], 1e-5);
+        if (reporterIonCount > 1) unit_assert_equal(expectedIntensities[1], reporterIons[1], 1e-5);
+        if (reporterIonCount > 2) unit_assert_equal(expectedIntensities[2], reporterIons[2], 1e-5);
+        if (reporterIonCount > 3) unit_assert_equal(expectedIntensities[3], reporterIons[3], 1e-5);
+        if (reporterIonCount > 4) unit_assert_equal(expectedIntensities[4], reporterIons[4], 1e-5);
+        if (reporterIonCount > 5) unit_assert_equal(expectedIntensities[5], reporterIons[5], 1e-5);
+        if (reporterIonCount > 6) unit_assert_equal(expectedIntensities[6], reporterIons[6], 1e-5);
+        if (reporterIonCount > 7) unit_assert_equal(expectedIntensities[7], reporterIons[7], 1e-5);
+        if (reporterIonCount > 8) unit_assert_equal(expectedIntensities[8], reporterIons[8], 1e-5);
+        if (reporterIonCount > 9) unit_assert_equal(expectedIntensities[9], reporterIons[9], 1e-5);
+        if (reporterIonCount > 10) unit_assert_equal(expectedIntensities[10], reporterIons[10], 1e-5);
+        if (reporterIonCount > 11) unit_assert_equal(expectedIntensities[11], reporterIons[11], 1e-5);
+        if (reporterIonCount > 12) unit_assert_equal(expectedIntensities[12], reporterIons[12], 1e-5);
+        if (reporterIonCount > 13) unit_assert_equal(expectedIntensities[13], reporterIons[13], 1e-5);
+        if (reporterIonCount > 14) unit_assert_equal(expectedIntensities[14], reporterIons[14], 1e-5);
+        if (reporterIonCount > 15) unit_assert_equal(expectedIntensities[15], reporterIons[15], 1e-5);
         return "";
     }
     catch (exception& e)
@@ -230,58 +255,6 @@ void test()
 
     map<int, Embedder::QuantitationConfiguration> quantitationMethodBySource;
 
-    // test iTRAQ4
-    // Label  Mass        4plex  8plex
-    // 114    114.111228  1      1
-    // 115    115.108263  1      1
-    // 116    116.111618  1      1
-    // 117    117.114973  1      1
-    {
-        vector<double> mzArray; mzArray += 100, 113.1, 114.11, 115,   115.11, 116.1, 117.1, 200, 300, 400, 500, 600, 700;
-        vector<double> inArray; inArray +=  10, 113,   114,    115.5, 115,    116,   117,   20,  30,  40,  30,  20,  10;
-        bfs::remove("testEmbedder.mzML");
-        createExampleWithArrays(mzArray, inArray);
-
-        quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::ITRAQ4plex, MZTolerance(0.015, MZTolerance::MZ), false);
-        Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
-        double corrected114 = max(0.0, 114 - 0.02 * 115);
-        double corrected115 = max(0.0, 115 - 0.03 * 116 - 0.059 * 114);
-        double corrected116 = max(0.0, 116 - 0.04 * 117 - 0.056 * 115);
-        double corrected117 = max(0.0, 117              - 0.045 * 116);
-        vector<double> expectedIntensities; expectedIntensities += 0, corrected114, corrected115, corrected116, corrected117, 0, 0, 0;
-        unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "iTRAQ_ReporterIonIntensities"));
-    }
-
-    // test iTRAQ8
-    // Label  Mass        4plex  8plex
-    // 113    113.107873  0      1
-    // 114    114.111228  1      1
-    // 115    115.108263  1      1
-    // 116    116.111618  1      1
-    // 117    117.114973  1      1
-    // 118    118.112008  0      1
-    // 119    119.115363  0      1
-    // 121    121.122072  0      1
-    {
-        vector<double> mzArray; mzArray += 100, 113.1, 114.1, 115.12, 116.1, 117.1, 118.1, 119.12, 121.1, 121.12, 200, 300, 400, 500, 600, 700;
-        vector<double> inArray; inArray +=  10, 113,   114,   115,    116,    117,   118,   119,   121,   122,    20,  30,  40,  30,  20,  10;
-        bfs::remove("testEmbedder.mzML");
-        createExampleWithArrays(mzArray, inArray);
-
-        quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::ITRAQ8plex, MZTolerance(0.015, MZTolerance::MZ), false);
-        Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
-        double corrected113 = max(0.0, 113 - 0.0000 * 114);
-        double corrected114 = max(0.0, 114 - 0.0094 * 115 - 0.0689 * 113);
-        double corrected115 = max(0.0, 115 - 0.0188 * 116 - 0.0590 * 114);
-        double corrected116 = max(0.0, 116 - 0.0282 * 117 - 0.0490 * 115);
-        double corrected117 = max(0.0, 117 - 0.0377 * 118 - 0.0390 * 116);
-        double corrected118 = max(0.0, 118 - 0.0471 * 119 - 0.0288 * 117);
-        double corrected119 = max(0.0, 119                - 0.0191 * 118);
-        double corrected121 = 122;
-        vector<double> expectedIntensities; expectedIntensities += corrected113, corrected114, corrected115, corrected116, corrected117, corrected118, corrected119, corrected121;
-        unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "iTRAQ_ReporterIonIntensities"));
-    }
-
     // test TMT2
     // Label  Mass        2plex  6plex  10plex
     // 126    126.12773   1      1      1
@@ -295,7 +268,7 @@ void test()
         quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::TMT2plex, MZTolerance(0.015, MZTolerance::MZ), false);
         Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
         //                                                         126  127N 127C 128N 128C 129N 129C 130N 130C 131
-        vector<double> expectedIntensities; expectedIntensities += 126, 0,   127, 0,   0,   0,   0,   0,   0,   0;
+        vector<double> expectedIntensities; expectedIntensities += 126, 0,   127, 0,   0,   0,   0,   0,   0,   0; expectedIntensities.resize(Embedder::MAX_TMT_REPORTER_IONS, 0);
         unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "TMT_ReporterIonIntensities"));
     }
     
@@ -321,31 +294,10 @@ void test()
         quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::TMT10plex, MZTolerance(20, MZTolerance::PPM), false);
         Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
         //                                                         126  127N   127C   128N   128C   129N   129C   130N   130C   131
-        vector<double> expectedIntensities; expectedIntensities += 126, 0,     127.1, 0,     128.1, 0,     129.1, 0,     130.1, 131;
+        vector<double> expectedIntensities; expectedIntensities += 126, 0,     127.1, 0,     128.1, 0,     129.1, 0,     130.1, 131; expectedIntensities.resize(Embedder::MAX_TMT_REPORTER_IONS, 0);
         unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "TMT_ReporterIonIntensities"));
     }
 
-    // test TMT6
-    // Label  Mass        2plex  6plex  10plex
-    // 126    126.12773   1      1      1
-    // 127C   127.13108   1      1      1
-    // 128C   128.13443   0      1      1
-    // 129C   129.13779   0      1      1
-    // 130C   130.14114   0      1      1
-    // 131    131.13818   0      1      1
-    {
-        vector<double> mzArray; mzArray += 100, 126.128, 127.131, 128.134, 129.132, 130.143, 131.137, 200, 300, 400, 500, 600, 700;
-        vector<double> inArray; inArray +=  10, 126,     127,     128,     129,     130,     131,     20,  30,  40,  30,  20,  10;
-        bfs::remove("testEmbedder.mzML");
-        createExampleWithArrays(mzArray, inArray);
-
-        quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::TMT6plex, MZTolerance(0.015, MZTolerance::MZ), false);
-        Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
-        //                                                         126  127N 127C 128N 128C 129N 129C 130N 130C 131
-        vector<double> expectedIntensities; expectedIntensities += 126, 0,   127, 0,   128, 0,   129, 0,   130, 131;
-        unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "TMT_ReporterIonIntensities"));
-    }
-    
     // test TMT10
     // Label  Mass        2plex  6plex  10plex
     // 126    126.12773   1      1      1
@@ -368,12 +320,28 @@ void test()
         quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::TMT10plex, MZTolerance(20, MZTolerance::PPM), false);
         Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
         //                                                         126  127N   127C   128N   128C   129N   129C   130N   130C   131
-        vector<double> expectedIntensities; expectedIntensities += 126, 127.1, 127.2, 128.1, 128.2, 129.1, 129.2, 130.1, 130.2, 131;
+        vector<double> expectedIntensities; expectedIntensities += 126, 127.1, 127.2, 128.1, 128.2, 129.1, 129.2, 130.1, 130.2, 131; expectedIntensities.resize(Embedder::MAX_TMT_REPORTER_IONS, 0);
+        unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "TMT_ReporterIonIntensities"));
+    }
+
+    // test TMTpro16
+    // Label  Mass        2plex  6plex  10plex
+    {
+        MZTolerance ht = MZTolerance(10, MZTolerance::PPM);
+        vector<double> mzArray; mzArray += 100, 126.12773-ht, 127.12476+ht, 127.13108-ht, 128.12811, 128.13443-ht, 129.13147+ht, 129.13779-ht, 130.13482-ht, 130.14114+ht, 131.13818, 131.14500, 132.14154, 132.14786, 133.14489, 133.15121, 134.14825, 200, 300, 400, 500, 600, 700;
+        vector<double> inArray; inArray +=  10, 126,          127.1,        127.2,        128.1,     128.2,        129.1,        129.2,        130.1,        130.2,        131.1,       131.2,   132.1,     132.2,     133.1,     133.2,     134,       20,  30,  40,  30,  20,  10;
+        bfs::remove("testEmbedder.mzML");
+        createExampleWithArrays(mzArray, inArray);
+
+        quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::TMTpro16plex, MZTolerance(20, MZTolerance::PPM), false);
+        Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
+        //                                                         126  127N   127C   128N   128C   129N   129C   130N   130C   131N   131C   132N   132C   133N   133C   134
+        vector<double> expectedIntensities; expectedIntensities += 126, 127.1, 127.2, 128.1, 128.2, 129.1, 129.2, 130.1, 130.2, 131.1, 131.2, 132.1, 132.2, 133.1, 133.2, 134; expectedIntensities.resize(Embedder::MAX_TMT_REPORTER_IONS, 0);
         unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "TMT_ReporterIonIntensities"));
     }
     
     // test again with normalization
-    {
+    /*{
         vector<double> mzArray; mzArray += 100, 126.128, 127.131, 128.134, 129.132, 130.143, 131.137, 200, 300, 400, 500, 600, 700;
         vector<double> inArray; inArray +=  10, 10,      90,      20,      100,     10,      1,       20,  30,  40,  30,  20,  10;
         bfs::remove("testEmbedder.mzML");
@@ -382,9 +350,9 @@ void test()
         quantitationMethodBySource[1] = Embedder::QuantitationConfiguration(QuantitationMethod::TMT6plex);
         Embedder::embed("testEmbedder.idpDB", "testEmbedder.dir", quantitationMethodBySource);
         //                                                         126  127N 127C 128N 128C 129N 129C 130N 130C 131
-        vector<double> expectedIntensities; expectedIntensities += 100, 0,   100, 0,   100, 0,   100, 0,   100, 100;
+        vector<double> expectedIntensities; expectedIntensities += 92.8333, 0, 92.8333, 0, 92.8333, 0, 92.8333, 0, 92.8333, 92.8333;
         unit_assert_operator_equal("", testReporterIons(expectedIntensities, "testEmbedder.idpDB", "TMT_ReporterIonIntensities"));
-    }
+    }*/
 
     // remove test files
     bfs::remove("testEmbedder.dir/testEmbedder.mzML");
@@ -458,6 +426,110 @@ void test()
 }
 
 
+struct VariantRowVisitor : boost::static_visitor<> { template <typename T> void operator()(const T& t, sqlite::statement::bindstream& os) const { os << t; } };
+void testGeneMapping()
+{
+    if (bfs::exists("embedderDoctest.idpDB")) bfs::remove("embedderDoctest.idpDB");
+    sqlite::database db("embedderDoctest.idpDB");
+    db.load_extension("IdpSqlExtensions");
+
+    db.execute("CREATE TABLE About AS SELECT " + lexical_cast<string>(CURRENT_SCHEMA_REVISION) + " AS SchemaRevision;"
+               "CREATE TABLE IF NOT EXISTS Protein(Id INTEGER PRIMARY KEY, Accession TEXT, IsDecoy INT, Cluster INT, ProteinGroup INT, Length INT, GeneId TEXT, GeneGroup INT);"
+               "CREATE TABLE IF NOT EXISTS ProteinMetadata (Id INTEGER PRIMARY KEY, Description TEXT, Hash BLOB, TaxonomyId INT, GeneName TEXT, Chromosome TEXT, GeneFamily TEXT, GeneDescription TEXT);"
+               "CREATE TABLE IF NOT EXISTS FilterHistory (Id INTEGER PRIMARY KEY, MaximumQValue NUMERIC, MinimumDistinctPeptides INT, MinimumSpectra INT,  MinimumAdditionalPeptides INT, GeneLevelFiltering INT, PrecursorMzTolerance TEXT,\n"
+               "                                          DistinctMatchFormat TEXT, MinimumSpectraPerDistinctMatch INT, MinimumSpectraPerDistinctPeptide INT, MaximumProteinGroupsPerPeptide INT,\n"
+               "                                          Clusters INT, ProteinGroups INT, Proteins INT, GeneGroups INT, Genes INT, DistinctPeptides INT, DistinctMatches INT, FilteredSpectra INT, ProteinFDR NUMERIC, PeptideFDR NUMERIC, SpectrumFDR NUMERIC);"
+               );
+
+    auto proteins = vector<vector<boost::variant<int, const char*>>>
+    {
+        // A2M     alpha-2-macroglobulin     12p13.31
+        { 1, "NP_000005.2", 0 },
+        { 2, "NP_001334352", 0 },
+        { 3, "P01023", 0 },
+        { 4, "ENSP00000323929", 0 },
+        { 5, "ENSP00000385710_F123R,M234F,T1234S", 0 },
+
+        // ABCA2     ATP binding cassette subfamily A member 2    9q34.3      ABCA
+        { 6, "generic|NP_997698.1", 0 },
+        { 7, "XP_006717059", 0 },
+        { 8, "generic|ENSP00000344155", 0 },
+        { 9, "sp|Q9BZC7", 0 },
+        { 10, "NP_997698_F123R", 0 },
+
+        // Abca1     ATP-binding cassette, sub-family A (ABC1), member 1     4:53030787-53159895
+        { 11, "gi|123456|ref|NP_038482.3", 0 },
+        { 12, "ENSMUSP00000030010", 0 },
+        { 13, "P41233_F123R", 0 },
+
+        // decoys
+        { 14, "rev_NP_038482", 1 },
+        { 15, "DECOY_ENSP00000344155_F123R", 1 },
+        { 16, "r-P41233", 1 }
+    };
+
+    sqlite::command proteinInsert(db, "INSERT INTO Protein (Id, Accession, IsDecoy, Cluster, ProteinGroup, Length, GeneId, GeneGroup) VALUES (?, ?, ?, 1, 1, 123, NULL, NULL)");
+    sqlite::command proteinMetadataInsert(db, "INSERT INTO ProteinMetadata (Id) VALUES (?)");
+    for (const auto& proteinRow : proteins)
+    {
+        auto binder = proteinInsert.binder();
+        for (size_t i = 0; i < proteinRow.size(); ++i)
+            boost::apply_visitor(boost::bind(VariantRowVisitor(), _1, boost::ref(binder)), proteinRow[i]);
+        proteinInsert.step();
+        proteinInsert.reset();
+
+        proteinMetadataInsert.bind(0, boost::get<int>(proteinRow[0]));
+        proteinMetadataInsert.step();
+        proteinMetadataInsert.reset();
+    }
+
+    Embedder::embedGeneMetadata("embedderDoctest.idpDB");
+
+    sqlite::query q(db, "SELECT GeneId, CAST(TaxonomyId AS TEXT), GeneName, Chromosome, IFNULL(GeneFamily, '') FROM Protein pro, ProteinMetadata pmd WHERE pro.Id=pmd.Id");
+    auto itr = q.begin();
+
+    for (int i = 0; i < 5; ++i) // 0-4 are A2M
+    {
+        int column = 0;
+        for (const string& value : vector<string>{ "A2M", "9606", "alpha-2-macroglobulin", "12p13.31", "" })
+        {
+            CHECK(itr->get<string>(column++) == value);
+        }
+        ++itr;
+    }
+
+    for (int i = 0; i < 5; ++i) // 5-9 are ABCA2
+    {
+        int column = 0;
+        for (const string& value : vector<string>{ "ABCA2", "9606", "ATP binding cassette subfamily A member 2", "9q34.3", "ABCA" })
+        {
+            CHECK(itr->get<string>(column++) == value);
+        }
+        ++itr;
+    }
+
+    for (int i = 0; i < 3; ++i) // 10-12 are Abca1
+    {
+        int column = 0;
+        for (const string& value : vector<string>{ "Abca1", "10090", "ATP-binding cassette, sub-family A (ABC1), member 1", "4:53030787-53159895", "" })
+        {
+            CHECK(itr->get<string>(column++) == value);
+        }
+        ++itr;
+    }
+
+    for (int i = 0; i < 3; ++i) // 13-15 are decoys
+    {
+        int column = 0;
+        for (const auto& value : vector<sqlite::null_type>(5))
+        {
+            CHECK(itr->get<sqlite::null_type>(column++) == value);
+        }
+        ++itr;
+    }
+}
+
+
 int main(int argc, char* argv[])
 {
     TEST_PROLOG(argc, argv)
@@ -468,6 +540,7 @@ int main(int argc, char* argv[])
         bfs::current_path(bfs::path(argv[0]).parent_path());
 
         test();
+		testGeneMapping();
     }
     catch (exception& e)
     {

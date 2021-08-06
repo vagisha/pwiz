@@ -19,7 +19,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Data;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -30,8 +29,8 @@ using System.Net;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Windows.Forms;
+using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Properties;
@@ -47,6 +46,11 @@ namespace pwiz.Skyline.Util
     public interface IKeyContainer<out TKey>
     {
         TKey GetKey();
+    }
+
+    public interface IEquivalenceTestable<in T>
+    {
+        bool IsEquivalent(T other);
     }
 
     /// <summary>
@@ -97,7 +101,7 @@ namespace pwiz.Skyline.Util
     /// editing.
     /// </summary>
     /// <typeparam name="TItem">The type of the items in the collection</typeparam>
-    public interface IListDefaults<out TItem>
+    public interface IListDefaults<TItem>
     {
         /// <summary>
         /// Gets the current revision index for this list
@@ -109,6 +113,14 @@ namespace pwiz.Skyline.Util
         /// </summary>
         /// <returns>The default collection</returns>
         IEnumerable<TItem> GetDefaults(int revisionIndex);
+
+        /// <summary>
+        /// Gets the localized display name for an item in this list
+        /// usually replacing names for the default items with localized text.
+        /// </summary>
+        /// <param name="item">The item for which to get the display text</param>
+        /// <returns>Localized display text for default items or user supplied text for other items</returns>
+        string GetDisplayName(TItem item);
     }
 
     /// <summary>
@@ -283,6 +295,7 @@ namespace pwiz.Skyline.Util
             int i = RemoveExisting(item);
             if (i != -1 && i < index)
                 index--;
+            // ReSharper disable once PossibleNullReferenceException
             _dict.Add(item.GetKey(), item);
             base.InsertItem(index, item);
         }
@@ -301,6 +314,7 @@ namespace pwiz.Skyline.Util
             // from what is at this location currently, then any
             // existing value with the same key must be removed
             // from its current location.
+            // ReSharper disable once PossibleNullReferenceException
             if (!Equals(key, item.GetKey()))
             {
                 int i = RemoveExisting(item);
@@ -401,158 +415,36 @@ namespace pwiz.Skyline.Util
     /// be empty, thought it may contain a single null element.
     /// </summary>
     /// <typeparam name="TItem">Type of the elements in the list</typeparam>
-    public class OneOrManyList<TItem> : IList<TItem>
-//        VS Issue: https://connect.microsoft.com/VisualStudio/feedback/ViewFeedback.aspx?FeedbackID=324473
-//        where T : class
+    public class OneOrManyList<TItem> : AbstractReadOnlyList<TItem>
     {
-        private TItem _one;
-        private TItem[] _many;
+        private ImmutableList<TItem> _list;
 
         public OneOrManyList(params TItem[] elements)
         {
-            if (elements.Length > 1)
-                _many = elements;
-            else if (elements.Length == 1)
-                _one = elements[0];            
+            _list = ImmutableList.ValueOf(elements);
         }
 
         public OneOrManyList(IList<TItem> elements)
         {
-            if (elements.Count > 1)
-                _many = elements.ToArray();
-            else if (elements.Count == 1)
-                _one = elements[0];
+            _list = ImmutableList.ValueOf(elements);
         }
 
-        public IEnumerator<TItem> GetEnumerator()
+        public override int Count
         {
-            return GetEnumerable().GetEnumerator();
+            get { return _list.Count; }
         }
 
-        private IEnumerable<TItem> GetEnumerable()
-        {
-            if (Equals(_many, null))
-            {
-                yield return _one;
-            }
-            else
-            {
-                foreach (var item in _many)
-                    yield return item;
-            }
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
-
-        public void Add(TItem item)
-        {
-            throw new ReadOnlyException(Resources.OneOrManyList_Add_Attempted_modification_of_a_read_only_collection);
-        }
-
-        public void Clear()
-        {
-            throw new ReadOnlyException(Resources.OneOrManyList_Add_Attempted_modification_of_a_read_only_collection);
-        }
-
-        public bool Contains(TItem item)
-        {
-            if (Equals(_many, null))
-                return Equals(_one, item);
-            return _many.Contains(item);
-        }
-
-        public void CopyTo(TItem[] array, int arrayIndex)
-        {
-            if (Equals(_many, null))
-                array[arrayIndex] = _one;
-            else
-                _many.CopyTo(array, arrayIndex);            
-        }
-
-        public bool Remove(TItem item)
-        {
-            throw new ReadOnlyException(Resources.OneOrManyList_Add_Attempted_modification_of_a_read_only_collection);
-        }
-
-        public int Count
+        public override TItem this[int index]
         {
             get
             {
-                if (Equals(_many, null))
-                    return 1;
-                return _many.Length;
-            }
-        }
-
-        public bool IsReadOnly
-        {
-            get { return true; }
-        }
-
-        public int IndexOf(TItem item)
-        {
-            if (Equals(_many, null))
-                return Equals(_one, item) ? 0 : -1;
-            return _many.IndexOf(v => Equals(v, item));
-        }
-
-        public void Insert(int index, TItem item)
-        {
-            throw new ReadOnlyException(Resources.OneOrManyList_Add_Attempted_modification_of_a_read_only_collection);
-        }
-
-        public void RemoveAt(int index)
-        {
-            throw new ReadOnlyException(Resources.OneOrManyList_Add_Attempted_modification_of_a_read_only_collection);
-        }
-
-        public TItem this[int index]
-        {
-            get
-            {
-                ValidateIndex(index);
-                if (Equals(_many, null))
-                    return _one;
-                return _many[index];
-            }
-
-            set
-            {
-                throw new ReadOnlyException(Resources.OneOrManyList_Add_Attempted_modification_of_a_read_only_collection);
+                return _list[index];
             }
         }
 
         public OneOrManyList<TItem> ChangeAt(int index, TItem item)
         {
-            ValidateIndex(index);
-            var cloneNew = (OneOrManyList<TItem>) MemberwiseClone();
-            if (Equals(_many, null))
-                cloneNew._one = item;
-            else
-            {
-                cloneNew._many = new TItem[_many.Length];
-                Array.Copy(_many, cloneNew._many, _many.Length);
-                cloneNew._many[index] = item;
-            }
-            return cloneNew;
-        }
-
-        private void ValidateIndex(int index)
-        {
-            if (Equals(_many, null))
-            {
-                if (index != 0)
-                    throw new IndexOutOfRangeException(
-                        string.Format(
-                            Resources.OneOrManyList_ValidateIndex_The_index__0__must_be_0_for_a_single_entry_list, index));
-            }
-            else if (0 > index || index > _many.Length)
-                throw new IndexOutOfRangeException(
-                    string.Format(Resources.OneOrManyList_ValidateIndex_The_index__0__must_be_between_0_and__1__, index,
-                                  _many.Length));
+            return new OneOrManyList<TItem>(_list.ReplaceAt(index, item));
         }
 
         #region object overrides
@@ -561,8 +453,7 @@ namespace pwiz.Skyline.Util
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return Equals(obj._one, _one) &&
-                ArrayUtil.EqualsDeep(obj._many, _many);
+            return _list.Equals(obj._list);
         }
 
         public override bool Equals(object obj)
@@ -575,13 +466,7 @@ namespace pwiz.Skyline.Util
 
         public override int GetHashCode()
         {
-            unchecked
-            {
-// ReSharper disable NonReadonlyFieldInGetHashCode
-                return ((!Equals(_one, default(TItem)) ? _one.GetHashCode() : 0)*397) ^
-                    (_many != null ? _many.GetHashCodeDeep() : 0);
-// ReSharper restore NonReadonlyFieldInGetHashCode
-            }
+            return _list.GetHashCode();
         }
 
         #endregion
@@ -630,7 +515,7 @@ namespace pwiz.Skyline.Util
         public void CopyTo(T[] array, int arrayIndex)
         {
             if (array == null)
-                throw new ArgumentNullException("array");   // Not L10N
+                throw new ArgumentNullException(nameof(array));
 
             array[arrayIndex] = _item;
         }
@@ -782,6 +667,8 @@ namespace pwiz.Skyline.Util
             }
         }
 
+        public const int RANDOM_SEED = 7 * 7 * 7 * 7 * 7; // 7^5 recommended by Brian S.
+
         /// <summary>
         /// Creates a random order of indexes into an array for a random linear walk
         /// through an array.
@@ -883,6 +770,20 @@ namespace pwiz.Skyline.Util
         }
 
         /// <summary>
+        /// Checks for equality of all items in an IEnumerable without regard for order.
+        /// </summary>
+        /// <typeparam name="TItem">Type of items in the IEnumerable</typeparam>
+        /// <param name="values1">First IEnumerable in the comparison</param>
+        /// <param name="values2">Second IEnumerable in the comparison</param>
+        /// <returns>True if all items in one IEnumerable are found in the other, and IEnumerables are same length</returns>
+        public static bool ContainsAll<TItem>(this IEnumerable<TItem> values1, IEnumerable<TItem> values2)
+        {
+            var set1 = values1.ToHashSet();
+            var set2 = values2.ToHashSet();
+            return set1.Count == set2.Count && set1.IsSubsetOf(set2);
+        }
+
+        /// <summary>
         /// Checks for deep equality, or equality of all items in an Array.
         /// </summary>
         /// <typeparam name="TItem">Type of items in the array</typeparam>
@@ -895,9 +796,10 @@ namespace pwiz.Skyline.Util
                 return true;
             if (values1 == null || values2 == null)
                 return false;
-            if (values1.Count != values2.Count)
+            int count = values1.Count;
+            if (count != values2.Count)
                 return false;
-            for (int i = 0; i < values1.Count; i++)
+            for (int i = 0; i < count; i++)
             {
                 if (!Equals(values1[i], values2[i]))
                     return false;
@@ -970,9 +872,10 @@ namespace pwiz.Skyline.Util
                 return true;
             if (values1 == null || values2 == null)
                 return false;
-            if (values1.Count != values2.Count)
+            int count = values1.Count;
+            if (count != values2.Count)
                 return false;
-            for (int i = 0; i < values1.Count; i++)
+            for (int i = 0; i < count; i++)
             {
                 if (!ReferenceEquals(values1[i], values2[i]))
                     return false;
@@ -998,7 +901,7 @@ namespace pwiz.Skyline.Util
             
         }
 
-    /// <summary>
+        /// <summary>
         /// Enumerates two lists assigning references from the second list to
         /// entries in the first list, where they are equal.  Useful for maintaining
         /// reference equality when recalculating values. Similar to <see cref="Helpers.AssignIfEquals{T}"/>.
@@ -1034,16 +937,39 @@ namespace pwiz.Skyline.Util
         }
 
         /// <summary>
+        /// Use when you have more than just one other array to sort. Otherwise, consider using Linq
+        /// </summary>
+        public static void Sort<TItem>(TItem[] array, params TItem[][] secondaryArrays)
+        {
+            int[] sortIndexes;
+            Sort(array, out sortIndexes);
+            int len = array.Length;
+            TItem[] buffer = new TItem[len];
+            foreach (var secondaryArray in secondaryArrays.Where(a => a != null))
+                ApplyOrder(sortIndexes, secondaryArray, buffer);
+        }
+
+        /// <summary>
         /// Apply the ordering gotten from the sorting of an array (see Sort method above)
         /// to a new array.
         /// </summary>
         /// <typeparam name="TItem">Type of array elements</typeparam>
         /// <param name="sortIndexes">Array of indexes that recorded sort operations</param>
         /// <param name="array">Array to be reordered using the index array</param>
-        /// <returns></returns>
-        public static TItem[] ApplyOrder<TItem>(int[] sortIndexes, TItem[] array)
+        /// <param name="buffer">An optional buffer to use to avoid allocating a new array and force in-place sorting</param>
+        /// <returns>A sorted version of the original array</returns>
+        public static TItem[] ApplyOrder<TItem>(int[] sortIndexes, TItem[] array, TItem[] buffer = null)
         {
-            var ordered = new TItem[array.Length];
+            TItem[] ordered;
+            int len = array.Length;
+            if (buffer == null)
+                ordered = new TItem[len];
+            else
+            {
+                Array.Copy(array, buffer, len);
+                ordered = array;
+                array = buffer;
+            }
             for (int i = 0; i < array.Length; i++)
                 ordered[i] = array[sortIndexes[i]];
             return ordered;
@@ -1143,6 +1069,15 @@ namespace pwiz.Skyline.Util
         {
             _itemCount = items.Count;
             _blocks = items.GetBlocks().ToList();
+        }
+
+        public static BlockedArray<TItem> Convert<TItemSrc>(BlockedArrayList<TItemSrc> blockedArrayList,
+            Func<TItemSrc, TItem> converter)
+        {
+            return new BlockedArray<TItem>(blockedArrayList.GetBlocks()
+                .Select(block => block.Select(converter).ToArray())
+                .ToList(),
+                blockedArrayList.Count);
         }
 
         private BlockedArray(List<TItem[]> blocks, int itemCount)
@@ -1460,7 +1395,7 @@ namespace pwiz.Skyline.Util
     /// <summary>
     /// A set of generic, static helper functions.
     /// </summary>
-    public static class Helpers
+    public static partial class Helpers
     {
         /// <summary>
         /// Swaps two reference values in memory, making each contain
@@ -1543,16 +1478,13 @@ namespace pwiz.Skyline.Util
         /// <param name="value">The string to parse</param>
         /// <param name="defaultValue">The value to return, if parsing fails</param>
         /// <returns>An enum value of type <see cref="TEnum"/></returns>
-        public static TEnum ParseEnum<TEnum>(string value, TEnum defaultValue)
+        public static TEnum ParseEnum<TEnum>(string value, TEnum defaultValue) where TEnum : struct
         {
-            try
+            if (Enum.TryParse(value, true, out TEnum result))
             {
-                return (TEnum)Enum.Parse(typeof(TEnum), value, true);
+                return result;
             }
-            catch (Exception)
-            {
-                return defaultValue;
-            }                            
+            return defaultValue;
         }
 
         /// <summary>
@@ -1568,7 +1500,7 @@ namespace pwiz.Skyline.Util
         {
             int i = localizedStrings.IndexOf(v => Equals(v, value));
             if (i == -1)
-                throw new ArgumentException(string.Format("The string '{0}' does not match an enum value ({1})", value, string.Join(", ", localizedStrings))); // Not L10N
+                throw new ArgumentException(string.Format(@"The string '{0}' does not match an enum value ({1})", value, string.Join(@", ", localizedStrings)));
             return (TEnum) (object) i;            
         }
 
@@ -1599,13 +1531,13 @@ namespace pwiz.Skyline.Util
         public static string MakeId(IEnumerable<char> name, bool capitalize)
         {
             StringBuilder sb = new StringBuilder();
-            char lastC = '\0'; // Not L10N
+            char lastC = '\0'; 
             foreach (var c in name)
             {
                 if (char.IsLetterOrDigit(c))
                 {
-                    if (lastC == ' ') // Not L10N
-                        sb.Append('_'); // Not L10N
+                    if (lastC == ' ')
+                        sb.Append('_');
                     lastC = c;
                     if (capitalize && sb.Length == 0)
                         sb.Append(c.ToString(CultureInfo.InvariantCulture).ToUpperInvariant());
@@ -1613,7 +1545,7 @@ namespace pwiz.Skyline.Util
                         sb.Append(c);
                 }
                 // Must start with a letter or digit
-                else if (lastC != '\0') // Not L10N
+                else if (lastC != '\0')
                 {
                     // After the start _ okay (dashes turned out to be problematic)
                     if (c == '_' /* || c == '-'*/)
@@ -1621,19 +1553,19 @@ namespace pwiz.Skyline.Util
                     // All other characters are replaced with _, but once the next
                     // letter or number is seen.
                     else if (char.IsLetterOrDigit(lastC))
-                        lastC = ' '; // Not L10N
+                        lastC = ' ';
                 }
             }
             return sb.ToString();
         }
 
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         private static readonly Regex REGEX_XML_ID = new Regex("/^[:_A-Za-z][-.:_A-Za-z0-9]*$/");
         private const string XML_ID_FIRST_CHARS = ":_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
         private const string XML_ID_FOLLOW_CHARS = "-.:_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         private const string XML_NON_ID_SEPARATOR_CHARS = ";[]{}()!|\\/\"'<>";
         private const string XML_NON_ID_PUNCTUATION_CHARS = ",?";
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         public static string MakeXmlId(string name)
         {
@@ -1649,7 +1581,7 @@ namespace pwiz.Skyline.Util
                 sb.Append(name[i++]);
             else
             {
-                sb.Append('_'); // Not L10N
+                sb.Append('_');
                 // If the first character is not allowable, advance past it.
                 // Otherwise, keep it in the ID.
                 if (!XML_ID_FOLLOW_CHARS.Contains(name[i]))
@@ -1661,13 +1593,13 @@ namespace pwiz.Skyline.Util
                 if (XML_ID_FOLLOW_CHARS.Contains(c))
                     sb.Append(c);
                 else if (char.IsWhiteSpace(c))
-                    sb.Append('_'); // Not L10N
+                    sb.Append('_');
                 else if (XML_NON_ID_SEPARATOR_CHARS.Contains(c))
-                    sb.Append(':'); // Not L10N
+                    sb.Append(':');
                 else if (XML_NON_ID_PUNCTUATION_CHARS.Contains(c))
-                    sb.Append('.'); // Not L10N
+                    sb.Append('.');
                 else
-                    sb.Append('-'); // Not L10N
+                    sb.Append('-');
             }
             return sb.ToString();
         }
@@ -1721,6 +1653,24 @@ namespace pwiz.Skyline.Util
             return 0;
         }
 
+        public static List<string> EnsureUniqueNames(List<string> names, HashSet<string> reservedNames = null)
+        {
+            var setUsedNames = reservedNames ?? new HashSet<string>();
+            var result = new List<string>();
+            for (int i = 0; i < names.Count; i++)
+            {
+                string baseName = names[i];
+                // Make sure the next name added is unique
+                string name = (baseName.Length != 0 ? baseName : @"1");
+                for (int suffix = 2; setUsedNames.Contains(name); suffix++)
+                    name = baseName + suffix;
+                result.Add(name);
+                // Add this name to the used set
+                setUsedNames.Add(name);
+            }
+            return result;
+        }
+
         /// <summary>
         /// Count the number of lines in the file specified.
         /// </summary>
@@ -1754,9 +1704,9 @@ namespace pwiz.Skyline.Util
             return count;
         }
 
-        private const char LABEL_SEP_CHAR = '_'; // Not L10N
-        private const string ELIPSIS = "..."; // Not L10N
-        private static readonly char[] SPACE_CHARS = { '_', '-', ' ', '.', ',' }; // Not L10N
+        private const char LABEL_SEP_CHAR = '_';
+        private const string ELIPSIS = "...";
+        private static readonly char[] SPACE_CHARS = { '_', '-', ' ', '.', ',' };
 
         /// <summary>
         /// Finds repetitive text in labels and removes the text to save space.
@@ -1903,13 +1853,45 @@ namespace pwiz.Skyline.Util
 
 
         /// <summary>
-        /// Try an action the might throw an IOException.  If it fails, sleep for 500 milliseconds and try
-        /// again.  See the comments above for more detail about why this is necessary.
+        /// Try an action that might throw an exception commonly related to a file move or delete.
+        /// If it fails, sleep for the indicated period and try again.
+        /// 
+        /// N.B. "TryTwice" is a historical misnomer since it actually defaults to trying four times,
+        /// but the intent is clear: try more than once. Further historical note: formerly this only
+        /// handled IOException, but in looping tests we also see UnauthorizedAccessException as a result
+        /// of file locks that haven't been released yet.
         /// </summary>
         /// <param name="action">action to try</param>
-        public static void TryTwice(Action action)
+        /// <param name="loopCount">how many loops to try before failing</param>
+        /// <param name="milliseconds">how long (in milliseconds) to wait before the action is retried</param>
+        public static void TryTwice(Action action, int loopCount = 4, int milliseconds = 500)
         {
-            Try<IOException>(action);
+            for (int i = 1; i<loopCount; i++)
+            {
+                try
+                {
+                    action();
+                    return;
+                }
+                catch (IOException exIO)
+                {
+                    ReportExceptionForRetry(milliseconds, exIO, i, loopCount);
+                }
+                catch (UnauthorizedAccessException exUA)
+                {
+                    ReportExceptionForRetry(milliseconds, exUA, i, loopCount);
+                }
+            }
+
+            // Try the last time, and let the exception go.
+            action();
+        }
+
+        private static void ReportExceptionForRetry(int milliseconds, Exception x, int loopCount, int maxLoopCount)
+        {
+            Trace.WriteLine(string.Format(@"Encountered the following exception (attempt {0} of {1}):", loopCount, maxLoopCount));
+            Trace.WriteLine(x.Message);
+            Thread.Sleep(milliseconds);
         }
 
         /// <summary>
@@ -1933,8 +1915,7 @@ namespace pwiz.Skyline.Util
                 }
                 catch (TEx x)
                 {
-                    Trace.WriteLine(x.Message);
-                    Thread.Sleep(milliseconds);
+                    ReportExceptionForRetry(milliseconds, x, i, loopCount);
                 }
             }
 
@@ -1967,7 +1948,7 @@ namespace pwiz.Skyline.Util
 
         public static string NullableDoubleToString(double? d)
         {
-            return d.HasValue ? d.Value.ToString(LocalizationHelper.CurrentCulture) : string.Empty;
+            return d.HasValue ? d.Value.ToString(LocalizationHelper.CurrentCulture) : String.Empty;
         }
     }
 
@@ -1976,32 +1957,101 @@ namespace pwiz.Skyline.Util
     /// </summary>
     public static class Assume
     {
-        public static void IsTrue(bool condition, string error = "") // Not L10N
+
+        public static bool InvokeDebuggerOnFail { get; private set; } // When set, we will invoke the debugger rather than fail.
+        public class DebugOnFail : IDisposable
+        {
+            private bool _pushPopInvokeDebuggerOnFail;
+
+            public DebugOnFail(bool invokeDebuggerOnFail = true)
+            {
+                _pushPopInvokeDebuggerOnFail = InvokeDebuggerOnFail; // Push
+                InvokeDebuggerOnFail = invokeDebuggerOnFail;
+            }
+
+            public void Dispose()
+            {
+                InvokeDebuggerOnFail = _pushPopInvokeDebuggerOnFail; // Pop
+            }
+        }
+
+        public static void IsTrue(bool condition, string error = "")
         {
             if (!condition)
                 Fail(error);
         }
 
-        public static void IsFalse(bool condition, string error = "") // Not L10N
+        public static void IsFalse(bool condition, string error = "")
         {
             if (condition)
                 Fail(error);
         }
 
-        public static void IsNotNull(object o, string parameterName = "") // Not L10N
+        public static void IsNotNull(object o, string parameterName = "")
         {
             if (o == null)
-                Fail(string.IsNullOrEmpty(parameterName) ? "null object" : parameterName + " is null"); // Not L10N
+                Fail(string.IsNullOrEmpty(parameterName) ? @"null object" : parameterName + @" is null");
         }
 
-        public static void IsNull(object o, string parameterName = "") // Not L10N
+        public static void IsNull(object o, string parameterName = "")
         {
             if (o != null)
-                Fail(string.IsNullOrEmpty(parameterName) ? "non-null object" : parameterName + " is not null"); // Not L10N
+                Fail(string.IsNullOrEmpty(parameterName) ? @"non-null object" : parameterName + @" is not null");
         }
 
-        public static void Fail(string error = "") // Not L10N
+        public static void AreEqual(object left, object right, string error = "")
         {
+            if (!Equals(left, right))
+                Fail(error);
+        }
+
+        public static void AreNotEqual(object left, object right, string error = "")
+        {
+            if (Equals(left, right))
+                Fail(error);
+        }
+
+        public static void AreEqual(double expected, double actual, double delta, string error = "")
+        {
+            if (Math.Abs(expected-actual) > delta)
+                Fail(error);
+        }
+
+        public static void Fail(string error = "")
+        {
+            if (InvokeDebuggerOnFail)
+            {
+                // Try to launch devenv with our solution sln so it presents in the list of debugger options.
+                // This makes for better code navigation and easier debugging.
+                try
+                {
+                    var path = @"\pwiz_tools\Skyline";
+                    var basedir = AppDomain.CurrentDomain.BaseDirectory;
+                    if (!string.IsNullOrEmpty(basedir))
+                    {
+                        var index = basedir.IndexOf(path, StringComparison.Ordinal);
+                        var solutionPath = basedir.Substring(0, index + path.Length);
+                        var skylineSln = Path.Combine(solutionPath, "Skyline.sln");
+                        // Try to give user a hint as to which debugger to pick
+                        var skylineTesterSln = Path.Combine(solutionPath, "USE THIS FOR ASSUME FAIL DEBUGGING.sln");
+                        if (File.Exists(skylineTesterSln))
+                            File.Delete(skylineTesterSln);
+                        File.Copy(skylineSln, skylineTesterSln);
+                        Process.Start(skylineTesterSln);
+                        Thread.Sleep(20000); // Wait for it to fire up sp it's offered in the list of debuggers
+                    }
+                }
+                // ReSharper disable once EmptyGeneralCatchClause
+                catch (Exception)
+                {
+                }
+
+                Console.WriteLine();
+                if (!string.IsNullOrEmpty(error))
+                    Console.WriteLine(error);
+                Console.WriteLine(@"error encountered, launching debugger as requested by Assume.DebugOnFail");
+                Debugger.Launch();
+            }
             throw new AssumptionException(error);
         }
 
@@ -2014,7 +2064,7 @@ namespace pwiz.Skyline.Util
         public static T Value<T>(T? value) where T : struct
         {
             if (!value.HasValue)
-                Fail("Nullable_was_expected_to_have_a_value");  // Not L10N
+                Fail(@"Nullable_was_expected_to_have_a_value"); 
             return value.Value;
         }
     }
@@ -2061,93 +2111,20 @@ namespace pwiz.Skyline.Util
             return ex.Message;
         }
 
-        public static string GetStackTraceText(Exception exception, StackTrace stackTraceExceptionCaughtAt = null, bool showMessage = true)
+        /// <summary>
+        /// Returns text to be used when reporting an unhandled exception to the Skyline.ms.
+        /// </summary>
+        public static string GetExceptionText(Exception exception, StackTrace stackTraceExceptionCaughtAt)
         {
-            StringBuilder stackTrace = new StringBuilder();
-            if (showMessage)
-                stackTrace.AppendLine("Stack trace:").AppendLine(); // Not L10N
-
-            stackTrace.AppendLine(exception.StackTrace).AppendLine();
-
-            for (var x = exception.InnerException; x != null; x = x.InnerException)
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.AppendLine(exception.ToString());
+            if (stackTraceExceptionCaughtAt != null)
             {
-                if (ReferenceEquals(x, exception.InnerException))
-                    stackTrace.AppendLine("Inner exceptions:"); // Not L10N
-                else
-                    stackTrace.AppendLine("---------------------------------------------------------------"); // Not L10N
-                stackTrace.Append("Exception type: ").Append(x.GetType().FullName).AppendLine(); // Not L10N
-                stackTrace.Append("Error message: ").AppendLine(x.Message); // Not L10N
-                stackTrace.AppendLine(x.Message).AppendLine(x.StackTrace);
+                stringBuilder.AppendLine(@"Exception caught at: ");
+                stringBuilder.AppendLine(stackTraceExceptionCaughtAt.ToString());
             }
-            if (null != stackTraceExceptionCaughtAt)
-            {
-                stackTrace.AppendLine("Exception caught at: "); // Not L10N
-                stackTrace.AppendLine(stackTraceExceptionCaughtAt.ToString());
-            }
-            return stackTrace.ToString();
-        }
-    }
 
-    public static class ParallelEx
-    {
-        // This can be set to true to make debugging easier.
-        public static readonly bool SINGLE_THREADED = false;
-
-        private static readonly ParallelOptions PARALLEL_OPTIONS = new ParallelOptions
-        {
-            MaxDegreeOfParallelism = SINGLE_THREADED ? 1 : -1
-        };
-        public static void For(int fromInclusive, int toExclusive, Action<int> body, Action<AggregateException> catchClause = null)
-        {
-            Action<int> localBody = i =>
-            {
-                LocalizationHelper.InitThread(); // Ensure appropriate culture
-                body(i);
-            };
-            LoopWithExceptionHandling(() => Parallel.For(fromInclusive, toExclusive, PARALLEL_OPTIONS, localBody), catchClause);
-        }
-
-        public static void ForEach<TSource>(IEnumerable<TSource> source, Action<TSource> body, Action<AggregateException> catchClause = null)
-        {
-            Action<TSource> localBody = o =>
-            {
-                LocalizationHelper.InitThread(); // Ensure appropriate culture
-                body(o);
-            };
-            LoopWithExceptionHandling(() => Parallel.ForEach(source, PARALLEL_OPTIONS, localBody), catchClause);
-        }
-
-        private static void LoopWithExceptionHandling(Action loop, Action<AggregateException> catchClause)
-        {
-            try
-            {
-                loop();
-            }
-            catch (AggregateException x)
-            {
-                Exception ex = null;
-                x.Handle(inner =>
-                {
-                    if (inner is OperationCanceledException)
-                    {
-                        if (!(ex is OperationCanceledException))
-                            ex = inner;
-                        return true;
-                    }
-                    if (catchClause == null)
-                    {
-                        if (ex == null)
-                            ex = inner;
-                        return true;
-                    }
-                    return false;
-                });
-
-                if (ex != null)
-                    Helpers.WrapAndThrowException(ex);
-                if (catchClause != null)
-                    catchClause(x);
-            }
+            return stringBuilder.ToString();
         }
     }
 
@@ -2201,12 +2178,52 @@ namespace pwiz.Skyline.Util
         }
     }
 
-    public class SecurityProtocolInitializer
+    public static class SecurityProtocolInitializer
     {
-        // Make sure we can negotiate with HTTPS servers that demand TLS 1.2 (default in dotNet 4.6, but has to be turned on in 4.5)
+        // Make sure we can negotiate with HTTPS servers that demand modern TLS levels
+        // The current recommendation from MSFT for future-proofing this https://docs.microsoft.com/en-us/dotnet/framework/network-programming/tls
+        // is don't specify TLS levels at all, let the OS decide. But we worry that this will mess up Win7 and Win8 installs, so we continue to specify explicitly.
         public static void Initialize()
         {
-            ServicePointManager.SecurityProtocol |= (SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12);
+            try
+            {
+                var Tls13 = (SecurityProtocolType)12288; // From decompiled SecurityProtocolType - compiler has no definition for some reason
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12 | Tls13;
+            }
+            catch (NotSupportedException)
+            {
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12; // Probably an older Windows Server
+            }
+        }
+    }
+
+    /// <summary>
+    /// Creates a string representing a UTC time and offset to local time zone, per ISO 8601 standard
+    /// </summary>
+    public class TimeStampISO8601
+    {
+        public TimeStampISO8601(DateTime timeStampUTC)
+        {
+            Assume.IsTrue(timeStampUTC.Kind == DateTimeKind.Utc); // We only deal in UTC
+            TimeStampUTC = timeStampUTC;
+            TimeZoneOffset = TimeZoneInfo.Local.GetUtcOffset(TimeStampUTC); // UTC offset e.g. -8 for Seattle whn not on DST
+        }
+
+        public TimeStampISO8601() : this(DateTime.UtcNow)
+        {
+        }
+
+        public DateTime TimeStampUTC { get; } // UTC time of creation
+        public TimeSpan TimeZoneOffset { get; } // UTC offset at time of creation e.g. -8 for Seattle when not on DST, -7 when DST  
+
+        public override string ToString()
+        {
+            var localTime = TimeStampUTC + TimeZoneOffset;
+            var tzShift = TimeZoneOffset.TotalHours; // Decimal hours eg 8.5 or -0.5 etc
+            return localTime.ToString(@"s", DateTimeFormatInfo.InvariantInfo) +
+                   (tzShift == 0
+                       ? @"Z"
+                       : (tzShift < 0 ? @"-" : @"+") + TimeZoneOffset.ToString(@"hh\:mm"));
         }
     }
 

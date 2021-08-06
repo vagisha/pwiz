@@ -32,7 +32,7 @@ namespace pwiz.Skyline.Model.Serialization
         public static class EL
         {
             // v0.1 lists
-            // ReSharper disable NonLocalizedString
+            // ReSharper disable LocalizableElement
             public const string selected_proteins = "selected_proteins";
             public const string selected_peptides = "selected_peptides";
             public const string selected_transitions = "selected_transitions";
@@ -76,12 +76,17 @@ namespace pwiz.Skyline.Model.Serialization
             public const string molecule = "molecule";
             public const string transition_data = "transition_data";
             public const string results_data = "results_data";
-            // ReSharper restore NonLocalizedString
+            public const string linked_peptide = "linked_peptide";
+            public const string linked_fragment_ion = "linked_fragment_ion";
+            public const string crosslinks = "crosslinks";
+            public const string crosslink = "crosslink";
+            public const string site = "site";
+            // ReSharper restore LocalizableElement
         }
 
         public static class ATTR
         {
-            // ReSharper disable NonLocalizedString
+            // ReSharper disable LocalizableElement
             public const string format_version = "format_version";
             public const string software_version = "software_version";
             public const string name = "name";
@@ -110,13 +115,22 @@ namespace pwiz.Skyline.Model.Serialization
             public const string predicted_retention_time = "predicted_retention_time";
             public const string explicit_retention_time = "explicit_retention_time";
             public const string explicit_retention_time_window = "explicit_retention_time_window";
-            public const string explicit_drift_time_msec = "explicit_drift_time_msec";
-            public const string explicit_drift_time_high_energy_offset_msec = "explicit_drift_time_high_energy_offset_msec";
+            public const string explicit_drift_time_msec = "explicit_drift_time_msec"; // obsolete, replaced by the more general exolicit_ion_mobility_*
+            public const string explicit_drift_time_high_energy_offset_msec = "explicit_drift_time_high_energy_offset_msec"; // obsolete, replaced by the more general exolicit_ion_mobility_*
+            public const string explicit_ion_mobility = "explicit_ion_mobility";
+            public const string explicit_ion_mobility_units = "explicit_ion_mobility_units";
+            public const string ion_mobility_high_energy_offset = "ion_mobility_high_energy_offset";
+            public const string explicit_ion_mobility_high_energy_offset = "explicit_ion_mobility_high_energy_offset";
             public const string explicit_ccs_sqa = "explicit_ccs_sqa";
-            public const string drift_time_ms1 = "drift_time_ms1";
-            public const string drift_time_fragment = "drift_time_fragment";
-            public const string drift_time = "drift_time";
-            public const string drift_time_window = "drift_time_window";
+            public const string drift_time_ms1 = "drift_time_ms1"; // Obsolete, replaced by ion_mobility_*
+            public const string drift_time_fragment = "drift_time_fragment";  // Obsolete, replaced by ion_mobility_*
+            public const string drift_time = "drift_time";  // Obsolete, replaced by ion_mobility_*
+            public const string drift_time_window = "drift_time_window";  // Obsolete, replaced by ion_mobility_*
+            public const string ion_mobility_ms1 = "ion_mobility_ms1";
+            public const string ion_mobility_fragment = "ion_mobility_fragment"; 
+            public const string ion_mobility = "ion_mobility"; 
+            public const string ion_mobility_type = "ion_mobility_type"; 
+            public const string ion_mobility_window = "ion_mobility_window"; 
             public const string ccs = "ccs";
             public const string avg_measured_retention_time = "avg_measured_retention_time";
             public const string isotope_label = "isotope_label";
@@ -134,6 +148,7 @@ namespace pwiz.Skyline.Model.Serialization
             public const string auto_manage_children = "auto_manage_children";
             public const string decoy = "decoy";
             public const string decoy_mass_shift = "decoy_mass_shift";
+            public const string decoy_match_proportion = "decoy_match_proportion";
             public const string isotope_dist_rank = "isotope_dist_rank";
             public const string isotope_dist_proportion = "isotope_dist_proportion";
             public const string ion_formula = "ion_formula";
@@ -158,6 +173,10 @@ namespace pwiz.Skyline.Model.Serialization
             public const string concentration_multiplier = "concentration_multiplier";
             public const string internal_standard_concentration = "internal_standard_concentration";
             public const string normalization_method = "normalization_method";
+            public const string quantitative = "quantitative";
+            public const string precursor_concentration = "precursor_concentration";
+            public const string attribute_group_id = "attribute_group_id";
+            public const string peptide_index = "peptide_index";
 
             // Results
             public const string replicate = "replicate";
@@ -181,8 +200,11 @@ namespace pwiz.Skyline.Model.Serialization
             public const string qvalue = "qvalue";
             public const string zscore = "zscore";
             public const string exclude_from_calibration = "exclude_from_calibration";
+            public const string analyte_concentration = "analyte_concentration";
             public const string points_across = "points_across";
-            // ReSharper restore NonLocalizedString
+            public const string forced_integration = "forced_integration";
+            public const string orphaned_crosslink_ion = "orphaned_crosslink_ion";
+            // ReSharper restore LocalizableElement
         }
     }
 }

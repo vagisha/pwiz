@@ -1,11 +1,13 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.21005.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.27130.2020
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{C80CDBB4-AC19-4D59-B8AE-6424EA5C6D34}"
 	ProjectSection(SolutionItems) = preProject
 		Skyline.vsmdi = Skyline.vsmdi
+		TestSettings_x64.runsettings = TestSettings_x64.runsettings
 		TestSettings_x64.testsettings = TestSettings_x64.testsettings
+		TestSettings_x86.runsettings = TestSettings_x86.runsettings
 		TestSettings_x86.testsettings = TestSettings_x86.testsettings
 	EndProjectSection
 EndProject
@@ -25,7 +27,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestTutorial", "TestTutoria
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestUtil", "TestUtil\TestUtil.csproj", "{1A76F2B4-353A-4BCF-9D15-70D4B387E480}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestA", "TestA\TestA.csproj", "{F1A6D016-7608-4A7B-8D68-FB32B8344D4B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestData", "TestData\TestData.csproj", "{F1A6D016-7608-4A7B-8D68-FB32B8344D4B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Common", "..\Shared\Common\Common.csproj", "{A5527BE9-4A62-458F-AE47-F0F9204A5CF9}"
 EndProject
@@ -65,6 +67,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestConnected", "TestConnected\TestConnected.csproj", "{5D4E9180-FD66-4C11-8C16-11921865EDBD}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SkylineCmd", "SkylineCmd\SkylineCmd.csproj", "{FA16A0EF-EDF7-4515-BD93-44BADD7AB98A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SkylineNightlyShim", "SkylineNightlyShim\SkylineNightlyShim.csproj", "{3C7F5209-6507-42C5-80CE-472AE6A51CD1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -250,9 +254,20 @@ Global
 		{FA16A0EF-EDF7-4515-BD93-44BADD7AB98A}.Release|x64.Build.0 = Release|x64
 		{FA16A0EF-EDF7-4515-BD93-44BADD7AB98A}.Release|x86.ActiveCfg = Release|x86
 		{FA16A0EF-EDF7-4515-BD93-44BADD7AB98A}.Release|x86.Build.0 = Release|x86
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Debug|x64.ActiveCfg = Debug|x64
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Debug|x64.Build.0 = Debug|x64
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Debug|x86.ActiveCfg = Debug|x86
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Debug|x86.Build.0 = Debug|x86
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Release|x64.ActiveCfg = Release|x64
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Release|x64.Build.0 = Release|x64
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Release|x86.ActiveCfg = Release|x86
+		{3C7F5209-6507-42C5-80CE-472AE6A51CD1}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {76EA95DD-952A-4E84-BB85-D4622DBAD141}
 	EndGlobalSection
 	GlobalSection(TestCaseManagementSettings) = postSolution
 		CategoryFile = Skyline.vsmdi

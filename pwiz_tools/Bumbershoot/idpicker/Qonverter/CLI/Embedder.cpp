@@ -43,8 +43,10 @@ using namespace System::IO;
 namespace NativeEmbedder = NativeIDPicker::Embedder;
 namespace NativeXIC = NativeIDPicker::XIC;
 
+int Embedder::MAX_ITRAQ_REPORTER_IONS::get() { return NativeEmbedder::MAX_ITRAQ_REPORTER_IONS; }
+int Embedder::MAX_TMT_REPORTER_IONS::get() { return NativeEmbedder::MAX_TMT_REPORTER_IONS; }
 
-String^ Embedder::DefaultSourceExtensionPriorityList::get() { return ToSystemString(NativeEmbedder::defaultSourceExtensionPriorityList); }
+String^ Embedder::DefaultSourceExtensionPriorityList::get() { return ToSystemString(NativeEmbedder::defaultSourceExtensionPriorityList()); }
 
 
 namespace {
@@ -278,6 +280,47 @@ void Embedder::EmbedScanTime(String^ idpDbFilepath,
         System::GC::KeepAlive(ilr);
     }
     CATCH_AND_FORWARD
+}
+
+
+void Embedder::EmbedIsobaricSampleMapping(String^ idpDbFilepath, IDictionary<String^, IList<String^>^>^ isobaricSampleMap)
+{
+    Logger::Initialize(); // make sure the logger is initialized
+
+    try
+    {
+        map<string, vector<string> > nativeIsobaricSampleMap;
+        for each (KeyValuePair<String^, IList<String^>^>^ kvp in isobaricSampleMap)
+        {
+            vector<string>& sampleNames = nativeIsobaricSampleMap[ToStdString(kvp->Key)];
+            for each (String^ s in kvp->Value)
+                sampleNames.push_back(ToStdString(s));
+        }
+        NativeEmbedder::embedIsobaricSampleMapping(ToStdString(idpDbFilepath), nativeIsobaricSampleMap);
+    }
+    CATCH_AND_FORWARD;
+}
+
+IDictionary<String^, IList<String^>^>^ Embedder::GetIsobaricSampleMapping(String^ idpDbFilepath)
+{
+    Logger::Initialize(); // make sure the logger is initialized
+
+    try
+    {
+        map<string, vector<string> > nativeIsobaricSampleMap = NativeEmbedder::getIsobaricSampleMapping(ToStdString(idpDbFilepath));
+
+        IDictionary<String^, IList<String^>^>^ isobaricSampleMap = gcnew Dictionary<String^, IList<String^>^>();
+        for (const auto& kvp : nativeIsobaricSampleMap)
+        {
+            IList<String^>^ sampleNames = gcnew List<String^>();
+            isobaricSampleMap[ToSystemString(kvp.first)] = sampleNames;
+            for each (const string& s in kvp.second)
+                sampleNames->Add(ToSystemString(s));
+        }
+        return isobaricSampleMap;
+    }
+    CATCH_AND_FORWARD;
+    return nullptr;
 }
 
 

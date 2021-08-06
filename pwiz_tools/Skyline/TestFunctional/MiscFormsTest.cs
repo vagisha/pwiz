@@ -19,6 +19,7 @@
 
 using System;
 using System.IO;
+using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Skyline;
 using pwiz.Skyline.Alerts;
@@ -39,13 +40,61 @@ namespace pwiz.SkylineTestFunctional
 
         protected override void DoTest()
         {
-            // Show About dialog.
-            using (var about = new AboutDlg())
+            // Exercise MultiButtonMsgDlg's use of standard MessageBoxButtons button sets
+            foreach (var buttonSet in (MessageBoxButtons[])Enum.GetValues(typeof(MessageBoxButtons)))
             {
-                RunDlg<AboutDlg>(
-                    () => about.ShowDialog(Program.MainWindow),
-                    a => a.Close());
+                DialogResult result = DialogResult.Ignore;
+                RunDlg<MultiButtonMsgDlg>( () =>
+                        result = MultiButtonMsgDlg.Show(Program.MainWindow, buttonSet.ToString(), buttonSet),
+                    d => d.AcceptButton.PerformClick());
+                var expected = DialogResult.None;
+                var newDefault = DialogResult.None; // Used in next step, setting the default button
+                switch (buttonSet)
+                {
+                    case MessageBoxButtons.OK:
+                        expected = DialogResult.OK;
+                        newDefault = expected;
+                        break;
+                    case MessageBoxButtons.AbortRetryIgnore:
+                        expected = DialogResult.Abort;
+                        newDefault = DialogResult.Ignore;
+                        break;
+                    case MessageBoxButtons.OKCancel:
+                        expected = DialogResult.OK;
+                        newDefault = DialogResult.Cancel;
+                        break;
+                    case MessageBoxButtons.RetryCancel:
+                        expected = DialogResult.Retry;
+                        newDefault = DialogResult.Cancel;
+                        break;
+                    case MessageBoxButtons.YesNo:
+                        expected = DialogResult.Yes;
+                        newDefault = DialogResult.No;
+                        break;
+                    case MessageBoxButtons.YesNoCancel:
+                        expected = DialogResult.Yes;
+                        newDefault = DialogResult.No;
+                        break;
+                }
+                AssertEx.AreEqual(expected, result);
+
+                // Now test setting the default response
+                RunDlg<MultiButtonMsgDlg>(() =>
+                        result = MultiButtonMsgDlg.Show(Program.MainWindow, buttonSet.ToString(), buttonSet, newDefault),
+                    d => d.AcceptButton.PerformClick());
+                AssertEx.AreEqual(newDefault, result);
+
             }
+
+            // Show About dialog.
+            RunDlg<AboutDlg>(() =>
+                {
+                    using (var about = new AboutDlg())
+                    {
+                        about.ShowDialog(Program.MainWindow);
+                    }
+                },
+                a => a.Close());
 
             // Show Alert link dialog.
             RunDlg<AlertLinkDlg>(
@@ -63,19 +112,24 @@ namespace pwiz.SkylineTestFunctional
                 ReportShutdownDlg.SaveExceptionFile(x, true);
             }
             Assert.IsTrue(ReportShutdownDlg.HadUnexpectedShutdown(true));
-            using (var reportShutdownDlg = new ReportShutdownDlg())
-            {
-                RunDlg<ReportShutdownDlg>(
-                    () => reportShutdownDlg.ShowDialog(),
-                    d => d.Close());
-            }
+            RunDlg<ReportShutdownDlg>(() =>
+                {
+                    using (var reportShutdownDlg = new ReportShutdownDlg())
+                    {
+                        reportShutdownDlg.ShowDialog(SkylineWindow);
+                    }
+                },
+                d => d.Close());
             Assert.IsFalse(ReportShutdownDlg.HadUnexpectedShutdown(true));
 
             // Show upgrade dialog
-            using (var dlg = new UpgradeLicenseDlg(Program.LICENSE_VERSION_CURRENT - 1))
+            RunDlg<UpgradeLicenseDlg>(() =>
             {
-                RunDlg<UpgradeLicenseDlg>(() => dlg.ShowDialog(), d => d.Close());
-            }
+                using (var dlg = new UpgradeLicenseDlg(Program.LICENSE_VERSION_CURRENT - 1))
+                {
+                    dlg.ShowDialog(SkylineWindow);
+                }
+            }, d => d.Close());
 
             // Show import retry dialog (requires some extra work to avoid blocking the counting)
             var dlgCount = ShowDialog<ImportResultsRetryCountdownDlg>(ShowImportResultsRetryCountdownDlg);
@@ -87,7 +141,7 @@ namespace pwiz.SkylineTestFunctional
         {
             using (var dlg = new ImportResultsRetryCountdownDlg(20, () => { }, () => { }))
             {
-                dlg.ShowDialog();
+                dlg.ShowDialog(SkylineWindow);
             }
         }
     }

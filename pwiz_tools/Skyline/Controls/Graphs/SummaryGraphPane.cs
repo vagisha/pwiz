@@ -18,6 +18,7 @@
  */
 
 using System;
+using System.Linq;
 using System.Windows.Forms;
 using ZedGraph;
 
@@ -72,18 +73,32 @@ namespace pwiz.Skyline.Controls.Graphs
         /// <param name="selectionChanged">True when the selection has changed, otherwise false</param>
         public abstract void UpdateGraph(bool selectionChanged);
 
+        public virtual bool HasToolbar { get { return false; } }
+
+        public virtual void OnClose(EventArgs e)
+        {
+            
+        }
+
         public virtual bool HandleMouseMoveEvent(ZedGraphControl sender, MouseEventArgs e)
         {
             return false;
         }
+
         public virtual bool HandleMouseDownEvent(ZedGraphControl sender, MouseEventArgs e)
         {
             return false;
         }
+
+        public virtual void HandleMouseClick(object sender, MouseEventArgs e)
+        {
+        }
+
         public virtual bool HandleKeyDownEvent(object sender, KeyEventArgs e)
         {
             return false;
         }
+
         public virtual void HandleResizeEvent()
         {            
         }
@@ -103,6 +118,12 @@ namespace pwiz.Skyline.Controls.Graphs
             }
             return count;
         }
+
+        public int GetBoxObjCount()
+        {
+            return GraphObjList.Count(o => o is BoxObj);
+        }
+
 
         public double GetMin()
         {

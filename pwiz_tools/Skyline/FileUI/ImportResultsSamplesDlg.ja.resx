@@ -268,7 +268,7 @@
     <value>1</value>
   </data>
   <data name="labelFile.Text" xml:space="preserve">
-    <value>filename</value>
+    <value>ファイル名</value>
   </data>
   <data name="&gt;&gt;labelFile.Name" xml:space="preserve">
     <value>labelFile</value>

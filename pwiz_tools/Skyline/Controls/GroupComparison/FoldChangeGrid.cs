@@ -18,19 +18,18 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
 using DigitalRune.Windows.Docking;
-using pwiz.Common.SystemUtil;
+using pwiz.Common.DataBinding;
 using pwiz.Skyline.Controls.Databinding;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.Databinding;
 using pwiz.Skyline.Model.GroupComparison;
 using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Controls.GroupComparison
 {
-    public partial class FoldChangeGrid : FoldChangeForm
+    public partial class FoldChangeGrid : FoldChangeForm, IDataboundGridForm
     {
         public FoldChangeGrid()
         {
@@ -42,6 +41,20 @@ namespace pwiz.Skyline.Controls.GroupComparison
             return base.GetTitle(groupComparisonName) + ':' + GroupComparisonStrings.FoldChangeGrid_GetTitle_Grid;
         }
 
+        public ViewName? ViewToRestore { get; set; }
+
+        protected override string GetPersistentString()
+        {
+            var persistentString = PersistentString.Parse(base.GetPersistentString());
+            var viewName = DataboundGridControl.GetViewName();
+            if (viewName.HasValue)
+            {
+                persistentString = persistentString.Append(viewName.ToString());
+            }
+
+            return persistentString.ToString();
+        }
+
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
@@ -51,10 +64,9 @@ namespace pwiz.Skyline.Controls.GroupComparison
                 toolStripButtonChangeSettings.Visible =
                     !string.IsNullOrEmpty(FoldChangeBindingSource.GroupComparisonModel.GroupComparisonName);
                 FoldChangeBindingSource.ViewContext.BoundDataGridView = DataboundGridControl.DataGridView;
-                var skylineWindow = FoldChangeBindingSource.GroupComparisonModel.DocumentContainer as SkylineWindow;
-                if (null != skylineWindow)
+                if (ViewToRestore.HasValue)
                 {
-                    DataGridViewPasteHandler.Attach(skylineWindow, DataboundGridControl.DataGridView);
+                    DataboundGridControl.ChooseView(ViewToRestore.Value);
                 }
             }
         }
@@ -69,7 +81,7 @@ namespace pwiz.Skyline.Controls.GroupComparison
             base.OnHandleDestroyed(e);
         }
 
-        public static FoldChangeGrid ShowFoldChangeGrid(DockPanel dockPanel, Rectangle rcFloating, IDocumentContainer documentContainer,
+        public static FoldChangeGrid ShowFoldChangeGrid(DockPanel dockPanel, Rectangle rcFloating, IDocumentUIContainer documentContainer,
             string groupComparisonName)
         {
             var grid = FindForm<FoldChangeGrid>(documentContainer, groupComparisonName);
@@ -92,33 +104,17 @@ namespace pwiz.Skyline.Controls.GroupComparison
 
         public void ShowGraph()
         {
-            IEnumerable<FoldChangeBarGraph> barGraphs;
-            if (null != DockPanel)
-            {
-                barGraphs = DockPanel.Contents.OfType<FoldChangeBarGraph>();
-            }
-            else
-            {
-                barGraphs = FormUtil.OpenForms.OfType<FoldChangeBarGraph>();
-            }
-            foreach (var form in barGraphs)
-            {
-                if (SameBindingSource(form)) 
-                {
-                    form.Activate();
-                    return;
-                }
-            }
-            var graph = new FoldChangeBarGraph();
-            graph.SetBindingSource(FoldChangeBindingSource);
-            if (null != Pane)
-            {
-                graph.Show(Pane, null);
-            }
-            else
-            {
-                graph.Show(Owner);
-            }
+            ShowFoldChangeForm<FoldChangeBarGraph>();
+        }
+
+        private void toolButtonVolcano_Click(object sender, EventArgs e)
+        {
+            ShowVolcanoPlot();
+        }
+
+        public void ShowVolcanoPlot()
+        {
+            ShowFoldChangeForm<FoldChangeVolcanoPlot>();
         }
 
         private void toolStripButtonChangeSettings_Click(object sender, EventArgs e)
@@ -126,20 +122,19 @@ namespace pwiz.Skyline.Controls.GroupComparison
             ShowChangeSettings();
         }
 
-        public void ShowChangeSettings()
+        public DataboundGridControl DataboundGridControl { get { return databoundGridControl; } }
+
+        public DataGridId DataGridId
         {
-            foreach (var form in FormUtil.OpenForms.OfType<EditGroupComparisonDlg>())
+            get
             {
-                if (ReferenceEquals(form.GroupComparisonModel, FoldChangeBindingSource.GroupComparisonModel))
-                {
-                    form.Activate();
-                    return;
-                }
+                return new DataGridId(DataGridType.GROUP_COMPARISON, GroupComparisonName);
             }
-            var foldChangeSettings = new EditGroupComparisonDlg(FoldChangeBindingSource);
-            foldChangeSettings.Show(this);
         }
 
-        public DataboundGridControl DataboundGridControl { get { return databoundGridControl; } }
+        DataboundGridControl IDataboundGridForm.GetDataboundGridControl()
+        {
+            return DataboundGridControl;
+        }
     }
 }

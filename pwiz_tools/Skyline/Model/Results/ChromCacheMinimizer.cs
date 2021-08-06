@@ -21,8 +21,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text;
+using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
@@ -105,7 +108,7 @@ namespace pwiz.Skyline.Model.Results
             }
 
             var minimizer = new QueueWorker<MinimizeParams>(null, MinimizeAndWrite);
-            minimizer.RunAsync(MINIMIZING_THREADS, "Minimizing/Writing", MAX_GROUP_READ_AHEAD); // Not L10N
+            minimizer.RunAsync(MINIMIZING_THREADS, @"Minimizing/Writing", MAX_GROUP_READ_AHEAD);
 
             for (int iHeader = 0; iHeader < ChromGroupHeaderInfos.Count; iHeader++)
             {
@@ -129,7 +132,7 @@ namespace pwiz.Skyline.Model.Results
                     }
                     catch (Exception exception)
                     {
-                        Trace.TraceWarning("Unable to read chromatogram {0}", exception); // Not L10N
+                        Trace.TraceWarning(@"Unable to read chromatogram {0}", exception);
                     }
                 }
 
@@ -220,7 +223,8 @@ namespace pwiz.Skyline.Model.Results
                     }
                 }
                 bool kept = !settings.DiscardUnmatchedChromatograms
-                    || matchingTransitions.Count > 0;
+                    || matchingTransitions.Count > 0
+                    || (chromatogram.PrecursorMz.Equals(SignedMz.ZERO) && !settings.DiscardAllIonsChromatograms);
                 if (kept)
                 {
                     keptTransitionIndexes.Add(i);
@@ -415,6 +419,11 @@ namespace pwiz.Skyline.Model.Results
             {
                 return ChangeProp(ImClone(this), im => im.NoiseTimeRange = value);
             }
+            public bool DiscardAllIonsChromatograms { get; private set; }
+            public Settings ChangeDiscardAllIonsChromatograms(bool value)
+            {
+                return ChangeProp(ImClone(this), im => im.DiscardAllIonsChromatograms = value);
+            }
             public bool DiscardUnmatchedChromatograms { get; private set; }
             public Settings ChangeDiscardUnmatchedChromatograms(bool value)
             {
@@ -529,7 +538,7 @@ namespace pwiz.Skyline.Model.Results
                 }
                 if (hasOrphanFiles)
                 {
-                    _replicates[results.Chromatograms.Count].Name = "<Unmatched Files>"; // Not L10N? Function invoke uses?
+                    _replicates[results.Chromatograms.Count].Name = @"<Unmatched Files>"; // CONSIDER: localize? Function invoke uses?
                 }
                 foreach (var chromHeaderInfo in ChromCacheMinimizer.ChromGroupHeaderInfos)
                 {
@@ -607,6 +616,9 @@ namespace pwiz.Skyline.Model.Results
             private readonly BlockedArrayList<ChromTransition> _transitions =
                 new BlockedArrayList<ChromTransition>(ChromTransition.SizeOf, ChromTransition.DEFAULT_BLOCK_SIZE);
             private readonly List<Type> _scoreTypes;
+            private readonly List<byte> _textIdBytes = new List<byte>();
+            private readonly IDictionary<ImmutableList<byte>, int> _textIdIndexes 
+                = new Dictionary<ImmutableList<byte>, int>();
 
             public Writer(ChromatogramCache chromatogramCache, CacheFormat cacheFormat, Stream outputStream, FileStream outputStreamScans, FileStream outputStreamPeaks, FileStream outputStreamScores)
             {
@@ -688,10 +700,23 @@ namespace pwiz.Skyline.Model.Results
                 byte[] pointsCompressed = pointsStream.ToArray().Compress(3);
                 int lenCompressed = pointsCompressed.Length;
                 _outputStream.Write(pointsCompressed, 0, lenCompressed);
-
+                int textIdIndex;
+                int textIdLen;
+                var newTextId = GetNewTextId(originalHeader);
+                if (newTextId == null)
+                {
+                    textIdIndex = -1;
+                    textIdLen = 0;
+                }
+                else
+                {
+                    textIdIndex = CalcTextIdOffset(newTextId);
+                    textIdLen = newTextId.Count;
+                }
+                
                 var header = new ChromGroupHeaderInfo(originalHeader.Precursor,
-                                                      originalHeader.TextIdIndex,
-                                                      originalHeader.TextIdLen,
+                                                      textIdIndex,
+                                                      textIdLen,
                                                       fileIndex,
                                                       _transitions.Count - startTransitionIndex,
                                                       startTransitionIndex,
@@ -699,7 +724,7 @@ namespace pwiz.Skyline.Model.Results
                                                       startPeakIndex,
                                                       startScoreIndex,
                                                       maxPeakIndex,
-                                                      timeIntensitiesGroup.NumPoints,
+                                                      timeIntensitiesGroup.NumInterpolatedPoints,
                                                       lenCompressed,
                                                       lenUncompressed,
                                                       location,
@@ -707,7 +732,8 @@ namespace pwiz.Skyline.Model.Results
                                                       originalHeader.StatusId,
                                                       originalHeader.StatusRank,
                                                       originalHeader.StartTime, originalHeader.EndTime,
-                                                      originalHeader.CollisionalCrossSection);
+                                                      originalHeader.CollisionalCrossSection, 
+                                                      originalHeader.IonMobilityUnits);
                 _chromGroupHeaderInfos.Add(header);
             }
 
@@ -724,10 +750,52 @@ namespace pwiz.Skyline.Model.Results
                                                _originalCache.CachedFiles,
                                                _chromGroupHeaderInfos,
                                                _transitions,
+                                               _textIdBytes,
                                                _scoreTypes,
                                                _scoreCount,
-                                               _peakCount,
-                                               _originalCache);
+                                               _peakCount);
+            }
+
+            public ImmutableList<byte> GetNewTextId(ChromGroupHeaderInfo chromGroupHeaderInfo)
+            {
+                byte[] textIdBytes = _originalCache.GetTextIdBytes(chromGroupHeaderInfo.TextIdIndex, chromGroupHeaderInfo.TextIdLen);
+                if (textIdBytes == null)
+                {
+                    return null;
+                }
+                const CacheFormatVersion versionNewTextId = CacheFormatVersion.Thirteen;
+                ImmutableList<byte> newTextId;
+                if (_originalCache.Version < versionNewTextId ||
+                    _cacheFormat.FormatVersion >= versionNewTextId)
+                {
+                    newTextId = ImmutableList.ValueOf(textIdBytes);
+                }
+                else
+                {
+                    if (textIdBytes[0] == '#')
+                    {
+                        newTextId = ImmutableList.ValueOf(textIdBytes);
+                    }
+                    else
+                    {
+                        var oldKey = new PeptideLibraryKey(Encoding.UTF8.GetString(textIdBytes), 0);
+                        var newKey = oldKey.FormatToOneDecimal();
+                        newTextId = ImmutableList.ValueOf(Encoding.UTF8.GetBytes(newKey.ModifiedSequence));
+                    }
+                }
+                return newTextId;
+            }
+
+            public int CalcTextIdOffset(ImmutableList<byte> textId)
+            {
+                int offset;
+                if (!_textIdIndexes.TryGetValue(textId, out offset))
+                {
+                    offset = _textIdBytes.Count;
+                    _textIdBytes.AddRange(textId);
+                    _textIdIndexes.Add(textId, offset);
+                }
+                return offset;
             }
         }
     }

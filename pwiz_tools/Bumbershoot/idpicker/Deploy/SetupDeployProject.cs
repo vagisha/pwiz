@@ -37,9 +37,9 @@ namespace SetupDeployProject
     {
         static int Main(string[] args)
         {
-            if (args.Length != 4)
+            if (args.Length != 5)
             {
-                Console.Error.WriteLine("Usage: SetupDeployProject <template path> <install path> <version string> <address-model>");
+                Console.Error.WriteLine("Usage: SetupDeployProject <template path> <install path> <version string> <numeric version string> <address-model>");
                 return 1;
             }
 
@@ -49,12 +49,20 @@ namespace SetupDeployProject
             string installPath = args[1];
             string buildPath = Path.Combine(installPath, "..");
             string version = args[2];
-            string addressModel = args[3];
+            string numericVersion = args[3];
+            string addressModel = args[4];
+            string platform = addressModel == "64" ? "x64" : "x86";
             string installerSuffix = addressModel == "64" ? "-x86_64" : "-x86";
+
+            var wxsVendorDlls = new StringBuilder();
+            foreach (var line in File.ReadAllText(buildPath + "/" + platform + "/INSTALLER_VENDOR_FILES.txt").Trim().Split('\n'))
+                wxsVendorDlls.Append($"<Component Feature=\"MainFeature\"><File Source=\"{installPath}\\{line.Trim()}\" KeyPath=\"yes\"/></Component>");
 
             wxsTemplate.Replace("{ProductGuid}", guid);
             wxsTemplate.Replace("{version}", version);
+            wxsTemplate.Replace("{numeric-version}", numericVersion);
             wxsTemplate.Replace("msvc-release", installPath);
+            wxsTemplate.Replace("__VENDOR_DLLS__", wxsVendorDlls.ToString());
 
             var httpSources = Regex.Matches(wxsTemplate.ToString(), "Name=\"(.*)\" Source=\"(http://.*?)\"");
             WebClient webClient = null;

@@ -19,36 +19,32 @@
 using System;
 using System.Linq;
 using pwiz.Common.Collections;
+using pwiz.Common.SystemUtil;
 
 namespace pwiz.Skyline.Model.DocSettings.AbsoluteQuantification
 {
-    public class RegressionWeighting
+    public class RegressionWeighting : LabeledValues<string>
     {
-        private readonly Func<String> _getLabelFunc;
         private readonly GetWeightingFunc _getWeightingFunc;
 
-        public static readonly RegressionWeighting NONE = new RegressionWeighting("none", // Not L10N
-            () => QuantificationStrings.RegressionWeighting_NONE, (x, y) => 1);
-        public static readonly RegressionWeighting ONE_OVER_X = new RegressionWeighting("1/x", // Not L10N
-            ()=>QuantificationStrings.RegressionWeighting_ONE_OVER_X, (x, y)=>1/x);
-        public static readonly RegressionWeighting ONE_OVER_X_SQUARED = new RegressionWeighting("1/(x*x)", // Not L10N
-            ()=> QuantificationStrings.RegressionWeighting_ONE_OVER_X_SQUARED, (x, y)=>1/(x * x));
+        public static readonly RegressionWeighting NONE = new RegressionWeighting(@"none",
+            () => QuantificationStrings.RegressionWeighting_NONE, null, (x, y) => 1);
+        public static readonly RegressionWeighting ONE_OVER_X = new RegressionWeighting(@"1/x",
+            ()=>QuantificationStrings.RegressionWeighting_ONE_OVER_X, () => @"1_over_x", (x, y)=>1/x);
+        public static readonly RegressionWeighting ONE_OVER_X_SQUARED = new RegressionWeighting(@"1/(x*x)",
+            ()=> QuantificationStrings.RegressionWeighting_ONE_OVER_X_SQUARED, () => @"1_over_x_squared", (x, y)=>1/(x * x));
 
         public static readonly ImmutableList<RegressionWeighting> All =
             ImmutableList<RegressionWeighting>.ValueOf(new[] {NONE, ONE_OVER_X, ONE_OVER_X_SQUARED});
         
-        public RegressionWeighting(string name, Func<String> getLabelFunc, GetWeightingFunc getWeightingFunc)
+        public RegressionWeighting(string name, Func<String> getLabelFunc, Func<string> getInvariantNameFunc, GetWeightingFunc getWeightingFunc) : base(name, getLabelFunc, getInvariantNameFunc)
         {
-            Name = name;
-            _getLabelFunc = getLabelFunc;
             _getWeightingFunc = getWeightingFunc;
         }
 
-        public String Name { get; private set; }
-
         public override string ToString()
         {
-            return _getLabelFunc();
+            return Label;
         }
 
         public double GetWeighting(double x, double y)

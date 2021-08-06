@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -22,10 +22,10 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
-using pwiz.ProteomeDatabase.API;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Lib;
+using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 
@@ -59,20 +59,24 @@ namespace pwiz.Skyline.Controls.SeqNode
         {
             get 
             {
+                if (DocNode.IsNonProteomic)
+                {
+                    return Resources.PeptideGroupTreeNode_Heading_Molecule_List;
+                }
                 return Model.Id is FastaSequence
                     ? Resources.PeptideGroupTreeNode_Heading_Protein
                     : Resources.PeptideGroupTreeNode_Heading_Peptide_List;
             }
         }
 
-        public override string ChildHeading  // TODO(bspratt) distinguish Molecule from Peptide
+        public override string ChildHeading
         {
-            get { return string.Format(Resources.PeptideGroupTreeNode_ChildHeading__0__, Text); }
+            get { return string.Format(DocNode.IsNonProteomic ? Resources.PeptideGroupTreeNode_ChildHeading__0__Molecules : Resources.PeptideGroupTreeNode_ChildHeading__0__, Text); }
         }
 
-        public override string ChildUndoHeading // TODO(bspratt) distinguish Molecule from Peptide
+        public override string ChildUndoHeading
         {
-            get { return string.Format(Resources.PeptideGroupTreeNode_ChildUndoHeading__0__, Text); }
+            get { return string.Format(DocNode.IsNonProteomic ? Resources.PeptideGroupTreeNode_ChildUndoHeading__0__molecules : Resources.PeptideGroupTreeNode_ChildUndoHeading__0__, Text); }
         }
 
         protected override void OnModelChanged()
@@ -80,7 +84,7 @@ namespace pwiz.Skyline.Controls.SeqNode
             int typeImageIndex = TypeImageIndex;
             if (typeImageIndex != ImageIndex)
                 ImageIndex = SelectedImageIndex = typeImageIndex;
-            string label = ProteinModalDisplayText((PeptideGroupDocNode) Model);
+            string label = ProteinMetadataManager.ProteinModalDisplayText((PeptideGroupDocNode) Model);
             if (!string.Equals(label, Text))
                 Text = label;
 
@@ -108,51 +112,6 @@ namespace pwiz.Skyline.Controls.SeqNode
         protected override void UpdateChildren(bool materialize)
         {
             UpdateNodes(SequenceTree, Nodes, DocNode.Children, materialize, PeptideTreeNode.CreateInstance);
-        }
-
-        public static ProteinDisplayMode ProteinsDisplayMode(string displayProteinsMode)
-        {
-            return Helpers.ParseEnum(displayProteinsMode, ProteinDisplayMode.ByName); 
-        }
-
-        public static string ProteinModalDisplayText(ProteinMetadata metadata, string displayProteinsMode)
-        {
-            return ProteinModalDisplayText(metadata, ProteinsDisplayMode(displayProteinsMode));
-        }
-
-        public static string ProteinModalDisplayText(PeptideGroupDocNode node)
-        {
-            return ProteinModalDisplayText(node.ProteinMetadata, Settings.Default.ShowPeptidesDisplayMode);
-        }
-
-        public static string ProteinModalDisplayText(ProteinMetadata metadata, ProteinDisplayMode displayProteinsMode)
-        {
-            switch (displayProteinsMode)
-            {
-                case ProteinDisplayMode.ByAccession:
-                case ProteinDisplayMode.ByPreferredName:
-                case ProteinDisplayMode.ByGene:
-                    break;
-                default:
-                    return metadata.Name;  
-            }
-
-            // If the desired field is not populated because it's not yet searched, say so
-            if (metadata.NeedsSearch())
-                return Resources.ProteinMetadataManager_LookupProteinMetadata_resolving_protein_details;
-
-            // If the desired field is not populated, return something like "<name: YAL01234>"
-            var failsafe = String.Format(Resources.PeptideGroupTreeNode_ProteinModalDisplayText__name___0__, metadata.Name);
-            switch (displayProteinsMode)
-            {
-                case ProteinDisplayMode.ByAccession:
-                    return metadata.Accession ?? failsafe;
-                case ProteinDisplayMode.ByPreferredName:
-                    return metadata.PreferredName ?? failsafe;
-                case ProteinDisplayMode.ByGene:
-                    return metadata.Gene ?? failsafe;
-            }
-            return failsafe;
         }
 
         #region IChildPicker Members
@@ -221,7 +180,11 @@ namespace pwiz.Skyline.Controls.SeqNode
 
             List<DocNode> listPeptides = new List<DocNode>();
             foreach (var nodePep in DocNode.GetPeptideNodes(settings, useFilter))
-                listPeptides.Add(nodePep.ChangeSettings(settings, SrmSettingsDiff.ALL));
+            {
+                var nodePepMaterialized = nodePep.ChangeSettings(settings, SrmSettingsDiff.ALL);
+                if (!useFilter || settings.TransitionSettings.Libraries.MinIonCount == 0 || nodePepMaterialized.Children.Count != 0)
+                    listPeptides.Add(nodePepMaterialized);
+            }
 
             PeptideRankId rankId = DocSettings.PeptideSettings.Libraries.RankId;
             if (rankId != null && !DocNode.IsPeptideList)
@@ -271,7 +234,7 @@ namespace pwiz.Skyline.Controls.SeqNode
         #region ITipProvider Members
 
         private const string X80 =
-            "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"; // Not L10N
+            @"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";
 
         public override bool HasTip
         {
@@ -406,13 +369,13 @@ namespace pwiz.Skyline.Controls.SeqNode
 
                 if (elipsis)
                 {
-                    SizeF sizeElipsis = g.MeasureString(" ...", rt.FontNormal); // Not L10N
+                    SizeF sizeElipsis = g.MeasureString(@" ...", rt.FontNormal);
                     width -= sizeElipsis.Width;
                 }
 
                 float widthTotal = 0;
                 PointF ptDraw = new PointF(widthTotal, height);
-                if (peptideList && aa[start] == 'X') // Not L10N: For amino acid comparison
+                if (peptideList && aa[start] == 'X') // For amino acid comparison
                     start++;
                 for (int i = start; i < aa.Length; i++)
                 {
@@ -435,7 +398,7 @@ namespace pwiz.Skyline.Controls.SeqNode
                                 brush = (chosen ? rt.BrushChosen : rt.BrushChoice);
                         }
                     }
-                    if (peptideList && aa[i] == 'X') // Not L10N: For amino acid comparison
+                    if (peptideList && aa[i] == 'X') // For amino acid comparison
                         return i + 1;
                     string s = aa.Substring(i, 1);
                     SizeF sizeAa = g.MeasureString(s, font);
@@ -443,7 +406,7 @@ namespace pwiz.Skyline.Controls.SeqNode
                     if (widthTotal > width)
                     {
                         if (elipsis && draw)
-                            g.DrawString(" ...", rt.FontNormal, rt.BrushNormal, ptDraw); // Not L10N
+                            g.DrawString(@" ...", rt.FontNormal, rt.BrushNormal, ptDraw);
                         return i;
                     }
                     widthTotal -= 4;    // Remove MeasureString padding.
@@ -479,21 +442,21 @@ namespace pwiz.Skyline.Controls.SeqNode
             if (!Equals(DocNode.Name, fastaSeq.Name))
             {
                 int oldNameLen = (fastaSeq.Name != null ? fastaSeq.Name.Length : 0);
-                fastaText = ">" + DocNode.Name + fastaText.Substring(oldNameLen + 1); // Not L10N
+                fastaText = @">" + DocNode.Name + fastaText.Substring(oldNameLen + 1);
             }
             data.SetData(DataFormats.Text, fastaText);
 
             var sb = new StringBuilder();
-            sb.Append("<b>").Append(DocNode.Name).Append("</b> "); // Not L10N
-            sb.Append("<i>"); // Not L10N
+            sb.Append(@"<b>").Append(DocNode.Name).Append(@"</b> ");
+            sb.Append(@"<i>");
             if (string.IsNullOrEmpty(DocNode.Description)) // CONSIDER bspratt - a more complete set of data here, maybe - accession etc
-                sb.AppendLine("<br/>"); // Not L10N
+                sb.AppendLine(@"<br/>");
             else
             {
                 foreach (string desc in Descriptions)
-                    sb.Append(desc).AppendLine("<br/>"); // Not L10N
+                    sb.Append(desc).AppendLine(@"<br/>");
             }
-            sb.Append("</i>"); // Not L10N
+            sb.Append(@"</i>");
 
             using (var peptides = GetChoices(true).GetEnumerator())
             {
@@ -516,7 +479,7 @@ namespace pwiz.Skyline.Controls.SeqNode
                                 // Need a new font tag, if the chosen state is changing
                                 if (chosenNew != chosen)
                                 {
-                                    sb.Append("</font>"); // Not L10N
+                                    sb.Append(@"</font>");
                                     inPeptide = false;
                                 }
                                 chosen = chosenNew;
@@ -527,21 +490,23 @@ namespace pwiz.Skyline.Controls.SeqNode
                             if (!inPeptide)
                             {
                                 sb.Append(chosen
-                                              ? "<font style=\"font-weight: bold; color: blue\">" // Not L10N
-                                              : "<font style=\"font-weight: bold\">"); // Not L10N
+                                              // ReSharper disable LocalizableElement
+                                              ? "<font style=\"font-weight: bold; color: blue\">"
+                                              : "<font style=\"font-weight: bold\">");
+                                              // ReSharper restore LocalizableElement
                                 inPeptide = true;
                             }
                         }
                         else if (inPeptide)
                         {
-                            sb.Append("</font>"); // Not L10N
+                            sb.Append(@"</font>");
                             inPeptide = false;
                         }
                     }
                     sb.Append(aa[i]);
                 }
                 if (inPeptide)
-                    sb.Append("</font>"); // Not L10N
+                    sb.Append(@"</font>");
             }
 
             data.SetData(DataFormats.Html, HtmlFragment.ClipBoardText(sb.ToString()));                

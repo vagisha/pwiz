@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>IDPicker</RootNamespace>
     <AssemblyName>IDPicker.Util</AssemblyName>
-    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
@@ -36,6 +36,7 @@
     <BuildPath>$(BaseIntermediateOutputPath)\..</BuildPath>
     <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
     <RestorePackages>true</RestorePackages>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <DebugSymbols>true</DebugSymbols>
@@ -100,9 +101,11 @@
   <ItemGroup>
     <Reference Include="InteropQonverter, Version=3.0.214.0, Culture=neutral, processorArchitecture=x86">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>$(BuildPath)\obj\$(Platform)\$(Configuration)\InteropQonverter.dll</HintPath>
+      <HintPath>$(BuildPath)\IDPicker\obj\$(Platform)\$(Configuration)\InteropQonverter.dll</HintPath>
     </Reference>
+    <Reference Include="Microsoft.CSharp" />
     <Reference Include="Microsoft.Office.Interop.Excel">
+      <EmbedInteropTypes>True</EmbedInteropTypes>
       <HintPath>..\packages\Excel-DNA.Interop.14.0.1\lib\Microsoft.Office.Interop.Excel.dll</HintPath>
       <Private>True</Private>
     </Reference>
@@ -149,9 +152,7 @@
     <Compile Include="CookieAwareWebClient.cs">
       <SubType>Component</SubType>
     </Compile>
-    <Compile Include="DataGridViewCustomCells.cs">
-      <SubType>Component</SubType>
-    </Compile>
+    <Compile Include="DataGridViewCustomCells.cs" />
     <Compile Include="ExtensionMethods.cs" />
     <Compile Include="MruDictionary.cs" />
     <Compile Include="Path.cs" />
@@ -161,6 +162,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
+    <Compile Include="Settings.cs" />
     <Compile Include="String.cs" />
     <Compile Include="TableExporter.cs" />
     <Compile Include="UserDialog.cs">

@@ -31,15 +31,21 @@ namespace pwiz.Skyline.SettingsUI
     {
         public static void FocusFirstTabStop(this TabControl tabControl)
         {
-            Control.ControlCollection controls = tabControl.SelectedTab.Controls;
-            for (int i = controls.Count - 1; i >= 0; i--)
+            Control firstTabStop = null;
+            foreach (Control c in tabControl.SelectedTab.Controls)
             {
-                if (controls[i].TabStop)
-                {
-                    controls[i].Focus();
-                    break;
-                }
-            }            
+                if (c.TabStop && (firstTabStop == null || c.TabIndex < firstTabStop.TabIndex))
+                    firstTabStop = c;
+            }
+
+            if (firstTabStop != null)
+            {
+                var subTabControl = firstTabStop as TabControl;
+                if (subTabControl != null)
+                    subTabControl.FocusFirstTabStop();
+                else
+                    firstTabStop.Focus();
+            }
         }
 
         public delegate bool ValidateCellValues(string[] values, IWin32Window parent, int lineNumber);
@@ -55,7 +61,7 @@ namespace pwiz.Skyline.SettingsUI
             grid.Rows.Clear();
 
             bool result = DoPasteText(parent, textClip, grid, validate,
-                (values, lineNum) => grid.Rows.Add(values.Cast<object>().ToArray()));
+                (values, lineNum) => grid.Rows.Add(values.ToArray()));
 
             grid.ResumeLayout();
             return result;

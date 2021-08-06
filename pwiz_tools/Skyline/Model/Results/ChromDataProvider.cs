@@ -22,7 +22,6 @@ using System.Drawing;
 using pwiz.Common.Chemistry;
 using pwiz.Common.SystemUtil;
 using pwiz.ProteowizardWrapper;
-using pwiz.Skyline.Properties;
 
 namespace pwiz.Skyline.Model.Results
 {
@@ -81,8 +80,7 @@ namespace pwiz.Skyline.Model.Results
 
         public virtual void SetRequestOrder(IList<IList<int>> orderedSets) { }
 
-        public abstract bool GetChromatogram(int id, string modifiedSequence, Color color, out ChromExtra extra,
-            out TimeIntensities timeIntensities);
+        public abstract bool GetChromatogram(int id, Target modifiedSequence, Color color, out ChromExtra extra, out TimeIntensities timeIntensities);
 
         public abstract double? MaxRetentionTime { get; }
 
@@ -90,11 +88,15 @@ namespace pwiz.Skyline.Model.Results
 
         public virtual double? TicArea { get { return FileInfo.TicArea; } }
 
+        public abstract eIonMobilityUnits IonMobilityUnits { get; }
+
         public abstract bool IsProcessedScans { get; }
 
         public abstract bool IsSingleMzMatch { get; }
 
         public virtual bool HasMidasSpectra { get { return false; } }
+
+        public virtual bool HasSonarSpectra { get { return false; } }
 
         // Used for offering hints to user when document transition polarities don't agree with the raw data
         public abstract bool SourceHasPositivePolarityData { get; }
@@ -105,33 +107,123 @@ namespace pwiz.Skyline.Model.Results
         public abstract void Dispose();
     }
 
+    public sealed class GlobalChromatogramExtractor
+    {
+        private MsDataFileImpl _dataFile;
+        private const string TIC_CHROMATOGRAM_ID = @"TIC";
+        private const string BPC_CHROMATOGRAM_ID = @"BPC";
+
+        public GlobalChromatogramExtractor(MsDataFileImpl dataFile)
+        {
+            _dataFile = dataFile;
+            IndexOffset = 0;
+
+            if (dataFile.ChromatogramCount > 0 && dataFile.GetChromatogramId(0, out _) == TIC_CHROMATOGRAM_ID)
+                TicChromatogramIndex = 0;
+            if (dataFile.ChromatogramCount > 1 && dataFile.GetChromatogramId(1, out _) == BPC_CHROMATOGRAM_ID)
+                BpcChromatogramIndex = 1;
+
+            QcTraceByIndex = new SortedDictionary<int, MsDataFileImpl.QcTrace>();
+            foreach (var qcTrace in dataFile.GetQcTraces() ?? new List<MsDataFileImpl.QcTrace>())
+            {
+                QcTraceByIndex[qcTrace.Index] = qcTrace;
+            }
+        }
+
+        /// <summary>
+        /// Since global chromatograms can share the same index as Skyline's target chromatograms (they both start at 0),
+        /// the global chromatograms are given an index offset starting after the last target chromatogram
+        /// </summary>
+        public int IndexOffset { get; set; }
+
+        public int? TicChromatogramIndex { get; set; }
+        public int? BpcChromatogramIndex { get; }
+
+        public IList<int> GlobalChromatogramIndexes
+        {
+            get
+            {
+                var result = new List<int>();
+                if (TicChromatogramIndex.HasValue)
+                    result.Add(TicChromatogramIndex.Value);
+                if (BpcChromatogramIndex.HasValue)
+                    result.Add(BpcChromatogramIndex.Value);
+                return result;
+            }
+        }
+
+        public IDictionary<int, MsDataFileImpl.QcTrace> QcTraceByIndex { get; }
+
+        public string GetChromatogramId(int index, out int indexId)
+        {
+            return _dataFile.GetChromatogramId(index, out indexId);
+        }
+
+        public bool GetChromatogram(int index, out float[] times, out float[] intensities)
+        {
+            index -= IndexOffset;
+
+            if (QcTraceByIndex.TryGetValue(index, out MsDataFileImpl.QcTrace qcTrace))
+            {
+                times = MsDataFileImpl.ToFloatArray(qcTrace.Times);
+                intensities = MsDataFileImpl.ToFloatArray(qcTrace.Intensities);
+            }
+            else if (index == TicChromatogramIndex || index == BpcChromatogramIndex)
+            {
+                _dataFile.GetChromatogram(index, out _, out times, out intensities, true);
+            }
+            else
+            {
+                times = intensities = null;
+            }
+
+            return times != null;
+        }
+
+        /// <summary>
+        /// Returns true if the TIC chromatogram present in the .raw file can be relied on
+        /// for the calculation of total MS1 ion current.
+        /// </summary>
+        public bool IsTicChromatogramUsable()
+        {
+            if (!TicChromatogramIndex.HasValue)
+            {
+                return false;
+            }
+
+            float[] times;
+            if (!GetChromatogram(TicChromatogramIndex.Value, out times, out _))
+            {
+                return false;
+            }
+
+            if (times.Length == 0)
+            {
+                return false;
+            }
+
+            return true;
+        }
+    }
+
     internal sealed class ChromatogramDataProvider : ChromDataProvider
     {
         private readonly List<ChromKeyProviderIdPair> _chromIds = new List<ChromKeyProviderIdPair>();
         private readonly int[] _chromIndices;
 
         private MsDataFileImpl _dataFile;
-        
+        private GlobalChromatogramExtractor _globalChromatogramExtractor;
+
         private readonly bool _hasMidasSpectra;
+        private readonly bool _hasSonarSpectra;
         private readonly bool _sourceHasNegativePolarityData;
         private readonly bool _sourceHasPositivePolarityData;
+        private readonly eIonMobilityUnits _ionMobilityUnits;
 
         /// <summary>
         /// The number of chromatograms read so far.
         /// </summary>
         private int _readChromatograms;
-
-        /// <summary>
-        /// Records the time at which chromatogram loading began to allow prediction
-        /// of how long the file load will take.
-        /// </summary>
-        private DateTime _readStartTime;
-
-        /// <summary>
-        /// If the predicted time to load this file ever exceeds this threshold,
-        /// a warning is shown.
-        /// </summary>
-        private readonly double _readMaxMinutes;
 
         public ChromatogramDataProvider(MsDataFileImpl dataFile,
                                         ChromFileInfo fileInfo,
@@ -142,11 +234,7 @@ namespace pwiz.Skyline.Model.Results
             : base(fileInfo, status, startPercent, endPercent, loader)
         {
             _dataFile = dataFile;
-
-            if (_dataFile.IsThermoFile)
-            {
-                _readMaxMinutes = 4;
-            }
+            _globalChromatogramExtractor = new GlobalChromatogramExtractor(dataFile);
 
             int len = dataFile.ChromatogramCount;
             _chromIndices = new int[len];
@@ -190,8 +278,26 @@ namespace pwiz.Skyline.Model.Results
             if (_chromIds.Count == 0)
                 throw new NoSrmDataException(FileInfo.FilePath);
 
+            // CONSIDER: TIC and BPC are not well defined for SRM and produced chromatograms with over 100,000 points in
+            // Agilent CE optimization data. So, keep them off for now.
+//            foreach (int globalIndex in _globalChromatogramExtractor.GlobalChromatogramIndexes)
+//            {
+//                _chromIndices[globalIndex] = globalIndex;
+//                _chromIds.Add(new ChromKeyProviderIdPair(ChromKey.FromId(_globalChromatogramExtractor.GetChromatogramId(globalIndex, out int indexId), false), globalIndex));
+//            }
+
+            foreach (var qcTracePair in _globalChromatogramExtractor.QcTraceByIndex)
+            {
+                _chromIndices[qcTracePair.Key] = qcTracePair.Key;
+                _chromIds.Add(new ChromKeyProviderIdPair(ChromKey.FromQcTrace(qcTracePair.Value), qcTracePair.Key));
+            }
+
             // CONSIDER(kaipot): Some way to support mzML files converted from MIDAS wiff files
             _hasMidasSpectra = (dataFile.IsABFile) && SpectraChromDataProvider.HasSpectrumData(dataFile);
+
+            _hasSonarSpectra = dataFile.IsWatersSonarData();
+
+            _ionMobilityUnits = dataFile.IonMobilityUnits;
 
             SetPercentComplete(50);
         }
@@ -269,35 +375,21 @@ namespace pwiz.Skyline.Model.Results
             get { return _chromIds; }
         }
 
-        public override bool GetChromatogram(int id, string modifiedSequence, Color color, out ChromExtra extra, out TimeIntensities timeIntensities)
+        public override eIonMobilityUnits IonMobilityUnits { get { return _ionMobilityUnits; } }
+
+        public override bool GetChromatogram(int id, Target modifiedSequence, Color color, out ChromExtra extra, out TimeIntensities timeIntensities)
         {
-            // No mass errors in SRM
-            if (_readChromatograms == 0)
+            float[] times, intensities;
+            if (!_globalChromatogramExtractor.GetChromatogram(id, out times, out intensities))
             {
-                _readStartTime = DateTime.UtcNow; // Said to be 117x faster than Now and this is for a delta
+                _dataFile.GetChromatogram(id, out _, out times, out intensities);
             }
 
-            string chromId;
-            float[] times;
-            float[] intensities;
-            _dataFile.GetChromatogram(id, out chromId, out times, out intensities);
             timeIntensities = new TimeIntensities(times, intensities, null, null);
 
             // Assume that each chromatogram will be read once, though this may
             // not always be completely true.
             _readChromatograms++;
-
-            if (!System.Diagnostics.Debugger.IsAttached)
-            {
-                double predictedMinutes = ExpectedReadDurationMinutes;
-                if (_readMaxMinutes > 0 && predictedMinutes > _readMaxMinutes)
-                {
-                    // TODO: This warning isn't checked in the command line version of Skyline.  Maybe we should do that.
-                    if (Status is ChromatogramLoadingStatus)
-                        Status =
-                            ((ChromatogramLoadingStatus)Status).ChangeWarningMessage(Resources.ChromatogramDataProvider_GetChromatogram_This_import_appears_to_be_taking_longer_than_expected__If_importing_from_a_network_drive__consider_canceling_this_import__copying_to_local_disk_and_retrying_);
-                }
-            }
 
             if (_readChromatograms < _chromIds.Count)
                 SetPercentComplete(50 + _readChromatograms * 50 / _chromIds.Count);
@@ -315,11 +407,6 @@ namespace pwiz.Skyline.Model.Results
                     times,
                     intensities);
             return true;
-        }
-
-        private double ExpectedReadDurationMinutes
-        {
-            get { return DateTime.UtcNow.Subtract(_readStartTime).TotalMinutes * _chromIds.Count / _readChromatograms; }
         }
 
         public override double? MaxIntensity
@@ -345,6 +432,11 @@ namespace pwiz.Skyline.Model.Results
         public override bool HasMidasSpectra
         {
             get { return _hasMidasSpectra; }
+        }
+
+        public override bool HasSonarSpectra
+        {
+            get { return _hasSonarSpectra; }
         }
 
         public override bool SourceHasPositivePolarityData

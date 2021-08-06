@@ -239,4 +239,95 @@
   <data name="CalibrationForm_MakeExcludeStandardMenuItem_Exclude_Standard" xml:space="preserve">
     <value>Exclude Standard</value>
   </data>
+  <data name="CalibrationForm_DisplayCalibrationCurve_The_selected_peptide_is_no_longer_part_of_the_Skyline_document_" xml:space="preserve">
+    <value>The selected peptide is no longer part of the Skyline document.</value>
+  </data>
+  <data name="RegressionFit_BILINEAR_Bilinear" xml:space="preserve">
+    <value>Bilinear</value>
+  </data>
+  <data name="FiguresOfMerit_ToString_LOD__" xml:space="preserve">
+    <value>LOD: </value>
+    <comment>This stands for "Limit of Detection"</comment>
+  </data>
+  <data name="FiguresOfMerit_ToString_LOQ__" xml:space="preserve">
+    <value>LOQ: </value>
+    <comment>This stands for "Limit of Quantification"</comment>
+  </data>
+  <data name="LodCalculation_NONE_None" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="LodCalculation_TURNING_POINT_Bilinear_turning_point" xml:space="preserve">
+    <value>Bilinear turning point</value>
+  </data>
+  <data name="LodCalculation_BLANK_PLUS_2SD_Blank_plus_2___SD" xml:space="preserve">
+    <value>Blank plus 2 * SD</value>
+    <comment>This says "median value of the blank replicates plus 2 times their standard deviation"</comment>
+  </data>
+  <data name="LodCalculation_BLANK_PLUS_3SD_Blank_plus_3___SD" xml:space="preserve">
+    <value>Blank plus 3 * SD</value>
+    <comment>This says "median value of the blank replicates plus 3 times their standard deviation"</comment>
+  </data>
+  <data name="CalibrationCurve_ToString_Intercept___0_" xml:space="preserve">
+    <value>Intercept: {0}</value>
+  </data>
+  <data name="CalibrationCurve_ToString_Turning_Point___0_" xml:space="preserve">
+    <value>Turning Point: {0}</value>
+  </data>
+  <data name="CalibrationForm_GetFormTitle__Replicate___0__" xml:space="preserve">
+    <value>(Replicate: {0})</value>
+  </data>
+  <data name="CalibrationForm_GetFormTitle__Batch___0__" xml:space="preserve">
+    <value>(Batch: {0})</value>
+  </data>
+  <data name="CalibrationForm_GetFormTitle__All_Replicates_" xml:space="preserve">
+    <value>(All Replicates)</value>
+  </data>
+  <data name="ValueStatus_UNDEFINED_Undefined" xml:space="preserve">
+    <value>Undefined</value>
+  </data>
+  <data name="ValueStatus_PRESENT_Present" xml:space="preserve">
+    <value>Present</value>
+  </data>
+  <data name="ValueStatus_EQUAL_Equal" xml:space="preserve">
+    <value>Equal</value>
+  </data>
+  <data name="ValueStatus_LOW_Low" xml:space="preserve">
+    <value>Low</value>
+  </data>
+  <data name="ValueStatus_HIGH_High" xml:space="preserve">
+    <value>High</value>
+  </data>
+  <data name="ValueStatus_PASS_Pass" xml:space="preserve">
+    <value>Pass</value>
+  </data>
+  <data name="ValueStatus_FAIL_Fail" xml:space="preserve">
+    <value>Fail</value>
+  </data>
+  <data name="RatioToLabel_GetAxisTitle__0__Ratio_To__1_" xml:space="preserve">
+    <value>{0} Ratio To {1}</value>
+    <comment>Example: Peak Area Ratio To Global Standards</comment>
+  </data>
+  <data name="RatioToSurrogate_NormalizeToCaption_Surrogate__0_" xml:space="preserve">
+    <value>Surrogate {0}</value>
+  </data>
+  <data name="RatioToSurrogate_NormalizeToCaption_Surrogate__0____1__" xml:space="preserve">
+    <value>Surrogate {0} ({1})</value>
+    <comment>Example: Surrogate Leucine (Heavy)</comment>
+  </data>
+  <data name="NormalizeOption_MAXIMUM_Maximum" xml:space="preserve">
+    <value>Maximum</value>
+  </data>
+  <data name="NormalizeOption_TOTAL_Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="NormalizeOption_DEFAULT_Default_Normalization_Method" xml:space="preserve">
+    <value>Default Normalization Method</value>
+  </data>
+  <data name="NormalizeOption_CALIBRATED_Calibration_Curve" xml:space="preserve">
+    <value>Calibration Curve</value>
+  </data>
+  <data name="SkylineWindow_MakeNormalizeToMenuItem_Default___0__" xml:space="preserve">
+    <value>Default ({0})</value>
+    <comment>Example: Default (Global Standards)</comment>
+  </data>
 </root>

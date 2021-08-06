@@ -28,13 +28,13 @@ namespace pwiz.Skyline.Model
 {
     public static class ImportAssayLibraryHelper
     {
-        public static List<DbIrtPeptide> GetUnscoredIrtPeptides(List<DbIrtPeptide> dbIrtPeptides, RCalcIrt calcIrt)
+        public static List<DbIrtPeptide> GetUnscoredIrtPeptides(IEnumerable<DbIrtPeptide> dbIrtPeptides, RCalcIrt calcIrt)
         {
             var dbIrtPeptidesFilter = new List<DbIrtPeptide>();
             // Filter out peptides that have the same sequence and iRT as those in the database
             foreach (var dbIrtPeptide in dbIrtPeptides)
             {
-                double? oldScore = calcIrt != null ? calcIrt.ScoreSequence(dbIrtPeptide.PeptideModSeq) : null;
+                double? oldScore = calcIrt != null ? calcIrt.ScoreSequence(dbIrtPeptide.ModifiedTarget) : null;
                 if (oldScore == null || Math.Abs(oldScore.Value - dbIrtPeptide.Irt) > DbIrtPeptide.IRT_MIN_DIFF)
                 {
                     dbIrtPeptidesFilter.Add(dbIrtPeptide);

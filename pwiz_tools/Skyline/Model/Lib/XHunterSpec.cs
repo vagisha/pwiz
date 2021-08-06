@@ -26,6 +26,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Serialization;
+using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -37,7 +38,7 @@ namespace pwiz.Skyline.Model.Lib
     [XmlRoot("hunter_lib_spec")]
     public sealed class XHunterLibSpec : LibrarySpec
     {
-        public const string EXT = ".hlf"; // Not L10N
+        public const string EXT = ".hlf";
 
         public static string FILTER_HLF
         {
@@ -45,10 +46,10 @@ namespace pwiz.Skyline.Model.Lib
         }
 
         public static readonly PeptideRankId PEP_RANK_EXPECT =
-            new PeptideRankId("Expect", Resources.XHunterLibSpec_PEP_RANK_EXPECT_Expect); // Not L10N
+            new PeptideRankId(@"Expect", () => Resources.XHunterLibSpec_PEP_RANK_EXPECT_Expect);
 
         public static readonly PeptideRankId PEP_RANK_PROCESSED_INTENSITY =
-            new PeptideRankId("Processed intensity", Resources.XHunterLibSpec_PEP_RANK_PROCESSED_INTENSITY_Processed_intensity); // Not L10N
+            new PeptideRankId(@"Processed intensity", () => Resources.XHunterLibSpec_PEP_RANK_PROCESSED_INTENSITY_Processed_intensity);
 
         private static readonly PeptideRankId[] RANK_IDS = { PEP_RANK_EXPECT, PEP_RANK_PROCESSED_INTENSITY };
 
@@ -195,13 +196,13 @@ namespace pwiz.Skyline.Model.Lib
     [XmlRoot("hunter_library")]
     public sealed class XHunterLibrary : CachedLibrary<XHunterSpectrumInfo>
     {
-        private const int FORMAT_VERSION_CACHE = 3;
+        private const int FORMAT_VERSION_CACHE = 4;
 
-        public const string DEFAULT_AUTHORITY = "thegpm.org"; // Not L10N
+        public const string DEFAULT_AUTHORITY = "thegpm.org";
 
-        public const string EXT_CACHE = ".slc"; // Not L10N 
+        public const string EXT_CACHE = ".slc";
 
-        private static readonly Regex REGEX_HEADER = new Regex(@"HLF v=(\d+) s=([^ ]+) d=(.*\d\d\d\d\.\d\d.\d\d)"); // Not L10N
+        private static readonly Regex REGEX_HEADER = new Regex(@"HLF v=(\d+) s=([^ ]+) d=(.*\d\d\d\d\.\d\d.\d\d)"); 
         private IPooledStream _readStream;
 
         public static XHunterLibrary Load(XHunterLibSpec spec, ILoadMonitor loader)
@@ -226,9 +227,9 @@ namespace pwiz.Skyline.Model.Lib
 
         }
 
-        public override LibrarySpec CreateSpec(string path)
+        protected override LibrarySpec CreateSpec()
         {
-            return new XHunterLibSpec(Name, path);
+            return new XHunterLibSpec(Name, FilePath);
         }
 
         public override string SpecFilter
@@ -250,7 +251,7 @@ namespace pwiz.Skyline.Model.Lib
         {
             get
             {
-                LibraryDetails details = new LibraryDetails { Format = "X!Hunter", SpectrumCount = SpectrumCount }; // Not L10N
+                LibraryDetails details = new LibraryDetails { Format = @"X!Hunter", SpectrumCount = SpectrumCount };
 
                 if (!string.IsNullOrEmpty(Id))
                 {
@@ -339,21 +340,6 @@ namespace pwiz.Skyline.Model.Lib
             count
         }
 
-        private enum SpectrumCacheHeader
-        {
-            seq_key_hash,
-            seq_key_length, 
-            charge,
-            i2,
-            location_lo,
-            location_hi,
-            num_peaks,
-            expect,
-            seq_len,
-
-            count
-        }
-       
         // ReSharper restore UnusedMember.Local
 
         private bool CreateCache(ILoadMonitor loader, IProgressStatus status, int percent)
@@ -391,8 +377,7 @@ namespace pwiz.Skyline.Model.Lib
                     revision = match.Groups[3].Value;
                 }
             }
-            var setLibKeys = new Dictionary<LibKey, bool>(size);
-            var setSequences = new Dictionary<LibSeqKey, bool>(size);
+            var setLibKeys = new HashSet<LibKey>(size);
             var libraryEntries = new List<XHunterSpectrumInfo>(size);
 
             const int countHeader = ((int) SpectrumHeaders2.count)*sizeof (int);
@@ -446,9 +431,7 @@ namespace pwiz.Skyline.Model.Lib
 
                 // Read modifications
                 int numMods = ReadSize(stream);
-
-                byte[] sequence = specSequence;
-
+                string modifiedSequence = Encoding.UTF8.GetString(specSequence, 0, seqLength);
                 if (numMods > 0)
                 {
                     StringBuilder sb = new StringBuilder();
@@ -479,8 +462,7 @@ namespace pwiz.Skyline.Model.Lib
                     if (modTotal != 0)
                         sb.Append(SequenceMassCalc.GetModDiffDescription(modTotal));
                     sb.Append(Encoding.UTF8.GetString(specSequence, iLast, seqLength - iLast));
-                    sequence = Encoding.UTF8.GetBytes(sb.ToString());
-                    seqLength = sb.Length;
+                    modifiedSequence = sb.ToString();
                 }
 
                 // Skip over homologs (list of protein IDs and start positions from a FASTA
@@ -492,41 +474,26 @@ namespace pwiz.Skyline.Model.Lib
                 // These libraries should not have duplicates, but just in case.
                 // Apparently, GPM libraries do contain redundancies, as we found
                 // when a revision lost this test.
-                var key = new LibKey(sequence, 0, seqLength, charge);
-                if (!setLibKeys.ContainsKey(key))
+                var key = new LibKey(modifiedSequence, charge);
+                if (setLibKeys.Add(key))
                 {
-                    setLibKeys.Add(key, true);
                     libraryEntries.Add(new XHunterSpectrumInfo(key, i2, expect, numPeaks, location));
                 }
             }
-           
-            libraryEntries.Sort(CompareSpectrumInfo);
 
+            libraryEntries = FilterInvalidLibraryEntries(ref status, libraryEntries);
+           
             using (FileSaver fs = new FileSaver(CachePath, sm))
             using (Stream outStream = sm.CreateStream(fs.SafeName, FileMode.Create, true))
             {
 
                 foreach (var info in libraryEntries)
                 {
-                    LibSeqKey seqKey = new LibSeqKey(info.Key);
-                    if (setSequences.ContainsKey(seqKey))
-                    {
-                        outStream.Write(BitConverter.GetBytes(0), 0, sizeof(int));
-                        outStream.Write(BitConverter.GetBytes(-1), 0, sizeof(int));
-                    }
-                    else
-                    {
-                        // If it is unique, it will need to be added at cache load time.
-                        setSequences.Add(seqKey, true);
-                        outStream.Write(BitConverter.GetBytes(seqKey.GetHashCode()), 0, sizeof(int));
-                        outStream.Write(BitConverter.GetBytes(seqKey.Length), 0, sizeof(int));
-                    }
-                    outStream.Write(BitConverter.GetBytes(info.Key.Charge), 0, sizeof (int));
-                    outStream.Write(BitConverter.GetBytes(info.ProcessedIntensity), 0, sizeof (float));
-                    outStream.Write(BitConverter.GetBytes(info.Location), 0, sizeof (long));
-                    outStream.Write(BitConverter.GetBytes(info.NumPeaks), 0, sizeof (int));
-                    outStream.Write(BitConverter.GetBytes(info.Expect), 0, sizeof (float));
-                    info.Key.WriteSequence(outStream);
+                    info.Key.Write(outStream);
+                    PrimitiveArrays.WriteOneValue(outStream, info.Location);
+                    PrimitiveArrays.WriteOneValue(outStream, info.ProcessedIntensity);
+                    PrimitiveArrays.WriteOneValue(outStream, info.NumPeaks);
+                    PrimitiveArrays.WriteOneValue(outStream, info.Expect);
                 }
 
                 byte[] revisionBytes = Encoding.UTF8.GetBytes(revision);
@@ -593,6 +560,7 @@ namespace pwiz.Skyline.Model.Lib
                 status = status.ChangeMessage(string.Format(Resources.XHunterLibrary_Load_Loading__0__library, Path.GetFileName(FilePath)));
                 loader.UpdateProgress(status);
 
+                var valueCache = new ValueCache();
                 var sm = loader.StreamManager;
                 using (Stream stream = sm.CreateStream(CachePath, FileMode.Open, true))
                 {
@@ -616,17 +584,12 @@ namespace pwiz.Skyline.Model.Lib
 
                     int numSpectra = GetInt32(libHeader, (int)LibHeaders.num_spectra);
 
-                    var setSequences = new Dictionary<LibSeqKey, bool>(numSpectra);
                     var libraryEntries = new XHunterSpectrumInfo[numSpectra];
 
                     // Seek to beginning of spectrum headers
                     long locationHeaders = BitConverter.ToInt64(libHeader,
                                                                 ((int) LibHeaders.location_headers_lo)*sizeof (int));
                     stream.Seek(locationHeaders, SeekOrigin.Begin);
-
-                    byte[] specSequence = new byte[1024];
-                    byte[] specHeader = new byte[1024];
-                    countHeader = (int) SpectrumCacheHeader.count*4;
 
                     for (int i = 0; i < numSpectra; i++)
                     {
@@ -645,35 +608,16 @@ namespace pwiz.Skyline.Model.Lib
                         }
 
                         // Read spectrum header
-                        ReadComplete(stream, specHeader, countHeader);
-
-                        int seqKeyHash = GetInt32(specHeader, ((int) SpectrumCacheHeader.seq_key_hash));
-                        int seqKeyLength = GetInt32(specHeader, ((int) SpectrumCacheHeader.seq_key_length));
-                        int charge = GetInt32(specHeader, ((int)SpectrumCacheHeader.charge));
-                        if (charge == 0 || charge > TransitionGroup.MAX_PRECURSOR_CHARGE)
-                            throw new InvalidDataException(Resources.XHunterLibrary_Load_Invalid_precursor_charge_found_File_may_be_corrupted);
-                        float i2 = BitConverter.ToSingle(specHeader, ((int) SpectrumCacheHeader.i2)*4);
-                        long location = BitConverter.ToInt64(specHeader, ((int) SpectrumCacheHeader.location_lo)*4);
-                        int numPeaks = GetInt32(specHeader, ((int) SpectrumCacheHeader.num_peaks));
-                        float expect = BitConverter.ToSingle(specHeader, ((int) SpectrumCacheHeader.expect)*4);
-                        int seqLength = GetInt32(specHeader, (int) SpectrumCacheHeader.seq_len);
-
-                        // Read sequence information
-                        ReadComplete(stream, specSequence, seqLength);
-                        
-                        LibKey key = new LibKey(specSequence, 0, seqLength, charge);
-                        libraryEntries[i] = new XHunterSpectrumInfo(key, i2, expect, (short)numPeaks, location);
-                        
-                        if (seqKeyLength > 0)
-                        {
-                            LibSeqKey seqKey = new LibSeqKey(key, seqKeyHash, seqKeyLength);
-                            setSequences.Add(seqKey, true);
-                        }
+                        LibKey key = LibKey.Read(valueCache, stream);
+                        long location = PrimitiveArrays.ReadOneValue<long>(stream);
+                        float processedIntensity = PrimitiveArrays.ReadOneValue<float>(stream);
+                        int numPeaks = PrimitiveArrays.ReadOneValue<int>(stream);
+                        float expect = PrimitiveArrays.ReadOneValue<float>(stream);
+                        libraryEntries[i] = new XHunterSpectrumInfo(key, processedIntensity, expect, (short)numPeaks, location);
                     }
 
                     // Checksum = checksum.ChecksumValue;
-                    _libraryEntries = libraryEntries;
-                    _setSequences = setSequences;
+                    SetLibraryEntries(libraryEntries);
                     
                     loader.UpdateProgress(status.Complete());
 
@@ -781,7 +725,7 @@ namespace pwiz.Skyline.Model.Lib
                 outStream.Write(BitConverter.GetBytes(library.SpectrumCount), 0, sizeof(int));
                 
                 byte[] header = new byte[256 - 8];
-                const string headerText = @"HLF v=2 s=test.hlf d=2009.02.04"; // Not L10N
+                const string headerText = @"HLF v=2 s=test.hlf d=2009.02.04";
                 Encoding.UTF8.GetBytes(headerText, 0, headerText.Length, header, 0);
 
                 outStream.Write(header, 0, header.Length);
@@ -825,7 +769,7 @@ namespace pwiz.Skyline.Model.Lib
                         Array.Copy(BitConverter.GetBytes((float) mi.Mz), 0, peakBytes, peaksFiltered.Length + i*4, sizeof(float));
                     }
                         
-                    string sequence = key.Sequence;
+                    var sequence = key.Target.ToString();
                     // Only works for unmodified sequence
                     Debug.Assert(!key.IsModified);
                     double precursorMH = calc.GetPrecursorMass(sequence);

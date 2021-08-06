@@ -23,12 +23,16 @@ using System.IO;
 using System.Linq;
 using Ionic.Zip;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.FileUI;
 using pwiz.Skyline.Model;
+using pwiz.Skyline.Model.AuditLog;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 using pwiz.SkylineTestUtil;
 
 namespace pwiz.SkylineTestFunctional
@@ -44,7 +48,8 @@ namespace pwiz.SkylineTestFunctional
         {
             TestDirectoryName = "ShareDocumentTest";
             TestFilesZipPaths = new[] { @"TestFunctional\PrecursorTest.zip",
-                                        @"TestFunctional\LibraryShareTest.zip"};
+                                        @"TestFunctional\LibraryShareTest.zip",
+                                        @"TestFunctional\LibraryShareTestPeakAnnotations.zip"};
             RunFunctionalTest();
         }
 
@@ -55,9 +60,86 @@ namespace pwiz.SkylineTestFunctional
         /// </summary>
         protected override void DoTest()
         {
+            ShareLibraryWithPeakAnnotationsTest();
+
             ShareDocTest();
 
             ShareLibraryTest();
+        }
+
+        private void ShareLibraryWithPeakAnnotationsTest()
+        {
+            const string docName = "PeakAnnotations.sky";
+            const string zipFileMin = "ShareMinimizedLibPA.zip";
+            const string nameComplete = "ShareCompleteLibPA";
+            const string zipNameComplete = nameComplete+".zip";
+            const string blibName = "lc_all.blib";
+
+
+            // Remember original files
+            var origFileSet = new Dictionary<string, ZipEntry>();
+            var newFileSet = new Dictionary<string, ZipEntry>();
+            var zipPath = TestContext.GetProjectDirectory(TestFilesZipPaths[2]);
+            using (ZipFile zipFile = ZipFile.Read(zipPath))
+            {
+                foreach (ZipEntry zipEntry in zipFile)
+                {
+                    origFileSet.Add(zipEntry.FileName, zipEntry);
+                }
+            }
+
+            // Open the .sky file
+            var documentPath = TestFilesDirs[2].GetTestPath(docName);
+            RunUI(() => SkylineWindow.OpenFile(documentPath));
+            WaitForDocumentLoaded();
+
+            // Share the complete document.
+            var shareDocPath = TestFilesDirs[2].GetTestPath(zipNameComplete);
+            Share(shareDocPath, true, origFileSet, newFileSet, docName, false);
+            WaitForLibraries();
+
+            var unzippedPath = TestFilesDirs[2].GetTestPath(nameComplete);
+            TestContext.ExtractTestFiles(TestFilesDirs[2].GetTestPath(zipNameComplete), unzippedPath, new string[] { }, string.Empty); // Unzip for inspection
+            var fullLibPath = GetPathToBlibFile(unzippedPath, blibName);
+            var originalLibPath = TestFilesDirs[2].GetTestPath(blibName);
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectra") == GetCount(fullLibPath, "RefSpectra"));
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectraPeaks") == GetCount(fullLibPath, "RefSpectraPeaks"));
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectraPeakAnnotations") == GetCount(fullLibPath, "RefSpectraPeakAnnotations"));
+
+            // Share the minimal document.
+            var shareMinPath = TestFilesDirs[2].GetTestPath(zipFileMin);
+            RunDlg<ShareTypeDlg>(SkylineWindow.ShareDocument);
+            Share(shareMinPath, false, origFileSet, newFileSet, docName);
+            WaitForLibraries();
+
+            var minimalLibPath = GetPathToBlibFile(shareMinPath, blibName);
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectra") > GetCount(minimalLibPath, "RefSpectra"));
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectraPeaks") > GetCount(minimalLibPath, "RefSpectraPeaks"));
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectraPeakAnnotations") > GetCount(minimalLibPath, "RefSpectraPeakAnnotations"));
+
+            // Open and inspect the shared complete document
+            VerifySharedDocLibraryAnnotations(shareDocPath);
+
+            // Open and inspect the shared minimal document
+            VerifySharedDocLibraryAnnotations(shareMinPath);
+
+        }
+
+        private static void VerifySharedDocLibraryAnnotations(string shareDocPath)
+        {
+            RunUI(() => SkylineWindow.OpenSharedFile(shareDocPath));
+            var doc = WaitForDocumentLoaded();
+            AssertEx.IsDocumentState(doc, null, 1, 4, 4, 4); // int revision, int groups, int peptides, int tranGroups, int transitions
+            SpectrumPeaksInfo spectrum;
+            IsotopeLabelType label;
+            // ReSharper disable PossibleNullReferenceException
+            doc.Settings.TryLoadSpectrum(doc.Molecules.FirstOrDefault().Target, Adduct.FromStringAssumeChargeOnly("M+NH4"),
+                null, out label, out spectrum);
+            Assume.IsTrue(spectrum.Annotations.Count() == 1);
+            var spectrumPeakAnnotations = (spectrum.Annotations.FirstOrDefault() ?? new SpectrumPeakAnnotation[0]).ToArray();
+            Assume.IsTrue(spectrumPeakAnnotations.Length == 1);
+            Assume.IsTrue(spectrumPeakAnnotations.FirstOrDefault().Ion.Name == "GP");
+            // ReSharper restore PossibleNullReferenceException
         }
 
         private void ShareLibraryTest()
@@ -91,7 +173,7 @@ namespace pwiz.SkylineTestFunctional
             // Share the complete document.
             // The zip file should include the redundant library
             string shareDocPath = TestFilesDirs[1].GetTestPath(zipNameComplete);
-            Share(shareDocPath, true, origFileSet, newFileSet, docName);
+            Share(shareDocPath, true, origFileSet, newFileSet, docName, false);
             WaitForLibraries();
 
             // Share the minimal document.
@@ -111,8 +193,13 @@ namespace pwiz.SkylineTestFunctional
             DeleteLastPeptide();
             string shareMinPath2 = TestFilesDirs[1].GetTestPath(zipFileMin2);
             Share(shareMinPath2, false, origFileSet, newFileSet, docName);
-            Assert.IsTrue(origFileSet[blibName].UncompressedSize >
-                          newFileSet[blibName].UncompressedSize);
+            String originalLibPath = TestFilesDirs[1].GetTestPath(blibName);
+            String minimalLibPath2 = GetPathToBlibFile(shareMinPath2, blibName);
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectra") > GetCount(minimalLibPath2, "RefSpectra"));
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectraPeaks") > GetCount(minimalLibPath2, "RefSpectraPeaks"));
+            // The blib schema changes over time, stuff gets added, this isn't a reliable check
+            //Assert.IsTrue(origFileSet[blibName].UncompressedSize >
+            //              newFileSet[blibName].UncompressedSize);
             Assert.IsTrue(newSize >
                           newFileSet[redundantBlibName].UncompressedSize);
             WaitForDocumentLoaded();
@@ -123,16 +210,16 @@ namespace pwiz.SkylineTestFunctional
             {
                 var doc1 = doc;
                 RunDlg<ManageResultsDlg>(SkylineWindow.ManageResults,
-                                         dlg =>
-                                             {
-                                                 var chromatograms =
-                                                     doc1.Settings.MeasuredResults.Chromatograms;
-                                                 Assert.AreEqual(2, chromatograms.Count);
-                                                 dlg.SelectedChromatograms = new[] { chromatograms[1] };
-                                                 Assert.AreEqual(1, dlg.SelectedChromatograms.Count());
-                                                 dlg.RemoveReplicates();
-                                                 dlg.OkDialog();
-                                             });
+                    dlg =>
+                    {
+                        var chromatograms =
+                            doc1.Settings.MeasuredResults.Chromatograms;
+                        Assert.AreEqual(2, chromatograms.Count);
+                        dlg.SelectedChromatograms = new[] { chromatograms[1] };
+                        Assert.AreEqual(1, dlg.SelectedChromatograms.Count());
+                        dlg.RemoveReplicates();
+                        dlg.OkDialog();
+                    });
             }
             WaitForDocumentChange(doc);
 
@@ -146,13 +233,13 @@ namespace pwiz.SkylineTestFunctional
             // Retention times no longer discarded, as they can be useful
             // later for peak picking and scheduling, nor are their redundant spectra
             Assert.AreEqual(GetCount(blibPath1, "RetentionTimes"),
-                          GetCount(blibPath2, "RetentionTimes"));
+                GetCount(blibPath2, "RetentionTimes"));
             Assert.AreEqual(origFileSet2[redundantBlibName].UncompressedSize,
-                          newFileSet[redundantBlibName].UncompressedSize);
+                newFileSet[redundantBlibName].UncompressedSize);
             // This does not work.  Both the original and new files are the same size even though
             // the number of entries in the RetentionTimes table is smaller in the new file.
-//            Assert.IsTrue(origFileSet2[blibName].UncompressedSize >
-//                          newFileSet[blibName].UncompressedSize);
+            //            Assert.IsTrue(origFileSet2[blibName].UncompressedSize >
+            //                          newFileSet[blibName].UncompressedSize);
             WaitForLibraries();
 
             // Open the original .sky file
@@ -166,7 +253,7 @@ namespace pwiz.SkylineTestFunctional
             DisableMS1Filtering();
             origFileSet.Remove(redundantBlibName);
             shareDocPath = TestFilesDirs[1].GetTestPath(zipNameCompleteNoMS1);
-            Share(shareDocPath, true, origFileSet, newFileSet, docName);
+            Share(shareDocPath, true, origFileSet, newFileSet, docName, false);
             WaitForLibraries();
 
             // Share the minimal document
@@ -193,7 +280,7 @@ namespace pwiz.SkylineTestFunctional
             RunUI(() => SkylineWindow.OpenFile(documentPath));
 
             string shareCompletePath = TestFilesDirs[0].GetTestPath("ShareComplete.zip");
-            Share(shareCompletePath, true, origFileSet, newFileSet, DOCUMENT_NAME);
+            Share(shareCompletePath, true, origFileSet, newFileSet, DOCUMENT_NAME, false);
             WaitForLibraries();
 
             const string blibLibName = "Michrom_QTRAP_v4.blib";
@@ -246,8 +333,9 @@ namespace pwiz.SkylineTestFunctional
 
             string shareMin2Path = TestFilesDirs[0].GetTestPath("ShareMin2.zip");
             Share(shareMin2Path, false, origFileSet, newFileSet, DOCUMENT_NAME);
-            Assert.IsTrue(origFileSet[blibLibName].UncompressedSize >
-                newFileSet[blibLibName].UncompressedSize);
+            String minimalLibPath2 = GetPathToBlibFile(shareMin2Path, blibLibName);
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectra") > GetCount(minimalLibPath2, "RefSpectra"));
+            Assert.IsTrue(GetCount(originalLibPath, "RefSpectraPeaks") > GetCount(minimalLibPath2, "RefSpectraPeaks"));
             WaitForLibraries();
 
             SelectNode(SrmDocument.Level.Transitions, 0);
@@ -273,9 +361,11 @@ namespace pwiz.SkylineTestFunctional
         private static void Share(string zipPath, bool completeSharing,
             IDictionary<string, ZipEntry> origFileSet,
             IDictionary<string, ZipEntry> newFileSet,
-            string documentName)
+            string documentName,
+            bool expectAuditLog = true)
         {
-            RunUI(() => SkylineWindow.ShareDocument(zipPath, new ShareType(completeSharing, null)));
+            var shareType = new ShareType(completeSharing, null);
+            RunUI(() => SkylineWindow.ShareDocument(zipPath, shareType));
 
             bool extract = !completeSharing;
             string extractDir = Path.Combine(Path.GetDirectoryName(zipPath) ?? "",
@@ -286,30 +376,37 @@ namespace pwiz.SkylineTestFunctional
 
             using (ZipFile zipFile = ZipFile.Read(zipPath))
             {
-                Assert.AreEqual(origFileSet.Count, zipFile.Count);
+                AssertEx.AreEqual(origFileSet.Count + (expectAuditLog ? 1 : 0), zipFile.Count);
                 newFileSet.Clear();
                 foreach (ZipEntry zipEntry in zipFile)
                 {
-                    ZipEntry origEntry;
-                    Assert.IsTrue(origFileSet.TryGetValue(zipEntry.FileName, out origEntry),
-                        string.Format("Found new entry {0} in complete sharing zip file.", zipEntry.FileName));
-                    if (extract)
+                    if (expectAuditLog && zipEntry.FileName == Path.GetFileNameWithoutExtension(documentName) + AuditLogList.EXT)
                     {
-                        zipEntry.Extract(extractDir, ExtractExistingFileAction.OverwriteSilently);                        
+                        expectAuditLog = false;
                     }
                     else
                     {
-                        // If not extracting, then test to make sure files are same size as originals
-                        Assert.AreEqual(origEntry.UncompressedSize, zipEntry.UncompressedSize,
-                            string.Format("File sizes for {0} differ: expected <{1}>, found <{2}>",
-                                zipEntry.FileName, origEntry.UncompressedSize, zipEntry.UncompressedSize));
+                        ZipEntry origEntry;
+                        Assert.IsTrue(origFileSet.TryGetValue(zipEntry.FileName, out origEntry),
+                            string.Format("Found new entry {0} in complete sharing zip file.", zipEntry.FileName));
+                        if (extract)
+                        {
+                            zipEntry.Extract(extractDir, ExtractExistingFileAction.OverwriteSilently);
+                        }
+                        else
+                        {
+                            // If not extracting, then test to make sure files are same size as originals
+                            Assert.AreEqual(origEntry.UncompressedSize, zipEntry.UncompressedSize,
+                                string.Format("File sizes for {0} differ: expected <{1}>, found <{2}>",
+                                    zipEntry.FileName, origEntry.UncompressedSize, zipEntry.UncompressedSize));
+                        }
                     }
                     newFileSet.Add(zipEntry.FileName, zipEntry);
                 }
             }
 
             if (extract)
-                RunUI(() => SkylineWindow.OpenFile(Path.Combine(extractDir, documentName)));
+                RunUI(() => SkylineWindow.OpenFile(Path.Combine(extractDir, PathEx.SafePath(documentName))));
         }
 
         private static void WaitForLibraries()

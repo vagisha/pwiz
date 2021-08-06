@@ -17,157 +17,149 @@
  */
 using System;
 using System.Collections.Generic;
-using System.Text;
+using System.IO;
+using System.Threading;
 using AutoQC;
+using SharedBatch;
+using SharedBatch.Properties;
 
 namespace AutoQCTest
 {
-    class TestLogger: IAutoQcLogger
+    public class TestUtils
     {
-        private readonly StringBuilder log = new StringBuilder();
-
-        public void Log(string message, object[] args)
+        public static string GetTestFilePath(string fileName)
         {
-            AddToLog(message, args);
+            var currentPath = Directory.GetCurrentDirectory();
+            var autoQcTestPath = Path.GetDirectoryName(Path.GetDirectoryName(currentPath));
+            return autoQcTestPath + "\\Test\\" + fileName;
         }
 
-        public void LogError(string message, object[] args)
+        public static string CreateTestFolder(string folderName)
         {
-            AddToLog(message, args);
+            var newFolder = GetTestFilePath(folderName);
+            Directory.CreateDirectory(newFolder);
+            return newFolder;
         }
 
-        public void LogProgramError(string message, params object[] args)
+        public static MainSettings GetTestMainSettings() => GetTestMainSettings(string.Empty, string.Empty);
+        
+
+        public static MainSettings GetTestMainSettings(string changedVariable, string value)
         {
-            throw new NotImplementedException();
+            var skylineFilePath = GetTestFilePath("QEP_2015_0424_RJ.sky");
+            var folderToWatch = changedVariable.Equals("folderToWatch")? GetTestFilePath(value) : GetTestFilePath("Config");
+
+            var includeSubfolders = changedVariable.Equals("includeSubfolders") && value.Equals("true");
+            var fileFilter = MainSettings.GetDefaultQcFileFilter();
+            var resultsWindow = MainSettings.GetDefaultResultsWindow();
+            var removeResults = MainSettings.GetDefaultRemoveResults();
+            var acquisitionTime = MainSettings.GetDefaultAcquisitionTime();
+            var instrumentType = MainSettings.GetDefaultInstrumentType();
+            
+            
+            return new MainSettings(skylineFilePath, folderToWatch, includeSubfolders, fileFilter, removeResults, resultsWindow, instrumentType, acquisitionTime);
         }
 
-        public void LogException(Exception exception)
+        public static PanoramaSettings GetTestPanoramaSettings(bool publishToPanorama = true)
         {
-            AddToLog(exception.Message);
+            var panoramaServerUrl = publishToPanorama ? "https://panoramaweb.org/" : "";
+            var panoramaUserEmail = publishToPanorama ? "skyline_tester@proteinms.net" : "";
+            var panoramaPassword = publishToPanorama ? "lclcmsms" : "";
+            var panoramaProject = publishToPanorama ? "/SkylineTest" : "";
+
+            return new PanoramaSettings(publishToPanorama, panoramaServerUrl, panoramaUserEmail, panoramaPassword, panoramaProject);
         }
 
-        public string GetFile()
+        public static PanoramaSettings GetNoPublishPanoramaSettings()
         {
-            throw new NotImplementedException();
+            return new PanoramaSettings(false, null, null, null, null);
         }
 
-        public void DisableUiLogging()
+        public static SkylineSettings GetTestSkylineSettings()
         {
-            throw new NotImplementedException();
+            if (SkylineInstallations.FindSkyline())
+            {
+                if (SkylineInstallations.HasSkyline)
+                    return new SkylineSettings(SkylineType.Skyline);
+                if (SkylineInstallations.HasSkylineDaily)
+                    return new SkylineSettings(SkylineType.SkylineDaily);
+            }
+
+            return null;
         }
 
-        public void LogToUi(IMainUiControl mainUi)
+        public static AutoQcConfig GetTestConfig(string name)
         {
-            throw new NotImplementedException();
+            return new AutoQcConfig(name, false, DateTime.MinValue, DateTime.MinValue, GetTestMainSettings(), GetTestPanoramaSettings(), GetTestSkylineSettings());
         }
 
-        public void DisplayLog()
+        public static ConfigRunner GetTestConfigRunner(string configName = "Config")
         {
-            throw new NotImplementedException();
+            var testConfig = GetTestConfig(configName);
+            return new ConfigRunner(testConfig, GetTestLogger(testConfig));
         }
 
-        private void AddToLog(string message, params object[] args)
+        public static Logger GetTestLogger(AutoQcConfig config)
         {
-            log.Append(string.Format(message, args)).AppendLine();
-            System.Diagnostics.Debug.WriteLine(message, args);
+            var logFile = GetTestFilePath("TestLogs\\AutoQC.log");
+            return new Logger(logFile, config.Name, false);
         }
 
-        public string GetLog()
+        public static List<AutoQcConfig> ConfigListFromNames(string[] names)
         {
-            return log.ToString();
+            var configList = new List<AutoQcConfig>();
+            foreach (var name in names)
+            {
+                configList.Add(GetTestConfig(name));
+            }
+            return configList;
         }
 
-        public void Clear()
+        public static AutoQcConfigManager GetTestConfigManager(List<AutoQcConfig> configs = null)
         {
-            log.Clear();
+            var testConfigManager = new AutoQcConfigManager();
+          
+            if (configs == null)
+            {
+                configs = new List<AutoQcConfig>
+                {
+                    GetTestConfig("one"),
+                    GetTestConfig("two"),
+                    GetTestConfig("three")
+                };
+            }
+
+            foreach(var config in configs)
+                testConfigManager.UserAddConfig(config);
+            
+            return testConfigManager;
+        }
+
+        public static void WaitForCondition(Func<bool> condition, TimeSpan timeout, int timestep, string errorMessage)
+        {
+            var startTime = DateTime.Now;
+            while (DateTime.Now - startTime < timeout)
+            {
+                if (condition()) return;
+                Thread.Sleep(timestep);
+            }
+            throw new Exception(errorMessage);
+        }
+
+        public static void InitializeSettingsImportExport()
+        {
+            ConfigList.Importer = AutoQcConfig.ReadXml;
+            AutoQC.Properties.Settings.Default.InstalledVersion = "1000.0.0.0";
+            // ConfigList.Version = "1000.0.0.0"; // Don't set this here.  We expect this to get set when AutoQcConfigManager is initialized
         }
     }
-
-    class TestAppControl : IMainUiControl
-    {
-        private MainSettings _mainSettings = new MainSettings();
-        private PanoramaSettings _panoramaSettings = new PanoramaSettings();
-
-        public bool Waiting { get; set; }
-        public bool Stopped { get; set; }
-
-        private ConfigRunner.RunnerStatus _runnerStatus;
-
-        public void SetWaiting()
-        {
-            Waiting = true;
-        }
-
-        public void SetStopped()
-        {
-            Stopped = true;
-        }
-
-        public void SetUIMainSettings(MainSettings mainSettings)
-        {
-            _mainSettings = mainSettings;
-        }
-
-        public MainSettings GetUIMainSettings()
-        {
-            return _mainSettings;
-        }
-
-        public void SetUIPanoramaSettings(PanoramaSettings panoramaSettings)
-        {
-            _panoramaSettings = panoramaSettings;
-        }
-
-        public PanoramaSettings GetUIPanoramaSettings()
-        {
-            return _panoramaSettings;
-        }
-
-        public void DisablePanoramaSettings()
-        {
-            throw new NotImplementedException();
-        }
-
-        #region Implementation of IMainUiControl
-
-        public void ChangeConfigUiStatus(ConfigRunner configRunner)
-        {
-            _runnerStatus = configRunner.GetStatus();
-        }
-
-        public void AddConfiguration(AutoQcConfig config)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void UpdateConfiguration(AutoQcConfig oldConfig, AutoQcConfig newConfig)
-        {
-            throw new NotImplementedException();
-        }
-
-        public AutoQcConfig GetConfig(string name)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void LogToUi(string text, bool scrollToEnd = true, bool trim = false)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void LogErrorToUi(string text, bool scrollToEnd = true, bool trim = false)
-        {
-            throw new NotImplementedException();
-        }
-
-        #endregion
-    }
-
+    
     class TestImportContext : ImportContext
     {
         public DateTime OldestFileDate;
-        public TestImportContext(string resultsFile) : base(resultsFile)
+        public TestImportContext(string resultsFile, DateTime oldestFileDate) : base(resultsFile)
         {
+            OldestFileDate = oldestFileDate;
         }
 
         public TestImportContext(List<string> resultsFiles) : base(resultsFiles)
@@ -179,4 +171,5 @@ namespace AutoQCTest
             return OldestFileDate;
         }
     }
+
 }

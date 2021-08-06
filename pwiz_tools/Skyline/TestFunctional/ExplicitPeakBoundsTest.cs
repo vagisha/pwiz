@@ -22,8 +22,8 @@ using System.Collections.Generic;
 using System.Data.SQLite;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Common.Database.NHibernate;
 using pwiz.Common.PeakFinding;
-using pwiz.ProteomeDatabase.Util;
 using pwiz.Skyline.Model.Results;
 using pwiz.SkylineTestUtil;
 
@@ -42,7 +42,7 @@ namespace pwiz.SkylineTestFunctional
         protected override void DoTest()
         {
             RunUI(()=>SkylineWindow.OpenFile(TestFilesDir.GetTestPath("ExplicitPeakBoundsTest.sky")));
-            ImportResults(TestFilesDir.GetTestPath("CAExample.mz5"));
+            ImportResults(TestFilesDir.GetTestPath("CAExample" + ExtensionTestContext.ExtMz5));
             WaitForDocumentLoaded();
             var doc = SkylineWindow.Document;
             ILookup<String, PeakBounds> expectedPeakBounds = ReadPeakBounds(TestFilesDir.GetTestPath("WithExplicitBounds.blib"));

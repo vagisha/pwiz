@@ -22,14 +22,15 @@ using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using pwiz.Skyline;
 using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
-using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.SettingsUI;
+using pwiz.Skyline.Util;
 using pwiz.SkylineTestUtil;
 
 namespace pwiz.SkylineTestFunctional
@@ -63,8 +64,8 @@ namespace pwiz.SkylineTestFunctional
         {
             var ions = new[]
             {
-                new MeasuredIon("Water", "H2O", null, null, 1),
-                new MeasuredIon("Carbon", "CO2", null, null, 1, true)
+                new MeasuredIon("Water", "H2O", null, null, Adduct.M_PLUS),
+                new MeasuredIon("Carbon", "CO2", null, null, Adduct.M_PLUS, true)
             };
             var ionList = new MeasuredIonList();
             ionList.AddRange(ions);
@@ -162,37 +163,39 @@ namespace pwiz.SkylineTestFunctional
                 tranSettings.SetListAlwaysAdd(1,true);  // optional carbon
             });
             OkDialog(tranSettings,tranSettings.OkDialog);
-            RunUI(() => SkylineWindow.ImportFasta(new StringReader(">peptide1\nPEPMCIDEPR"), 2, true, string.Empty));
+            const string fasta = ">peptide1\nPEPMCIDEPR";
+            RunUI(() => SkylineWindow.ImportFasta(new StringReader(fasta), 2, true, string.Empty,
+                new SkylineWindow.ImportFastaInfo(false, fasta)));
             var newDoc = SkylineWindow.Document;
 
-            var water = new MeasuredIon("Water", "H2O", null, null, 1);
-            var carbon = new MeasuredIon("Carbon", "CO2", null, null, 1, true);
+            var water = new MeasuredIon("Water", "H2O", null, null, Adduct.M_PLUS); // Charge-only adduct, ionizing elements assumed to be part of formula
+            var carbon = new MeasuredIon("Carbon", "CO2", null, null, Adduct.M_PLUS, true);
 
             var nodeTranFirst = newDoc.MoleculeTransitions.ElementAt(0);
             Assert.IsTrue(nodeTranFirst.Transition.IsCustom());
-            Assert.AreEqual(water.CustomIon, nodeTranFirst.Transition.CustomIon);
+            Assert.AreEqual(water.SettingsCustomIon, nodeTranFirst.Transition.CustomIon);
 
             // Sort-of unit test forray away from actually using the UI
             var nodeGroup = newDoc.PeptideTransitionGroups.ElementAt(0);
 
-            var filteredWaterNodes = TransitionGroupTreeNode.GetChoices(nodeGroup, newDoc.Settings,
+            var filteredWaterNodes = nodeGroup.GetPrecursorChoices(newDoc.Settings,
                     newDoc.Peptides.ElementAt(0).ExplicitMods, true)
                     .Cast<TransitionDocNode>()
-                    .Where(node => Equals(node.Transition.CustomIon, water.CustomIon));
+                    .Where(node => Equals(node.Transition.CustomIon, water.SettingsCustomIon));
 
             Assert.AreEqual(1,filteredWaterNodes.Count());
             
             var filteredCarbonNodes =
-                TransitionGroupTreeNode.GetChoices(nodeGroup, newDoc.Settings,
+                nodeGroup.GetPrecursorChoices(newDoc.Settings,
                     newDoc.Peptides.ElementAt(0).ExplicitMods, true)
                     .Cast<TransitionDocNode>()
-                    .Where(node => Equals(node.Transition.CustomIon, carbon.CustomIon));
+                    .Where(node => Equals(node.Transition.CustomIon, carbon.SettingsCustomIon));
 
             var unfilteredCarbonNodes =
-                TransitionGroupTreeNode.GetChoices(nodeGroup, newDoc.Settings,
+                nodeGroup.GetPrecursorChoices(newDoc.Settings,
                     newDoc.Peptides.ElementAt(0).ExplicitMods, false)
                     .Cast<TransitionDocNode>()
-                    .Where(node => Equals(node.Transition.CustomIon, carbon.CustomIon));
+                    .Where(node => Equals(node.Transition.CustomIon, carbon.SettingsCustomIon));
 
             Assert.AreEqual(0, filteredCarbonNodes.Count());
             Assert.AreEqual(1, unfilteredCarbonNodes.Count());
@@ -211,7 +214,7 @@ namespace pwiz.SkylineTestFunctional
             var docWithCarbon = WaitForDocumentChange(newDoc);
             var nodeTranCarbon = docWithCarbon.MoleculeTransitions.ElementAt(1);
             Assert.IsTrue(nodeTranCarbon.Transition.IsCustom());
-            Assert.AreEqual(carbon.CustomIon, nodeTranCarbon.Transition.CustomIon);
+            Assert.AreEqual(carbon.SettingsCustomIon, nodeTranCarbon.Transition.CustomIon);
 
             RunDlg<TransitionSettingsUI>(SkylineWindow.ShowTransitionSettingsUI, tranSettings2 =>
             {
@@ -219,8 +222,8 @@ namespace pwiz.SkylineTestFunctional
                 tranSettings2.OkDialog();
             });
             var docWithoutWater = WaitForDocumentChange(docWithCarbon);
-            Assert.AreEqual(0, docWithoutWater.PeptideTransitions.Count(t => Equals(water.CustomIon, t.Transition.CustomIon)));
-            Assert.AreEqual(1, docWithoutWater.PeptideTransitions.Count(t => Equals(carbon.CustomIon, t.Transition.CustomIon)));
+            Assert.AreEqual(0, docWithoutWater.PeptideTransitions.Count(t => Equals(water.SettingsCustomIon, t.Transition.CustomIon)));
+            Assert.AreEqual(1, docWithoutWater.PeptideTransitions.Count(t => Equals(carbon.SettingsCustomIon, t.Transition.CustomIon)));
             AssertEx.RoundTrip(docWithoutWater);
 
             RunDlg<PopupPickList>(SkylineWindow.ShowPickChildrenInTest, dlg =>

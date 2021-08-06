@@ -27,10 +27,11 @@ using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 using pwiz.ProteomeDatabase.API;
-using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
 namespace pwiz.Skyline.Controls
@@ -124,7 +125,7 @@ namespace pwiz.Skyline.Controls
         {
             if (StatementCompletionForm != null && !StatementCompletionForm.Visible)
             {
-                StatementCompletionForm.Show();
+                StatementCompletionForm.Show(FormEx.GetParentForm(TextBox));
                 StatementCompletionForm.ResizeToIdealSize(ScreenRect);
             }
             else
@@ -445,7 +446,7 @@ namespace pwiz.Skyline.Controls
                     FastaSequence fastaSequence;
                     try
                     {
-                        fastaSequence = new FastaSequence("name", "description", new ProteinMetadata[0], match.Protein.Sequence); // Not L10N
+                        fastaSequence = new FastaSequence(@"name", @"description", new ProteinMetadata[0], match.Protein.Sequence);
                     }
                     catch (InvalidDataException)
                     {
@@ -486,7 +487,7 @@ namespace pwiz.Skyline.Controls
                         }
                         listItem.ToolTipText = StripTabs(tooltip.ToString());
                         // Note the leading space in this sort key - we'd like to list sequence matches first
-                        var key = TextUtil.SpaceSeparate(" ", listItem.Text, listItem.ToolTipText); // Not L10N
+                        var key = TextUtil.SpaceSeparate(@" ", listItem.Text, listItem.ToolTipText);
                         if (!listItems.ContainsKey(key))
                             listItems.Add(key, listItem);
                     }
@@ -501,16 +502,16 @@ namespace pwiz.Skyline.Controls
             ProteinMatchTypes displayMatchTypes = ProteinMatchTypes.ALL;
             switch (SequenceTree.ProteinsDisplayMode)
             {
-                case ProteinDisplayMode.ByName:
+                case ProteinMetadataManager.ProteinDisplayMode.ByName:
                     displayMatchTypes = displayMatchTypes.Except(ProteinMatchType.name);
                     break;
-                case ProteinDisplayMode.ByAccession:
+                case ProteinMetadataManager.ProteinDisplayMode.ByAccession:
                     displayMatchTypes = displayMatchTypes.Except(ProteinMatchType.accession);
                     break;
-                case ProteinDisplayMode.ByGene:
+                case ProteinMetadataManager.ProteinDisplayMode.ByGene:
                     displayMatchTypes = displayMatchTypes.Except(ProteinMatchType.gene);
                     break;
-                case ProteinDisplayMode.ByPreferredName:
+                case ProteinMetadataManager.ProteinDisplayMode.ByPreferredName:
                     displayMatchTypes = displayMatchTypes.Except(ProteinMatchType.preferredName);
                     break;
             }
@@ -533,14 +534,14 @@ namespace pwiz.Skyline.Controls
                         // Show description, and any other fields we were searching on
                         if (match.AlternativeName != null)
                         {
-                            listItem.Text = PeptideGroupTreeNode.ProteinModalDisplayText(match.AlternativeName, Settings.Default.ShowPeptidesDisplayMode);
+                            listItem.Text = ProteinMetadataManager.ProteinModalDisplayText(match.AlternativeName, Settings.Default.ShowPeptidesDisplayMode);
                             listItem.Tag = new StatementCompletionItem {ProteinInfo = match.AlternativeName, SearchText = searchText};
                             StatementCompletionForm.AddDescription(listItem,
                                 match.AlternativeName.TextForMatchTypes(displayMatchTypes.Except(ProteinMatchType.name)), searchText);
                         }
                         else
                         {
-                            listItem.Text = PeptideGroupTreeNode.ProteinModalDisplayText(match.Protein.ProteinMetadata, Settings.Default.ShowPeptidesDisplayMode);
+                            listItem.Text = ProteinMetadataManager.ProteinModalDisplayText(match.Protein.ProteinMetadata, Settings.Default.ShowPeptidesDisplayMode);
                             listItem.Tag = new StatementCompletionItem { ProteinInfo = match.Protein.ProteinMetadata, SearchText = searchText };
                             StatementCompletionForm.AddDescription(listItem,
                                 match.Protein.ProteinMetadata.TextForMatchTypes(displayMatchTypes), searchText);
@@ -582,7 +583,7 @@ namespace pwiz.Skyline.Controls
                     string matchName = match.Protein.Name;
                     var proteinInfo = match.Protein.ProteinMetadata;
                     if (matchName != null && matchName.Length > MAX_NAME_LENGTH)
-                        proteinInfo = proteinInfo.ChangeName(matchName.Substring(0, MAX_NAME_LENGTH) + "..."); // Not L10N
+                        proteinInfo = proteinInfo.ChangeName(matchName.Substring(0, MAX_NAME_LENGTH) + @"...");
                     var alternativeNames = new List<ProteinMetadata>();
                     if (mainName == null)
                     {
@@ -594,7 +595,7 @@ namespace pwiz.Skyline.Controls
                     }
                     var listItem = new ListViewItem
                                        {
-                                           Text = PeptideGroupTreeNode.ProteinModalDisplayText(mainName, Settings.Default.ShowPeptidesDisplayMode),
+                                           Text = ProteinMetadataManager.ProteinModalDisplayText(mainName, Settings.Default.ShowPeptidesDisplayMode),
                                            ImageIndex = (int) ImageId.protein,
                                            Tag = new StatementCompletionItem { ProteinInfo = proteinInfo, SearchText = searchText }
                                        };

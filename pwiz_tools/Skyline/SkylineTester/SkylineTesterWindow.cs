@@ -28,6 +28,7 @@ using System.Management;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using System.Xml;
 using System.Xml.Linq;
@@ -37,6 +38,7 @@ using SkylineTester.Properties;
 using TestRunnerLib;
 using ZedGraph;
 using Label = System.Windows.Forms.Label;
+using Timer = System.Windows.Forms.Timer;
 
 namespace SkylineTester
 {
@@ -50,7 +52,7 @@ namespace SkylineTester
         public const string DocumentationLink =
             "https://skyline.gs.washington.edu/labkey/wiki/home/development/page.view?name=SkylineTesterDoc";
 
-        public string Subversion { get; private set; }
+        public string Git { get; private set; }
         public string Devenv { get; private set; }
         public string RootDir { get; private set; }
         public string Exe { get; private set; }
@@ -93,12 +95,12 @@ namespace SkylineTester
 
         private static readonly string[] TEST_DLLS =
         {
-            "Test.dll", "TestA.dll", "TestFunctional.dll", "TestTutorial.dll",
+            "Test.dll", "TestData.dll", "TestFunctional.dll", "TestTutorial.dll",
             "CommonTest.dll", "TestConnected.dll", "TestPerf.dll"
         };
 
         private static readonly string[] FORMS_DLLS = {"TestFunctional.dll", "TestTutorial.dll"};
-        private static readonly string[] TUTORIAL_DLLS = {"TestTutorial.dll"};
+        private static readonly string[] TUTORIAL_DLLS = {"TestTutorial.dll", "TestPerf.dll"};
 
         private readonly string _resultsDir;
         private readonly string _openFile;
@@ -190,6 +192,7 @@ namespace SkylineTester
 
             InitLanguages(formsLanguage);
             InitLanguages(tutorialsLanguage);
+            EnableButtonSelectFailedTests(false); // No tests run yet
 
             if (args.Length > 0)
                 _openFile = args[0];
@@ -275,7 +278,7 @@ namespace SkylineTester
                     if (line.StartsWith("!!! "))
                     {
                         var parts = line.Split(' ');
-                        if (parts[2] == "LEAKED" || parts[2] == "CRT-LEAKED")
+                        if (parts[2] == "LEAKED" || parts[2] == "CRT-LEAKED" || parts[2] == "HANDLE-LEAKED")
                             NewNightlyRun.Leaks++;
                     }
                     else if (line.Length > 6 && line[0] == '[' && line[6] == ']' && line.Contains(" failures, "))
@@ -316,6 +319,10 @@ namespace SkylineTester
                 _tabRunStats
             };
             NightlyTabIndex = Array.IndexOf(_tabs, _tabNightly);
+            // Make sure NightlyExit is checked for IsNightlyRun() which makes testings
+            // easier by just making this function return true. The nightly tests usually
+            // set this in the .skytr file.
+            NightlyExit.Checked = NightlyExit.Checked || IsNightlyRun();
 
             InitQuality();
             _previousTab = tabs.SelectedIndex;
@@ -363,11 +370,11 @@ namespace SkylineTester
 
                 var tutorialTests = new List<string>();
                 foreach (var tutorialDll in TUTORIAL_DLLS)
-                    tutorialTests.AddRange(GetTestInfos(tutorialDll, "NoLocalizationAttribute"));
+                    tutorialTests.AddRange(GetTestInfos(tutorialDll, "NoLocalizationAttribute", "Tutorial"));
                 foreach (var test in tutorialTests.ToArray())
                 {
-                    // Remove any tutorial tests we've hacked for small molecule testing - not of interest to localizers
-                    if (test.Contains("AsSmallMolecule"))
+                    // Remove any tutorial tests we've hacked for extra testing (extending test name not to end with Tutorial) - not of interest to localizers
+                    if (!test.EndsWith("Tutorial"))
                         tutorialTests.Remove(test);
                 }
                 var tutorialNodes = new TreeNode[tutorialTests.Count];
@@ -394,7 +401,7 @@ namespace SkylineTester
 
             if (_openFile != null && Path.GetExtension(_openFile) == ".skytr")
             {
-                RunUI(() => Run(null, null));
+                RunUI(Run);
             }
         }
 
@@ -403,7 +410,7 @@ namespace SkylineTester
             return type.GetInterfaces().Any(t => t.Name == interfaceName);
         }
 
-        public IEnumerable<string> GetTestInfos(string testDll, string filterAttribute = null)
+        public IEnumerable<string> GetTestInfos(string testDll, string filterAttribute = null, string filterName = null)
         {
             var dllPath = Path.Combine(ExeDir, testDll);
             var assembly = Assembly.LoadFrom(dllPath);
@@ -417,7 +424,8 @@ namespace SkylineTester
                     foreach (var method in methods)
                     {
                         if (HasAttribute(method, "TestMethodAttribute") && 
-                            (filterAttribute == null || !HasAttribute(method, filterAttribute)))
+                            (filterAttribute == null || !HasAttribute(method, filterAttribute)) &&
+                            (filterName == null || method.Name.Contains(filterName)))
                             yield return method.Name;
                     }
                 }
@@ -435,6 +443,9 @@ namespace SkylineTester
 
         private static bool IsNightlyRun()
         {
+            // Uncomment for testing
+//            return true;
+
             bool isNightly;
             try
             {
@@ -471,19 +482,21 @@ namespace SkylineTester
             }
 
             // If there are tests running, check with user before actually shutting down.
-            if (_runningTab != null)
+            if (_runningTab != null && !ShiftKeyPressed)
             {
                 // Skip that check if we closed programatically.
                 var isNightly = IsNightlyRun();
 
                 var message = isNightly
-                    ? string.Format("The currently running tests are part of a SkylineNightly run. Are you sure you want to end all tests and close {0}?  Doing so will result in SkylineNightly sending a truncated test report.", Text)
+                    ? string.Format("The currently running tests are part of a SkylineNightly run. Are you sure you want to end all tests and close {0}?  No report will be sent to the server if you do.", Text)
                     : string.Format("Tests are running. Are you sure you want to end all tests and close {0}?", Text);
                 if (MessageBox.Show(message, Text, MessageBoxButtons.OKCancel) != DialogResult.OK)
                 {
                     e.Cancel = true;
                     return;
                 }
+                if (isNightly)
+                    Program.UserKilledTestRun = true;
             }
             base.OnClosing(e);
         }
@@ -592,7 +605,7 @@ namespace SkylineTester
             for (int i = 0; i < buildDirs.Length; i++)
             {
                 if (!File.Exists(Path.Combine(buildDirs[i], "Skyline.exe")) &&
-                    !File.Exists(Path.Combine(buildDirs[i], "Skyline-daily.exe")))
+                    !File.Exists(Path.Combine(buildDirs[i], "Skyline-daily.exe")))  // Keep -daily
                 {
                     buildDirs[i] = null;
                 }
@@ -606,19 +619,24 @@ namespace SkylineTester
             // Clear all checks.
             foreach (var buildDirType in (BuildDirs[]) Enum.GetValues(typeof (BuildDirs)))
             {
-                var item = (ToolStripMenuItem) selectBuildMenuItem.DropDownItems[(int) buildDirType];
-                item.Checked = false;
+                if ((int)buildDirType < selectBuildMenuItem.DropDownItems.Count)
+                {
+                    var item = (ToolStripMenuItem) selectBuildMenuItem.DropDownItems[(int) buildDirType];
+                    item.Checked = false;
+                }
             }
 
             // Check the selected build.
-            var selectedItem = (ToolStripMenuItem) selectBuildMenuItem.DropDownItems[(int) select];
-            selectedItem.Visible = true;
-            selectedItem.Checked = true;
-            selectedBuild.Text = selectedItem.Text;
-
-            // Reset languages to match the selected build
-            InitLanguages(formsLanguage);
-            InitLanguages(tutorialsLanguage);
+            if ((int)select >= 0 && (int)select < selectBuildMenuItem.DropDownItems.Count)
+            {
+                var selectedItem = (ToolStripMenuItem) selectBuildMenuItem.DropDownItems[(int) select];
+                selectedItem.Visible = true;
+                selectedItem.Checked = true;
+                selectedBuild.Text = selectedItem.Text;
+                // Reset languages to match the selected build
+                InitLanguages(formsLanguage);
+                InitLanguages(tutorialsLanguage);
+            }
         }
 
         public string GetSelectedBuildDir()
@@ -631,9 +649,323 @@ namespace SkylineTester
         {
             return
                 (File.Exists(Path.Combine(RootDir, "fileio.dll")) && architecture == 32) ||
-                (File.Exists(Path.Combine(RootDir, "fileio_x64.dll")) && architecture == 64)
+                (File.Exists(Path.Combine(RootDir, "ThermoFisher.CommonCore.RawFileReader.dll")) && architecture == 64)
                     ? RootDir
                     : "\\";
+        }
+
+        public enum MemoryGraphLocation { quality, nightly }
+
+        public interface IMemoryGraphContainer
+        {
+            MemoryGraphLocation Location { get; }
+            Summary.Run CurrentRun { get; }
+            List<string> Labels { get; }
+            List<string> FindTest { get; }
+            bool UseRunningLogFile { get; }
+
+            BackgroundWorker UpdateWorker { get; set; }
+        }
+
+        public void UpdateMemoryGraph(IMemoryGraphContainer graphContainer)
+        {
+            if (graphContainer.Location == MemoryGraphLocation.quality)
+            {
+                UpdateMemoryGraph(graphContainer,
+                    GraphMemory,
+                    LabelDuration,
+                    LabelTestsRun,
+                    LabelFailures,
+                    LabelLeaks,
+                    QualityMemoryGraphType);
+            }
+            else
+            {
+                UpdateMemoryGraph(graphContainer,
+                    NightlyGraphMemory,
+                    NightlyLabelDuration,
+                    NightlyLabelTestsRun,
+                    NightlyLabelFailures,
+                    NightlyLabelLeaks,
+                    NightlyMemoryGraphType);
+            }
+        }
+
+        private const string LABEL_TITLE_MEMORY = "Memory Used";
+        private const string LABEL_TITLE_HANDLES = "Handles Held";
+        private const string LABEL_UNITS_MEMORY = "MB";
+        private const string LABEL_UNITS_HANDLE = "Handles";
+        private const string LABEL_CURVE_MEMORY_TOTAL = "Total";
+        private const string LABEL_CURVE_MEMORY_HEAPS = "Heaps";
+        private const string LABEL_CURVE_MEMORY_MANAGED = "Managed";
+        private const string LABEL_CURVE_HANDLES_TOTAL = "Total";
+        private const string LABEL_CURVE_HANDLES_USER_GDI = "User + GDI";
+        private const string LABEL_MENU_MEMORY_TOTAL = "Total Memory";
+        private const string LABEL_MENU_HANDLES_TOTAL = "Total Handles";
+
+        private void UpdateMemoryGraph(IMemoryGraphContainer graphContainer,
+            ZedGraphControl graphControl,
+            Label duration, Label testsRun, Label failures, Label leaks,
+            bool memoryGraphType)
+        {
+            var pane = graphControl.GraphPane;
+            pane.Title.FontSpec.Size = 13;
+            pane.Title.Text = memoryGraphType ? LABEL_TITLE_MEMORY : LABEL_TITLE_HANDLES;
+            pane.YAxis.Title.Text = memoryGraphType ? LABEL_UNITS_MEMORY : LABEL_UNITS_HANDLE;
+
+            bool showTotalCurve = memoryGraphType ? Settings.Default.ShowTotalMemory : Settings.Default.ShowTotalHandles;
+            bool showMiddleCurve = memoryGraphType && Settings.Default.ShowHeapMemory;
+            bool showLowCurve = memoryGraphType ? Settings.Default.ShowManagedMemory : Settings.Default.ShowUserGdiHandles;
+
+            var run = graphContainer.CurrentRun;
+            if (run == null)
+            {
+                pane.CurveList.Clear();
+                pane.XAxis.Scale.TextLabels = new string[0];
+                duration.Text = testsRun.Text = failures.Text = leaks.Text = string.Empty;
+                graphControl.Refresh();
+                return;
+            }
+
+            duration.Text = (run.RunMinutes / 60) + ":" + (run.RunMinutes % 60).ToString("D2");
+            testsRun.Text = run.TestsRun.ToString(CultureInfo.InvariantCulture);
+            failures.Text = run.Failures.ToString(CultureInfo.InvariantCulture);
+            leaks.Text = run.Leaks.ToString(CultureInfo.InvariantCulture);
+
+            if (graphContainer.UpdateWorker != null)
+                return;
+
+            var worker = new BackgroundWorker();
+            graphContainer.UpdateWorker = worker;
+            worker.DoWork += (sender, args) =>
+            {
+                var minorMemoryPoints = showLowCurve ? new PointPairList() : null;
+                var middleMemoryPoints = showMiddleCurve ? new PointPairList() : null;
+                var majorMemoryPoints = showTotalCurve ? new PointPairList() : null;
+
+                var logFile = graphContainer.UseRunningLogFile ? DefaultLogFile : Summary.GetLogFile(run);
+                var labels = new List<string>();
+                var findTest = new List<string>();
+                if (File.Exists(logFile))
+                {
+                    string[] logLines;
+                    try
+                    {
+                        lock (CommandShell.LogLock)
+                        {
+                            logLines = File.ReadAllLines(logFile);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        logLines = new string[] { };// Log file is busy
+                    }
+                    foreach (var line in logLines)
+                    {
+                        ParseMemoryLine(line, memoryGraphType,
+                            minorMemoryPoints, middleMemoryPoints, majorMemoryPoints,
+                            labels, findTest);
+                    }
+                }
+
+                RunUI(() =>
+                {
+                    pane.CurveList.Clear();
+
+                    try
+                    {
+                        if (pane.XAxis.Scale.Min < 1)
+                            pane.XAxis.Scale.Min = 1;
+                        if (pane.XAxis.Scale.Max > labels.Count || pane.XAxis.Scale.Max == graphContainer.Labels.Count)
+                            pane.XAxis.Scale.Max = labels.Count;
+                        pane.XAxis.Scale.MinGrace = 0;
+                        pane.XAxis.Scale.MaxGrace = 0;
+                        pane.YAxis.Scale.MinGrace = 0.05;
+                        pane.YAxis.Scale.MaxGrace = 0.05;
+                        pane.XAxis.Scale.TextLabels = labels.ToArray();
+                        pane.Legend.FontSpec.Size = 11;
+                        pane.XAxis.Title.FontSpec.Size = 11;
+                        pane.XAxis.Scale.FontSpec.Size = 11;
+
+                        graphContainer.Labels.Clear();
+                        graphContainer.Labels.AddRange(labels);
+                        graphContainer.FindTest.Clear();
+                        graphContainer.FindTest.AddRange(findTest);
+
+                        var fillGreen = new Fill(Color.FromArgb(70, 150, 70), Color.FromArgb(150, 230, 150), -90);
+//                        var fillYellow = new Fill(Color.FromArgb(237, 125, 49), Color.FromArgb(255, 192, 0), -90);
+                        var fillPurple = new Fill(Color.FromArgb(160, 120, 160), Color.FromArgb(220, 180, 220), -90);
+                        var fillBlue = new Fill(Color.FromArgb(91, 155, 213), Color.LightBlue, -90);
+                        if (minorMemoryPoints != null && minorMemoryPoints.Count > 0)
+                        {
+                            var managedMemoryCurve = pane.AddCurve(memoryGraphType ? LABEL_CURVE_MEMORY_MANAGED : LABEL_CURVE_HANDLES_USER_GDI,
+                                minorMemoryPoints, Color.Black, SymbolType.None);
+                            managedMemoryCurve.Line.Fill = fillGreen;
+                        }
+                        if (middleMemoryPoints != null && middleMemoryPoints.Count > 0)
+                        {
+                            var middleMemoryCurve = pane.AddCurve(LABEL_CURVE_MEMORY_HEAPS,
+                                middleMemoryPoints, Color.Black, SymbolType.None);
+                            middleMemoryCurve.Line.Fill = fillBlue;
+                        }
+                        if (majorMemoryPoints != null && majorMemoryPoints.Count > 0)
+                        {
+                            var totalMemoryCurve = pane.AddCurve(memoryGraphType ? LABEL_CURVE_MEMORY_TOTAL : LABEL_CURVE_HANDLES_TOTAL,
+                                majorMemoryPoints, Color.Black, SymbolType.None);
+                            totalMemoryCurve.Line.Fill = fillPurple;
+                        }
+
+                        pane.AxisChange();
+                        graphControl.Refresh();
+                    }
+                    // ReSharper disable once EmptyGeneralCatchClause
+                    catch (Exception)
+                    {
+                        // Weird: I got an exception assigning to TextLabels once.  No need
+                        // to kill a whole nightly run for that.
+                    }
+                });
+
+                graphContainer.UpdateWorker = null;
+            };
+
+            worker.RunWorkerAsync();
+        }
+
+        public static void ParseMemoryLine(string line, bool memoryGraphType,
+            PointPairList minorMemoryPoints,
+            PointPairList middleMemoryPoints,
+            PointPairList majorMemoryPoints,
+            List<string> labels,
+            List<string> findTest)
+        {
+            // If this line doesn't look like it should have memory information, just skip it entirely
+            if (line.Length < 7 || line[0] != '[' || line[3] != ':' || line[6] != ']' ||
+                line.IndexOf("failures, ", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return;
+            }
+
+            var testNumber = line.Substring(8, 7).Trim();
+            var testName = line.Substring(16, 46).TrimEnd();
+            var parts = Regex.Split(line, "\\s+");
+            var partsIndex = memoryGraphType ? 6 : 8;
+            var unitsIndex = partsIndex + 1;
+            var units = memoryGraphType ? LABEL_UNITS_MEMORY : LABEL_UNITS_HANDLE;
+            double minorMemory = 0, majorMemory = 0;
+            double? middleMemory = null;
+            if (unitsIndex < parts.Length && parts[unitsIndex].Equals(units + ",", StringComparison.InvariantCultureIgnoreCase))
+            {
+                try
+                {
+                    var memoryParts = parts[partsIndex].Split('/');
+                    minorMemory = double.Parse(memoryParts[0]);
+                    if (memoryParts.Length > 2)
+                    {
+                        middleMemory = double.Parse(memoryParts[1]);
+                        // To be sure the two lower values, which are somewhat independent,
+                        // show up on the graph, the first is added to the second.
+                        middleMemory += minorMemory;
+                    }
+                    majorMemory = double.Parse(memoryParts[memoryParts.Length - 1]);
+                }
+                catch (Exception)
+                {
+                    minorMemory = majorMemory = 0;
+                    middleMemory = null;
+                }
+            }
+            var minorTag = GetPointTag(minorMemory, units, testNumber, testName);
+            var middleTag = GetPointTag(middleMemory, units, testNumber, testName);
+            var majorTag = GetPointTag(majorMemory, units, testNumber, testName);
+
+            if (labels.LastOrDefault() == testNumber)
+            {
+                if (minorMemoryPoints != null)
+                {
+                    minorMemoryPoints[minorMemoryPoints.Count - 1].Y = minorMemory;
+                    minorMemoryPoints[minorMemoryPoints.Count - 1].Tag = minorTag;
+                }
+                if (majorMemoryPoints != null)
+                {
+                    majorMemoryPoints[majorMemoryPoints.Count - 1].Y = majorMemory;
+                    majorMemoryPoints[majorMemoryPoints.Count - 1].Tag = majorTag;
+                }
+                if (middleMemoryPoints != null && middleMemory.HasValue)
+                {
+                    middleMemoryPoints[middleMemoryPoints.Count - 1].Y = middleMemory.Value;
+                    middleMemoryPoints[middleMemoryPoints.Count - 1].Tag = middleTag;
+                }
+            }
+            else
+            {
+                labels.Add(testNumber);
+                findTest.Add(line.Substring(8, 54).TrimEnd() + " ");
+                if (minorMemoryPoints != null)
+                    minorMemoryPoints.Add(minorMemoryPoints.Count, minorMemory, minorTag);
+                if (majorMemoryPoints != null)
+                    majorMemoryPoints.Add(majorMemoryPoints.Count, majorMemory, majorTag);
+                if (middleMemoryPoints != null && middleMemory.HasValue)
+                    middleMemoryPoints.Add(middleMemoryPoints.Count, middleMemory.Value, middleTag);
+            }
+        }
+
+        private static string GetPointTag(double? memory, string units, string testNumber, string testName)
+        {
+            return memory.HasValue
+                ? "{0} {1}\n{2:F2} {3:F1}".With(memory, units, testNumber, testName)
+                : null;
+        }
+
+        private void GraphControlOnContextMenuBuilder(IMemoryGraphContainer graphContainer, ZedGraphControl graph, ContextMenuStrip menuStrip)
+        {
+            // Store original menuitems in an array, and insert a separator
+            ToolStripItem[] items = new ToolStripItem[menuStrip.Items.Count];
+            int iUnzoom = -1;
+            for (int i = 0; i < items.Length; i++)
+            {
+                items[i] = menuStrip.Items[i];
+                string tag = (string)items[i].Tag;
+                if (tag == @"unzoom")
+                    iUnzoom = i;
+            }
+
+            if (iUnzoom != -1)
+                menuStrip.Items.Insert(iUnzoom, new ToolStripSeparator());
+
+            int iInsert = 0;
+            AddGraphPointSetMenuItem(graphContainer, menuStrip, iInsert++, LABEL_MENU_MEMORY_TOTAL,
+                () => Settings.Default.ShowTotalMemory, b => Settings.Default.ShowTotalMemory = b);
+            AddGraphPointSetMenuItem(graphContainer, menuStrip, iInsert++, LABEL_CURVE_MEMORY_HEAPS,
+                () => Settings.Default.ShowHeapMemory, b => Settings.Default.ShowHeapMemory = b);
+            AddGraphPointSetMenuItem(graphContainer, menuStrip, iInsert++, LABEL_CURVE_MEMORY_MANAGED,
+                () => Settings.Default.ShowManagedMemory, b => Settings.Default.ShowManagedMemory = b);
+            AddGraphPointSetMenuItem(graphContainer, menuStrip, iInsert++, LABEL_MENU_HANDLES_TOTAL,
+                () => Settings.Default.ShowTotalHandles, b => Settings.Default.ShowTotalHandles = b);
+            AddGraphPointSetMenuItem(graphContainer, menuStrip, iInsert++, LABEL_CURVE_HANDLES_USER_GDI,
+                () => Settings.Default.ShowUserGdiHandles, b => Settings.Default.ShowUserGdiHandles = b);
+
+            menuStrip.Items.Insert(iInsert++, new ToolStripSeparator());
+
+            // Remove some ZedGraph menu items not of interest
+            foreach (var item in items)
+            {
+                string tag = (string)item.Tag;
+                if (tag == @"set_default" || tag == @"show_val")
+                    menuStrip.Items.Remove(item);
+            }
+        }
+
+        private void AddGraphPointSetMenuItem(IMemoryGraphContainer graphContainer, ContextMenuStrip menuStrip, int i,
+            string label, Func<bool> get, Action<bool> set)
+        {
+            var menuItem = new ToolStripMenuItem(label, null, (s, e) =>
+            {
+                set(!get());
+                UpdateMemoryGraph(graphContainer);
+            });
+            menuItem.Checked = get();
+            menuStrip.Items.Insert(i, menuItem);
         }
 
         #region Menu
@@ -670,6 +1002,7 @@ namespace SkylineTester
 
                 // Tutorials
                 pauseTutorialsScreenShots,
+                modeTutorialsCoverShots,
                 pauseTutorialsDelay,
                 pauseTutorialsSeconds,
                 tutorialsDemoMode,
@@ -682,9 +1015,9 @@ namespace SkylineTester
                 runLoops,
                 runLoopsCount,
                 runIndefinitely,
-                testsAddSmallMoleculeNodes,
                 repeat,
                 randomize,
+                recordAuditLogs,
                 offscreen,
                 testsEnglish,
                 testsChinese,
@@ -714,7 +1047,6 @@ namespace SkylineTester
                 qualityPassDefinite,
                 qualityPassCount,
                 qualityPassIndefinite,
-                qualityAddSmallMoleculeNodes,
                 pass0,
                 pass1,
                 qualityAllTests,
@@ -728,10 +1060,10 @@ namespace SkylineTester
                 nightlyRunPerfTests,
                 nightlyRandomize,
                 nightlyRepeat,
-                nightlyTestSmallMolecules,
                 nightlyBranch,
                 nightlyBranchUrl,
-                nightlyRoot);
+                nightlyRoot,
+                nightlyRunIndefinitely);
 
             XDocument doc = new XDocument(root);
             return doc.ToString();
@@ -1038,6 +1370,12 @@ namespace SkylineTester
                 GetCheckedNodes(childNode, names);
         }
 
+        public void EnableButtonSelectFailedTests(bool hasFailures)
+        {
+            buttonSelectFailedTestsTab.Enabled = buttonSelectFailedTestsTab.Visible = hasFailures;
+            buttonSelectFailedOutputTab.Enabled = buttonSelectFailedOutputTab.Visible = hasFailures;
+        }
+
         #endregion Tree support
 
         #region Accessors
@@ -1083,21 +1421,24 @@ namespace SkylineTester
         public Label            NightlyLabelTestsRun        { get { return nightlyLabelTestsRun; } }
         public ZedGraphControl  NightlyGraphMemory          { get { return nightlyGraphMemory; } }
         public CheckBox         NightlyRandomize            { get { return nightlyRandomize; } }
+        public CheckBox         NightlyRunIndefinitely      { get { return nightlyRunIndefinitely; } }
         public Label            NightlyRoot                 { get { return nightlyRoot; } }
         public ComboBox         NightlyRunDate              { get { return nightlyRunDate; } }
-        public ComboBox         NightlyRepeat          { get { return nightlyRepeat; } }
-        public CheckBox         NightlyTestSmallMolecules { get { return nightlyTestSmallMolecules; } }
+        public ComboBox         NightlyRepeat               { get { return nightlyRepeat; } }
         public CheckBox         NightlyRunPerfTests         { get { return nightlyRunPerfTests; } }
         public DateTimePicker   NightlyStartTime            { get { return nightlyStartTime; } }
         public Label            NightlyTestName             { get { return nightlyTestName; } }
         public WindowThumbnail  NightlyThumbnail            { get { return nightlyThumbnail; } }
         public Button           NightlyViewLog              { get { return nightlyViewLog; } }
+        public bool             NightlyMemoryGraphType      { get { return radioNightlyMemory.Checked; } }
         public RadioButton      NukeBuild                   { get { return nukeBuild; } }
         public CheckBox         Offscreen                   { get { return offscreen; } }
         public ComboBox         OutputJumpTo                { get { return outputJumpTo; } }
         public SplitContainer   OutputSplitContainer        { get { return outputSplitContainer; } }
         public CheckBox         Pass0                       { get { return pass0; } }
         public CheckBox         Pass1                       { get { return pass1; } }
+        public RadioButton      ModeTutorialsCoverShots     { get { return modeTutorialsCoverShots; } }
+        public TextBox          PauseStartingPage           { get { return pauseStartingPage; } }
         public RadioButton      PauseTutorialsScreenShots   { get { return pauseTutorialsScreenShots; } }
         public NumericUpDown    PauseTutorialsSeconds       { get { return pauseTutorialsSeconds; } }
         public RadioButton      QualityChooseTests          { get { return qualityChooseTests; } }
@@ -1105,9 +1446,9 @@ namespace SkylineTester
         public NumericUpDown    QualityPassCount            { get { return qualityPassCount; } }
         public RadioButton      QualityPassDefinite         { get { return qualityPassDefinite; } }
         public Label            QualityTestName             { get { return qualityTestName; } }
-        public CheckBox         QualityAddSmallMoleculeNodes { get { return qualityAddSmallMoleculeNodes; } }
         public CheckBox         QualityRunSmallMoleculeVersions { get { return qualityRunSmallMoleculeVersions; } }
         public WindowThumbnail  QualityThumbnail            { get { return qualityThumbnail; } }
+        public bool             QualityMemoryGraphType      { get { return radioQualityMemory.Checked; } }
         public Button           RunBuild                    { get { return runBuild; } }
         public CheckBox         RunBuildVerificationTests   { get { return runBuildVerificationTests; } }
         public Button           RunForms                    { get { return runForms; } }
@@ -1125,9 +1466,9 @@ namespace SkylineTester
         public RadioButton      SkipCheckedTests            { get { return skipCheckedTests; } }
         public CheckBox         StartSln                    { get { return startSln; } }
         public TabControl       Tabs                        { get { return tabs; } }
-        public CheckBox         TestsAddSmallMoleculeNodes { get { return testsAddSmallMoleculeNodes; } }
         public CheckBox         TestsRunSmallMoleculeVersions { get {  return testsRunSmallMoleculeVersions;} }
         public CheckBox         TestsRandomize              { get { return randomize; } }
+        public CheckBox         TestsRecordAuditLogs        { get { return recordAuditLogs; } }
         public ComboBox         TestsRepeatCount            { get { return repeat; } }
         public MyTreeView       TestsTree                   { get { return testsTree; } }
         public CheckBox         TestsChinese                { get { return testsChinese; } }
@@ -1168,11 +1509,6 @@ namespace SkylineTester
         private void nightlyBrowseBuild_Click(object sender, EventArgs e)
         {
             _tabNightly.BrowseBuild();
-        }
-
-        private void nightlyDeleteBuild_Click(object sender, EventArgs e)
-        {
-            _tabNightly.DeleteBuild();
         }
 
         private void comboRunDate_SelectedIndexChanged(object sender, EventArgs e)
@@ -1294,6 +1630,17 @@ namespace SkylineTester
             if (e.RowIndex < 0 || e.ColumnIndex > 1)
                 return;
 
+            // If there is an active run, stop it and then restart.
+            bool restart = _runningTab != null;
+            if (restart && !ReferenceEquals(_runningTab, _tabForms))
+            {
+                MessageBox.Show(this,
+                    "Tests are running in a different tab. Click Stop before showing forms.");
+                return;
+            }
+
+            _restart = restart;
+
             if (e.ColumnIndex == 1)
             {
                 var testLink = formsGrid.Rows[e.RowIndex].Cells[1].Value;
@@ -1309,11 +1656,8 @@ namespace SkylineTester
                 }
             }
 
-            // If there is an active run, stop it and then restart.
-            _restart = (_runningTab != null);
-
             // Start new run.
-            Run(this, null);
+            RunOrStopByUser();
         }
 
         private void formsGrid_CellEndEdit(object sender, DataGridViewCellEventArgs e)
@@ -1348,6 +1692,170 @@ namespace SkylineTester
         private void comboBoxRunStats_SelectedIndexChanged(object sender, EventArgs e)
         {
             _tabRunStats.Process(GetSelectedLog(comboBoxRunStats), GetSelectedLog(comboBoxRunStatsCompare));
+        }
+
+        private void radioQualityMemory_CheckedChanged(object sender, EventArgs e)
+        {
+            _tabQuality.UpdateGraph();
+        }
+
+        private void radioQualityHandles_CheckedChanged(object sender, EventArgs e)
+        {
+            _tabQuality.UpdateGraph();
+        }
+
+        private void radioNightlyMemory_CheckedChanged(object sender, EventArgs e)
+        {
+            _tabNightly.UpdateGraph();
+        }
+
+        private void radioNightlyHandles_CheckedChanged(object sender, EventArgs e)
+        {
+            _tabNightly.UpdateGraph();
+        }
+
+        private void ShowDiff(string path, string path2)
+        {
+            var tGitDiffFiles = "/command:diff /path:" + path + " /path2:" + path2;
+            Process.Start("TortoiseGitProc.exe", tGitDiffFiles);
+        }
+
+        private string GetPathForLanguage(string formName, string languageName)
+        {
+            string skylineDir = Path.GetFullPath(Path.Combine(ExeDir, @"..\..\.."));
+            string fileName = GetFileForLanguage(formName, languageName);
+            return Directory.GetFiles(skylineDir, fileName, SearchOption.AllDirectories)[0];
+        }
+
+        private string GetFileForLanguage(string formName, string languageName)
+        {
+            if (Equals(languageName, "English"))
+                return formName + ".resx";
+            if (Equals(languageName, "Chinese"))
+                return formName + ".zh-CHS.resx";
+            if (Equals(languageName, "Japanese"))
+                return formName + ".ja.resx";
+            return null;
+        }
+
+        private void diffButton_Click(object sender, EventArgs e)
+        {
+            var formName = formsGrid.CurrentRow?.Cells[0].Value.ToString();
+
+            if (formName != null && formName.Contains("."))
+                formName = formName.Substring(0, formName.IndexOf(".", StringComparison.Ordinal));
+
+            if (formName != null)
+            {
+                ShowDiff(GetPathForLanguage(formName, formsLanguage.SelectedItem.ToString()),
+                    GetPathForLanguage(formName, formsLanguageDiff.SelectedItem.ToString()));
+            }
+        }
+
+        private void PopulateFormsLanguageDiff(string language)
+        {
+            var listLanguages = new List<string> { "English", "Chinese", "Japanese" };
+            listLanguages.Remove(language);
+            if (Equals(language, "English"))
+                listLanguages.Insert(0, string.Empty);
+            if (!formsLanguageDiff.Enabled)
+                formsLanguageDiff.Enabled = true;
+            formsLanguageDiff.Items.Clear();
+            formsLanguageDiff.Items.AddRange(listLanguages.ToArray());
+            if (Equals(language, "Chinese") || Equals(language, "Japanese"))
+            {
+                formsLanguageDiff.SelectedItem = "English";
+                diffButton.Enabled = true;
+            }
+            else
+            {
+                diffButton.Enabled = false;
+            }
+        }
+
+        private void formsLanguage_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (Equals(formsLanguage.SelectedItem.ToString(), "French") || Equals(formsLanguage.SelectedItem.ToString(), "Turkish"))
+            {
+                formsLanguageDiff.Items.Clear();
+                formsLanguageDiff.Enabled = false;
+                diffButton.Enabled = false;
+            }
+            else
+            {
+                PopulateFormsLanguageDiff(formsLanguage.SelectedItem.ToString());
+            }
+        }
+
+        private void formsLanguageDiff_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (formsLanguageDiff.SelectedItem.ToString() == "")
+                diffButton.Enabled = false;
+            else
+                diffButton.Enabled = true;
+        }
+
+        private string[] GetChangedFileList()
+        {
+            var skylineDir = Path.GetFullPath(Path.Combine(ExeDir, @"..\..\.."));
+            var procStartInfo = new ProcessStartInfo("cmd", "/c " + skylineDir + " & git diff --name-only");
+
+            procStartInfo.RedirectStandardOutput = true;
+            procStartInfo.UseShellExecute = false;
+            procStartInfo.CreateNoWindow = true;
+            var cmd = new Process();
+            cmd.StartInfo = procStartInfo;
+            cmd.Start();
+
+            var changedFiles = cmd.StandardOutput.ReadToEnd();
+            return changedFiles.Split(new[] {"\r\n", "\r", "\n"}, StringSplitOptions.None);
+        }
+
+        private static string GetFileName(string file)
+        {
+            var fileName = Path.GetFileName(file);
+            return fileName.Substring(0, fileName.IndexOf(".", StringComparison.Ordinal));
+        }
+
+        private void showChangedFiles_CheckedChanged(object sender, EventArgs e)
+        {
+            var changedFilesArray = GetChangedFileList();
+
+            if (showChangedFiles.Checked)
+            {
+                foreach (DataGridViewRow row in formsGrid.Rows)
+                {
+                    var formNoExt = row.Cells[0].Value.ToString().Split('.')[0];
+
+                    foreach (var file in changedFilesArray)
+                    {
+                        if (!Equals(file, ""))
+                        {
+                            var filename = GetFileName(file);
+                            if (Equals(formNoExt, filename))
+                            {
+                                row.Visible = true;
+                                break;
+                            }
+                            else
+                            {
+                                row.Visible = false;
+                            }
+                        }
+                    }
+                }
+                formsGrid.Update();
+                formsGrid.Refresh();
+            }
+            else
+            {
+                foreach (DataGridViewRow row in formsGrid.Rows)
+                {
+                    row.Visible = true;
+                }
+                formsGrid.Update();
+                formsGrid.Refresh();
+            }
         }
 
         #endregion Control events

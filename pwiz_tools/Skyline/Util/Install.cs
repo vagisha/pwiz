@@ -17,12 +17,13 @@
  * limitations under the License.
  */
 using System;
-using System.Deployment.Application;
+using System.Diagnostics;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace pwiz.Skyline.Util
 {
-    class Install
+    public static class Install
     {
         public enum InstallType { release, daily, developer }
 
@@ -38,14 +39,8 @@ namespace pwiz.Skyline.Util
             }
         }
 
-        private static bool IsDeveloperInstall
-        {
-            get
-            {
-                return string.IsNullOrEmpty(Properties.Settings.Default.InstalledVersion)
-                       && !ApplicationDeployment.IsNetworkDeployed;
-            }
-        }
+        public static bool IsDeveloperInstall { get; private set; }
+        public static bool IsAutomatedBuild { get; private set; }
 
         public static bool Is64Bit
         {
@@ -56,6 +51,11 @@ namespace pwiz.Skyline.Util
                 var myAssemblyName = AssemblyName.GetAssemblyName(myAssemplyLocation);
                 return ProcessorArchitecture.MSIL == myAssemblyName.ProcessorArchitecture;
             }
+        }
+
+        public static string BitsText
+        {
+            get { return Is64Bit ? @"64" : @"32"; }
         }
 
         public static int MajorVersion
@@ -78,41 +78,80 @@ namespace pwiz.Skyline.Util
             get { return VersionPart(3); }
         }
 
-        public static string Version
+        public static string GitHash
         {
             get
             {
-                try
-                {
-                    if (!string.IsNullOrEmpty(Properties.Settings.Default.InstalledVersion))
-                    {
-                        return Properties.Settings.Default.InstalledVersion;
-                    }
-                    return ApplicationDeployment.CurrentDeployment.CurrentVersion.ToString();
-                }
-                catch (Exception)
-                {
-                    return string.Empty;
-                }
+                var parts = Version.Split('-');
+                return parts.Length > 1 ? parts[1] : string.Empty;
             }
+        }
+
+        private static string _version;
+
+        private static string GetVersion()
+        {
+            // mostly copied from System.Windows.Forms.Application.ProductVersion reference source
+            try
+            {
+                string productVersion = null;
+
+                Assembly entryAssembly = Assembly.GetEntryAssembly();
+                if (entryAssembly != null)
+                {
+                    // custom attribute
+                    object[] attrs = entryAssembly.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false);
+                    // Play it safe with a null check no matter what ReSharper thinks
+                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                    if (attrs != null && attrs.Length > 0)
+                    {
+                        productVersion = ((AssemblyInformationalVersionAttribute)attrs[0]).InformationalVersion;
+                        if (productVersion.Contains(@"(developer build)"))
+                        {
+                            IsDeveloperInstall = true;
+                            productVersion = productVersion.Replace(@"(developer build)", "").Trim();
+                        }
+                        else if (productVersion.Contains(@"(automated build)"))
+                        {
+                            IsAutomatedBuild = true;
+                            productVersion = productVersion.Replace(@"(automated build)", "").Trim();
+                        }
+                    }
+                    else
+                    {
+                        // win32 version info
+                        productVersion = FileVersionInfo.GetVersionInfo(entryAssembly.Location).ProductVersion?.Trim();
+                    }
+                }
+
+                return productVersion ?? string.Empty;
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
+
+        public static string Version
+        {
+            get { return _version ?? (_version = GetVersion()); }
         }
 
         private static int VersionPart(int index)
         {
-            string[] versionParts = Version.Split('.');
+            string[] versionParts = Version.Split('-')[0].Split('.');
             return (versionParts.Length > index ? Convert.ToInt32(versionParts[index]) : 0);
         }
 
-        public static string Url
+        public static string Url32
         {
             get
             {
-                return
-                    (Type == InstallType.release)
-                        ? string.Format("http://proteome.gs.washington.edu/software/Skyline/install.html?majorVer={0}&minorVer={1}", MajorVersion, MinorVersion) // Not L10N
-                        : (Type == InstallType.daily)
-                              ? "http://proteome.gs.washington.edu/software/Skyline/install-daily.html" // Not L10N
-                              : string.Empty;
+                return Type == InstallType.release
+                    ? @"https://skyline.ms/skyline32.url"
+                    : Type == InstallType.daily
+                        ? @"https://skyline.ms/skyline-daily32.url"
+                        : string.Empty;
             }
         }
 
@@ -120,10 +159,11 @@ namespace pwiz.Skyline.Util
         {
             get
             {
-                return string.Format("{0}{1} {2}", // Not L10N
-                                     Program.Name,
-                                     (Is64Bit ? " (64-bit)" : string.Empty), // Not L10N
-                                    (IsDeveloperInstall ? string.Empty : Version));
+                return string.Format(@"{0} ({1}-bit{2}{3}) {4}",
+                                     Program.Name, BitsText,
+                                    (IsDeveloperInstall ? @" : developer build" : string.Empty),
+                                    (IsAutomatedBuild ? @" : automated build" : string.Empty),
+                                     Regex.Replace(Version, @"(\d+\.\d+\.\d+\.\d+)-(\S+)", "$1 ($2)"));
             } 
         }
     }

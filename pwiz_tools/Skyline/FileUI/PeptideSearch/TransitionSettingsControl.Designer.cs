@@ -30,9 +30,9 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(TransitionSettingsControl));
             this.lblPrecursorCharges = new System.Windows.Forms.Label();
-            this.txtPrecursorCharges = new System.Windows.Forms.TextBox();
+            this.txtPeptidePrecursorCharges = new System.Windows.Forms.TextBox();
             this.lblIonCharges = new System.Windows.Forms.Label();
-            this.txtIonCharges = new System.Windows.Forms.TextBox();
+            this.txtPrecursorIonCharges = new System.Windows.Forms.TextBox();
             this.lblIonTypes = new System.Windows.Forms.Label();
             this.txtIonTypes = new System.Windows.Forms.TextBox();
             this.lblTolerance = new System.Windows.Forms.Label();
@@ -42,6 +42,20 @@
             this.lblIonCountUnits = new System.Windows.Forms.Label();
             this.txtIonCount = new System.Windows.Forms.TextBox();
             this.cbExclusionUseDIAWindow = new System.Windows.Forms.CheckBox();
+            this.lblMinIonCountUnits = new System.Windows.Forms.Label();
+            this.txtMinIonCount = new System.Windows.Forms.TextBox();
+            this.label1 = new System.Windows.Forms.Label();
+            this.comboRangeFrom = new System.Windows.Forms.ComboBox();
+            this.label2 = new System.Windows.Forms.Label();
+            this.comboRangeTo = new System.Windows.Forms.ComboBox();
+            this.label3 = new System.Windows.Forms.Label();
+            this.txtMinMz = new System.Windows.Forms.TextBox();
+            this.label4 = new System.Windows.Forms.Label();
+            this.label5 = new System.Windows.Forms.Label();
+            this.txtMaxMz = new System.Windows.Forms.TextBox();
+            this.label6 = new System.Windows.Forms.Label();
+            this.panelIonFilter = new System.Windows.Forms.Panel();
+            this.panelIonFilter.SuspendLayout();
             this.SuspendLayout();
             // 
             // lblPrecursorCharges
@@ -49,20 +63,20 @@
             resources.ApplyResources(this.lblPrecursorCharges, "lblPrecursorCharges");
             this.lblPrecursorCharges.Name = "lblPrecursorCharges";
             // 
-            // txtPrecursorCharges
+            // txtPeptidePrecursorCharges
             // 
-            resources.ApplyResources(this.txtPrecursorCharges, "txtPrecursorCharges");
-            this.txtPrecursorCharges.Name = "txtPrecursorCharges";
+            resources.ApplyResources(this.txtPeptidePrecursorCharges, "txtPeptidePrecursorCharges");
+            this.txtPeptidePrecursorCharges.Name = "txtPeptidePrecursorCharges";
             // 
             // lblIonCharges
             // 
             resources.ApplyResources(this.lblIonCharges, "lblIonCharges");
             this.lblIonCharges.Name = "lblIonCharges";
             // 
-            // txtIonCharges
+            // txtPrecursorIonCharges
             // 
-            resources.ApplyResources(this.txtIonCharges, "txtIonCharges");
-            this.txtIonCharges.Name = "txtIonCharges";
+            resources.ApplyResources(this.txtPrecursorIonCharges, "txtPrecursorIonCharges");
+            this.txtPrecursorIonCharges.Name = "txtPrecursorIonCharges";
             // 
             // lblIonTypes
             // 
@@ -110,11 +124,93 @@
             this.cbExclusionUseDIAWindow.Name = "cbExclusionUseDIAWindow";
             this.cbExclusionUseDIAWindow.UseVisualStyleBackColor = true;
             // 
+            // lblMinIonCountUnits
+            // 
+            resources.ApplyResources(this.lblMinIonCountUnits, "lblMinIonCountUnits");
+            this.lblMinIonCountUnits.Name = "lblMinIonCountUnits";
+            // 
+            // txtMinIonCount
+            // 
+            resources.ApplyResources(this.txtMinIonCount, "txtMinIonCount");
+            this.txtMinIonCount.Name = "txtMinIonCount";
+            // 
+            // label1
+            // 
+            resources.ApplyResources(this.label1, "label1");
+            this.label1.Name = "label1";
+            // 
+            // comboRangeFrom
+            // 
+            this.comboRangeFrom.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboRangeFrom.FormattingEnabled = true;
+            resources.ApplyResources(this.comboRangeFrom, "comboRangeFrom");
+            this.comboRangeFrom.Name = "comboRangeFrom";
+            // 
+            // label2
+            // 
+            resources.ApplyResources(this.label2, "label2");
+            this.label2.Name = "label2";
+            // 
+            // comboRangeTo
+            // 
+            this.comboRangeTo.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.comboRangeTo.FormattingEnabled = true;
+            resources.ApplyResources(this.comboRangeTo, "comboRangeTo");
+            this.comboRangeTo.Name = "comboRangeTo";
+            // 
+            // label3
+            // 
+            resources.ApplyResources(this.label3, "label3");
+            this.label3.Name = "label3";
+            // 
+            // txtMinMz
+            // 
+            resources.ApplyResources(this.txtMinMz, "txtMinMz");
+            this.txtMinMz.Name = "txtMinMz";
+            // 
+            // label4
+            // 
+            resources.ApplyResources(this.label4, "label4");
+            this.label4.Name = "label4";
+            // 
+            // label5
+            // 
+            resources.ApplyResources(this.label5, "label5");
+            this.label5.Name = "label5";
+            // 
+            // txtMaxMz
+            // 
+            resources.ApplyResources(this.txtMaxMz, "txtMaxMz");
+            this.txtMaxMz.Name = "txtMaxMz";
+            // 
+            // label6
+            // 
+            resources.ApplyResources(this.label6, "label6");
+            this.label6.Name = "label6";
+            // 
+            // panelIonFilter
+            // 
+            this.panelIonFilter.Controls.Add(this.label1);
+            this.panelIonFilter.Controls.Add(this.label5);
+            this.panelIonFilter.Controls.Add(this.comboRangeFrom);
+            this.panelIonFilter.Controls.Add(this.txtMaxMz);
+            this.panelIonFilter.Controls.Add(this.label2);
+            this.panelIonFilter.Controls.Add(this.label6);
+            this.panelIonFilter.Controls.Add(this.comboRangeTo);
+            this.panelIonFilter.Controls.Add(this.label4);
+            this.panelIonFilter.Controls.Add(this.label3);
+            this.panelIonFilter.Controls.Add(this.txtMinMz);
+            resources.ApplyResources(this.panelIonFilter, "panelIonFilter");
+            this.panelIonFilter.Name = "panelIonFilter";
+            // 
             // TransitionSettingsControl
             // 
             resources.ApplyResources(this, "$this");
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.Transparent;
+            this.Controls.Add(this.panelIonFilter);
+            this.Controls.Add(this.lblMinIonCountUnits);
+            this.Controls.Add(this.txtMinIonCount);
             this.Controls.Add(this.cbExclusionUseDIAWindow);
             this.Controls.Add(this.lblTolerance);
             this.Controls.Add(this.txtTolerance);
@@ -124,11 +220,13 @@
             this.Controls.Add(this.txtIonCount);
             this.Controls.Add(this.txtIonTypes);
             this.Controls.Add(this.lblIonTypes);
-            this.Controls.Add(this.txtIonCharges);
+            this.Controls.Add(this.txtPrecursorIonCharges);
             this.Controls.Add(this.lblIonCharges);
-            this.Controls.Add(this.txtPrecursorCharges);
+            this.Controls.Add(this.txtPeptidePrecursorCharges);
             this.Controls.Add(this.lblPrecursorCharges);
             this.Name = "TransitionSettingsControl";
+            this.panelIonFilter.ResumeLayout(false);
+            this.panelIonFilter.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -136,10 +234,10 @@
 
         #endregion
 
-        private System.Windows.Forms.TextBox txtPrecursorCharges;
+        private System.Windows.Forms.TextBox txtPeptidePrecursorCharges;
         private System.Windows.Forms.Label lblPrecursorCharges;
         private System.Windows.Forms.Label lblIonCharges;
-        private System.Windows.Forms.TextBox txtIonCharges;
+        private System.Windows.Forms.TextBox txtPrecursorIonCharges;
         private System.Windows.Forms.Label lblIonTypes;
         private System.Windows.Forms.TextBox txtIonTypes;
         private System.Windows.Forms.Label lblTolerance;
@@ -149,5 +247,18 @@
         private System.Windows.Forms.Label lblIonCountUnits;
         private System.Windows.Forms.TextBox txtIonCount;
         private System.Windows.Forms.CheckBox cbExclusionUseDIAWindow;
+        private System.Windows.Forms.Label lblMinIonCountUnits;
+        private System.Windows.Forms.TextBox txtMinIonCount;
+        private System.Windows.Forms.Label label1;
+        private System.Windows.Forms.ComboBox comboRangeFrom;
+        private System.Windows.Forms.Label label2;
+        private System.Windows.Forms.ComboBox comboRangeTo;
+        private System.Windows.Forms.Label label3;
+        private System.Windows.Forms.TextBox txtMinMz;
+        private System.Windows.Forms.Label label4;
+        private System.Windows.Forms.Label label5;
+        private System.Windows.Forms.TextBox txtMaxMz;
+        private System.Windows.Forms.Label label6;
+        private System.Windows.Forms.Panel panelIonFilter;
     }
 }

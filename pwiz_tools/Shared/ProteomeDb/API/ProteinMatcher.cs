@@ -59,19 +59,19 @@ namespace pwiz.ProteomeDatabase.API
             switch (type)
             {
                 case ProteinMatchType.name:
-                    return "Name"; // Not L10N
+                    return @"Name";
                 case ProteinMatchType.description:
-                    return "Description"; // Not L10N
+                    return @"Description";
                 case ProteinMatchType.sequence:
-                    return "Sequence"; // Not L10N
+                    return @"Sequence";
                 case ProteinMatchType.accession:
-                    return "Accession"; // Not L10N
+                    return @"Accession";
                 case ProteinMatchType.preferredName:
-                    return "PreferredName"; // Not L10N
+                    return @"PreferredName";
                 case ProteinMatchType.gene:
-                    return "Gene"; // Not L10N
+                    return @"Gene";
                 case ProteinMatchType.species:
-                    return "Species"; // Not L10N
+                    return @"Species";
                 default:
                     return String.Empty;
             }
@@ -94,8 +94,9 @@ namespace pwiz.ProteomeDatabase.API
         public void BeginExecute(Action<ProteinMatchQuery> callback)
         {
             _callback = callback;
-            var runner = new Action(ExecuteBackground);
-            runner.BeginInvoke(runner.EndInvoke, null);
+//            var runner = new Action(ExecuteBackground);
+//            runner.BeginInvoke(runner.EndInvoke, null);
+            new Thread(ExecuteBackground).Start();
         }
 
         /// <summary>
@@ -212,26 +213,28 @@ namespace pwiz.ProteomeDatabase.API
                     }
                     matchTypesRemaining = matchTypesRemaining.Except(ProteinMatchType.sequence);
 
-                    if ((_matches == null) || (_matches.Count < MaxResults))
+                    if (DoMatching)
                     {
-                        string pattern =  "%" + Settings.SearchText + "%"; // Not L10N
+                        string pattern =  @"%" + Settings.SearchText + @"%";
                         if (Settings.SearchText.Length < MIN_FREE_SEARCH_LENGTH)
                         {
                             // That could cast a pretty wide net - only match to beginning of keywords, and not to description or species
-                            pattern = Settings.SearchText + "%"; // Not L10N
+                            pattern = Settings.SearchText + @"%";
                             matchTypesRemaining = matchTypesRemaining.Except(ProteinMatchType.description, ProteinMatchType.species);
                         }
 
                         var exprLike = new List<string>();
                         foreach (ProteinMatchType matchType in matchTypesRemaining)
                         {
-                            exprLike.Add(String.Format("pn.{0} LIKE :expr", ProteinMatchTypeDbFieldName(matchType)));  // Not L10N
+                            exprLike.Add(String.Format(@"pn.{0} LIKE :expr", ProteinMatchTypeDbFieldName(matchType)));
                         }
 
-                        String hql = "SELECT distinct pn.Protein FROM " + typeof(DbProteinName) + " pn " // Not L10N
-                                        + String.Format("\nWHERE {0}", String.Join(" OR ", exprLike)) // Not L10N
-                                        + "\nORDER BY pn.IsPrimary DESC, pn.Name"; // Not L10N
-                        IQuery query = session.CreateQuery(hql).SetParameter("expr", pattern); // Not L10N
+                        String hql = @"SELECT distinct pn.Protein FROM " + typeof(DbProteinName) + @" pn "
+                                        // ReSharper disable LocalizableElement
+                                        + String.Format("\nWHERE {0}", String.Join(" OR ", exprLike))
+                                        + "\nORDER BY pn.IsPrimary DESC, pn.Name";
+                                        // ReSharper restore LocalizableElement
+                        IQuery query = session.CreateQuery(hql).SetParameter(@"expr", pattern);
                         query.SetMaxResults(MaxResults);
                         AddProteinMatches(session, () =>
                         {
@@ -249,7 +252,18 @@ namespace pwiz.ProteomeDatabase.API
                 {
                     return;
                 }
-                Trace.TraceError("Unhandled exception: {0}", exception); // Not L10N
+                Trace.TraceError(@"Unhandled exception: {0}", exception);
+            }
+        }
+
+        public bool DoMatching
+        {
+            get
+            {
+                lock (this)
+                {
+                    return _matches == null || _matches.Count < MaxResults;
+                }
             }
         }
     }
@@ -356,7 +370,7 @@ namespace pwiz.ProteomeDatabase.API
             if (types.Contains(ProteinMatchType.description)) // put this last, as it likely contains the others
                 results.Add(p.Description ?? String.Empty);
             if (results.Count > 0)
-                return String.Join(" ",results); // Not L10N
+                return String.Join(@" ",results);
 
             return null;
         }

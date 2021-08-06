@@ -16,6 +16,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -25,21 +26,25 @@ using pwiz.Common.SystemUtil;
 using pwiz.MSGraph;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.Lib;
-using ZedGraph;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
+using ZedGraph;
 
 namespace pwiz.Skyline.Controls.Graphs
 {
     public class SpectrumGraphItem : AbstractSpectrumGraphItem
     {
-        private TransitionGroupDocNode TransitionGroupNode { get; set; }
+        public PeptideDocNode PeptideDocNode { get; private set; }
+        public TransitionGroupDocNode TransitionGroupNode { get; private set; }
         private TransitionDocNode TransitionNode { get; set; }
         public string LibraryName { get; private set; }
 
-        public SpectrumGraphItem(TransitionGroupDocNode transitionGroupNode, TransitionDocNode transition,
-                                 LibraryRankedSpectrumInfo spectrumInfo, string libName) : base(spectrumInfo)
+        public SpectrumGraphItem(PeptideDocNode peptideDocNode,
+            TransitionGroupDocNode transitionGroupNode, TransitionDocNode transition,
+            LibraryRankedSpectrumInfo spectrumInfo, string libName) : base(spectrumInfo)
         {
+            PeptideDocNode = peptideDocNode;
             TransitionGroupNode = transitionGroupNode;
             TransitionNode = transition;
             LibraryName = libName;
@@ -50,74 +55,103 @@ namespace pwiz.Skyline.Controls.Graphs
             return ((TransitionNode != null) && (predictedMz == TransitionNode.Mz));
         }
 
+        public static string GetLibraryPrefix(string libraryName)
+        {
+            return !string.IsNullOrEmpty(libraryName) ? libraryName + @" - " : string.Empty;
+        }
+
+        public static string RemoveLibraryPrefix(string title, string libraryName)
+        {
+            string libraryNamePrefix = GetLibraryPrefix(libraryName);
+            if (!string.IsNullOrEmpty(libraryNamePrefix) && title.StartsWith(libraryNamePrefix))
+                return title.Substring(libraryNamePrefix.Length);
+            return title;
+        }
+
+        public static string GetTitle(string libraryName, PeptideDocNode peptideDocNode, TransitionGroupDocNode transitionGroupDocNode, IsotopeLabelType labelType)
+        {
+            string libraryNamePrefix = GetLibraryPrefix(libraryName);
+
+            TransitionGroup transitionGroup = transitionGroupDocNode.TransitionGroup;
+            string sequence;
+            if (transitionGroup.Peptide.IsCustomMolecule)
+            {
+                sequence = transitionGroupDocNode.CustomMolecule.DisplayName;
+            }
+            else if (peptideDocNode.CrosslinkStructure.HasCrosslinks)
+            {
+                sequence = peptideDocNode.GetCrosslinkedSequence();
+            }
+            else
+            {
+                sequence = transitionGroup.Peptide.Target.Sequence;
+            }
+
+            var charge = transitionGroup.PrecursorAdduct.ToString(); // Something like "2" or "-3" for protonation, or "[M+Na]" for small molecules
+            if (transitionGroup.Peptide.IsCustomMolecule)
+            {
+                return labelType.IsLight
+                    ? string.Format(@"{0}{1}{2}", libraryNamePrefix, transitionGroup.Peptide.CustomMolecule.DisplayName, charge)
+                    : string.Format(@"{0}{1}{2} ({3})", libraryNamePrefix, sequence, charge, labelType);
+            }
+            return labelType.IsLight
+                ? string.Format(Resources.SpectrumGraphItem_Title__0__1__Charge__2__, libraryNamePrefix, sequence, charge)
+                : string.Format(Resources.SpectrumGraphItem_Title__0__1__Charge__2__3__, libraryNamePrefix, sequence, charge, labelType);
+        }
+
         public override string Title
         {
-            get
-            {
-                string libraryNamePrefix = LibraryName;
-                if (!string.IsNullOrEmpty(libraryNamePrefix))
-                    libraryNamePrefix += " - "; // Not L10N
-
-                TransitionGroup transitionGroup = TransitionGroupNode.TransitionGroup;
-                string sequence = transitionGroup.Peptide.IsCustomIon
-                    ? TransitionGroupNode.CustomIon.DisplayName
-                    : transitionGroup.Peptide.Sequence;
-                int charge = transitionGroup.PrecursorCharge;
-                var labelType = SpectrumInfo.LabelType;
-                return labelType.IsLight
-                    ? string.Format(Resources.SpectrumGraphItem_Title__0__1__Charge__2__, libraryNamePrefix, sequence, charge)
-                    : string.Format(Resources.SpectrumGraphItem_Title__0__1__Charge__2__3__, libraryNamePrefix, sequence, charge, labelType);
-            }
+            get { return GetTitle(LibraryName, PeptideDocNode, TransitionGroupNode, SpectrumInfo.LabelType); }
         }
     }
     
     public abstract class AbstractSpectrumGraphItem : AbstractMSGraphItem
     {
-        private const string FONT_FACE = "Arial"; // Not L10N
-        private static readonly Color COLOR_A = Color.YellowGreen;
-        private static readonly Color COLOR_X = Color.Green;
-        private static readonly Color COLOR_B = Color.BlueViolet;
-        private static readonly Color COLOR_Y = Color.Blue;
-        private static readonly Color COLOR_C = Color.Orange;
-        private static readonly Color COLOR_Z = Color.OrangeRed;
-        private static readonly Color COLOR_PRECURSOR = Color.DarkCyan;
-        private static readonly Color COLOR_NONE = Color.Gray;
+        private const string FONT_FACE = "Arial";
         public static readonly Color COLOR_SELECTED = Color.Red;
 
         private readonly Dictionary<double, LibraryRankedSpectrumInfo.RankedMI> _ionMatches;
-        protected LibraryRankedSpectrumInfo SpectrumInfo { get; set; }
+        public LibraryRankedSpectrumInfo SpectrumInfo { get; protected set; }
         public int PeaksCount { get { return SpectrumInfo.Peaks.Count; } }
         public int PeaksMatchedCount { get { return SpectrumInfo.PeaksMatched.Count(); } }
         public int PeaksRankedCount { get { return SpectrumInfo.PeaksRanked.Count(); } }
         public ICollection<IonType> ShowTypes { get; set; }
-        public ICollection<int> ShowCharges { get; set; }
+        public ICollection<int> ShowCharges { get; set; } // List of absolute charge values to display CONSIDER(bspratt): may want finer per-adduct control for small mol use
         public bool ShowRanks { get; set; }
+        public bool ShowScores { get; set; }
         public bool ShowMz { get; set; }
         public bool ShowObservedMz { get; set; }
         public bool ShowDuplicates { get; set; }
         public float FontSize { get; set; }
+        public bool Invert { get; set; }
 
         // ReSharper disable InconsistentNaming
         private FontSpec _fontSpecA;
-        private FontSpec FONT_SPEC_A { get { return GetFontSpec(COLOR_A, ref _fontSpecA); } }
+        private FontSpec FONT_SPEC_A { get { return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.a), ref _fontSpecA); } }
         private FontSpec _fontSpecX;
-        private FontSpec FONT_SPEC_X { get { return GetFontSpec(COLOR_X, ref _fontSpecX); } }
+        private FontSpec FONT_SPEC_X { get { return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.x), ref _fontSpecX); } }
         private FontSpec _fontSpecB;
-        private FontSpec FONT_SPEC_B { get { return GetFontSpec(COLOR_B, ref _fontSpecB); } }
+        private FontSpec FONT_SPEC_B { get { return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.b), ref _fontSpecB); } }
         private FontSpec _fontSpecY;
-        private FontSpec FONT_SPEC_Y { get { return GetFontSpec(COLOR_Y, ref _fontSpecY); } }
+        private FontSpec FONT_SPEC_Y { get { return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.y), ref _fontSpecY); } }
         private FontSpec _fontSpecC;
-        private FontSpec FONT_SPEC_C { get { return GetFontSpec(COLOR_C, ref _fontSpecC); } }
+        private FontSpec FONT_SPEC_C { get { return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.c), ref _fontSpecC); } }
         private FontSpec _fontSpecZ;
-        private FontSpec FONT_SPEC_PRECURSOR { get { return GetFontSpec(COLOR_PRECURSOR, ref _fontSpecPrecursor); } }
+        private FontSpec FONT_SPEC_PRECURSOR { get { return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.precursor), ref _fontSpecPrecursor); } }
         private FontSpec _fontSpecPrecursor;
-        private FontSpec FONT_SPEC_Z { get { return GetFontSpec(COLOR_Z, ref _fontSpecZ); } }
+        private FontSpec FONT_SPEC_Z { get { return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.z), ref _fontSpecZ); } }
+        private FontSpec _fontSpecOtherIons;
         private FontSpec _fontSpecNone;
-        private FontSpec FONT_SPEC_NONE { get { return GetFontSpec(COLOR_NONE, ref _fontSpecNone); } }
+        private FontSpec FONT_SPEC_NONE { get { return GetFontSpec(IonTypeExtension.GetTypeColor(null), ref _fontSpecNone); } }
         private FontSpec _fontSpecSelected;
         private FontSpec FONT_SPEC_SELECTED { get { return GetFontSpec(COLOR_SELECTED, ref _fontSpecSelected); } }
         // ReSharper restore InconsistentNaming
 
+        private FontSpec GetOtherIonsFontSpec(int rank = 0)
+        {
+            // Consider the rank of small molecule fragments when selecting the color for the FontSpec
+            return GetFontSpec(IonTypeExtension.GetTypeColor(IonType.custom, rank), ref _fontSpecOtherIons);
+        }
         protected AbstractSpectrumGraphItem(LibraryRankedSpectrumInfo spectrumInfo)
         {
             SpectrumInfo = spectrumInfo;
@@ -136,7 +170,7 @@ namespace pwiz.Skyline.Controls.Graphs
 
         private static FontSpec CreateFontSpec(Color color, float size)
         {
-            return new FontSpec(FONT_FACE, size, color, false, false, false) { Border = { IsVisible = false } };
+            return new FontSpec(FONT_FACE, size, color, false, false, false) { Border = { IsVisible = false }, Fill = new Fill(Color.FromArgb(180, Color.White)) };
         }
 
         private FontSpec GetFontSpec(Color color, ref FontSpec fontSpec)
@@ -153,14 +187,24 @@ namespace pwiz.Skyline.Controls.Graphs
         {
             get
             {
-                return new PointPairList(SpectrumInfo.MZs.ToArray(),
-                                         SpectrumInfo.Intensities.ToArray());
+                var intensities = Invert
+                    ? SpectrumInfo.Intensities.Select(i => -i).ToArray()
+                    : SpectrumInfo.Intensities.ToArray();
+
+                return new PointPairList(SpectrumInfo.MZs.ToArray(), intensities);
             }
         }
 
         public override void AddPreCurveAnnotations(MSGraphPane graphPane, Graphics g, MSPointList pointList, GraphObjList annotations)
         {
             // Do nothing
+        }
+
+        private static Color InvertColor(Color color)
+        {
+            var hsb = HSBColor.FromRGB(color);
+            hsb.H += 64;
+            return HSBColor.ToRGB(hsb);
         }
         
         public override void AddAnnotations(MSGraphPane graphPane, Graphics g, MSPointList pointList, GraphObjList annotations)
@@ -173,19 +217,10 @@ namespace pwiz.Skyline.Controls.Graphs
 
                 var matchedIon = rmi.MatchedIons.First(IsVisibleIon);
 
-                Color color;
-                switch (matchedIon.IonType)
-                {
-                    default: color = COLOR_NONE; break;
-                    case IonType.a: color = COLOR_A; break;
-                    case IonType.x: color = COLOR_X; break;
-                    case IonType.b: color = COLOR_B; break;
-                    case IonType.y: color = COLOR_Y; break;
-                    case IonType.c: color = COLOR_C; break;
-                    case IonType.z: color = COLOR_Z; break;
-                    // FUTURE: Add custom ions when LibraryRankedSpectrumInfo can support them
-                    case IonType.precursor: color = COLOR_PRECURSOR; break;
-                }
+                Color color = IonTypeExtension.GetTypeColor(matchedIon.IonType, rmi.Rank);
+
+                if (Invert)
+                    color = InvertColor(color);
 
                 if (rmi.MatchedIons.Any(mfi => IsMatch(mfi.PredictedMz)))
                 {
@@ -193,13 +228,27 @@ namespace pwiz.Skyline.Controls.Graphs
                 }
 
                 double mz = rmi.ObservedMz;
-                var stick = new LineObj(color, mz, rmi.Intensity, mz, 0);
+                var intensity = Invert ? -rmi.Intensity : rmi.Intensity;
+                var stick = new LineObj(color, mz, intensity, mz, 0);
                 stick.IsClippedToChartRect = true;
                 stick.Location.CoordinateFrame = CoordType.AxisXYScale;
                 stick.Line.Width = LineWidth + 1;
                 annotations.Add(stick);
             }
             //ReSharper restore UseObjectOrCollectionInitializer
+
+            if (ShowScores && SpectrumInfo.Score.HasValue)
+            {
+                var text = new TextObj(
+                    string.Format(LocalizationHelper.CurrentCulture, Resources.AbstractSpectrumGraphItem_AddAnnotations_, SpectrumInfo.Score),
+                    0.01, 0, CoordType.ChartFraction, AlignH.Left, AlignV.Top)
+                {
+                    IsClippedToChartRect = true,
+                    ZOrder = ZOrder.E_BehindCurves,
+                    FontSpec = GraphSummary.CreateFontSpec(Color.Black),
+                };
+                annotations.Add(text);
+            }
         }
 
         public override PointAnnotation AnnotatePoint(PointPair point)
@@ -220,12 +269,24 @@ namespace pwiz.Skyline.Controls.Graphs
                 case IonType.y: fontSpec = FONT_SPEC_Y; break;
                 case IonType.c: fontSpec = FONT_SPEC_C; break;
                 case IonType.z: fontSpec = FONT_SPEC_Z; break;
-                // FUTURE: Add custom ions when LibraryRankedSpectrumInfo can support them
+                case IonType.custom:
+                    {
+                    if (rmi.Rank == 0 && !rmi.HasAnnotations)
+                        return null; // Small molecule fragments - only force annotation if ranked
+                    fontSpec = GetOtherIonsFontSpec(rmi.Rank);
+                    }
+                    break;
                 case IonType.precursor: fontSpec = FONT_SPEC_PRECURSOR; break;
             }
             if (rmi.MatchedIons.Any(mfi => IsMatch(mfi.PredictedMz)))
                 fontSpec = FONT_SPEC_SELECTED;
-            return new PointAnnotation(GetLabel(rmi), fontSpec);
+            if (Invert)
+            {
+                fontSpec = fontSpec.Clone();
+                fontSpec.FontColor = InvertColor(fontSpec.FontColor);
+            }
+                
+            return new PointAnnotation(GetLabel(rmi), fontSpec, rmi.Rank);
         }
 
         public IEnumerable<string> IonLabels
@@ -270,20 +331,20 @@ namespace pwiz.Skyline.Controls.Graphs
 
         private string GetLabel(MatchedFragmentIon mfi, int rank, bool showMz)
         {
-            var label = new StringBuilder(mfi.IonType.GetLocalizedString());
-            if (!Transition.IsPrecursor(mfi.IonType))
+            var label = new StringBuilder(string.IsNullOrEmpty(mfi.FragmentName) ? mfi.IonType.GetLocalizedString() : mfi.FragmentName);
+            if (string.IsNullOrEmpty(mfi.FragmentName) && !Transition.IsPrecursor(mfi.IonType))
                 label.Append(mfi.Ordinal.ToString(LocalizationHelper.CurrentCulture));
             if (mfi.Losses != null)
             {
-                label.Append(" -"); // Not L10N
+                label.Append(@" -");
                 label.Append(Math.Round(mfi.Losses.Mass, 1));
             }
-            string chargeIndicator = (mfi.Charge == 1 ? string.Empty : Transition.GetChargeIndicator(mfi.Charge));
+            var chargeIndicator = mfi.Charge.Equals(Adduct.SINGLY_PROTONATED) ? string.Empty : Transition.GetChargeIndicator(mfi.Charge);
             label.Append(chargeIndicator);
             if (showMz)
-                label.Append(string.Format(" = {0:F01}", mfi.PredictedMz)); // Not L10N
+                label.Append(string.Format(@" = {0:F01}", mfi.PredictedMz));
             if (rank > 0 && ShowRanks)
-                label.Append(TextUtil.SEPARATOR_SPACE).Append(string.Format("({0})",string.Format(Resources.AbstractSpectrumGraphItem_GetLabel_rank__0__, rank))); // Not L10N
+                label.Append(TextUtil.SEPARATOR_SPACE).Append(string.Format(@"({0})",string.Format(Resources.AbstractSpectrumGraphItem_GetLabel_rank__0__, rank)));
             return label.ToString();
         }
 
@@ -307,8 +368,9 @@ namespace pwiz.Skyline.Controls.Graphs
         private bool IsVisibleIon(MatchedFragmentIon mfi)
         {
             // Show precursor ions when they are supposed to be shown, regardless of charge
+            // N.B. for fragments, we look at abs value of charge. CONSIDER(bspratt): for small mol libs we may want finer per-adduct control
             return mfi.Ordinal > 0 && ShowTypes.Contains(mfi.IonType) &&
-                (mfi.IonType == IonType.precursor || ShowCharges.Contains(mfi.Charge));
+                (mfi.IonType == IonType.precursor || ShowCharges.Contains(Math.Abs(mfi.Charge.AdductCharge)));
         }
     }
 
@@ -352,6 +414,16 @@ namespace pwiz.Skyline.Controls.Graphs
                 return new PointPairList(new double[0], new double[0]);
             }
         }
+    }
+
+    public class ExceptionMSGraphItem : NoDataMSGraphItem
+    {
+        public ExceptionMSGraphItem(Exception exception) : base(exception.Message)
+        {
+            Exception = exception;
+        }
+
+        public Exception Exception { get; }
     }
 
     public abstract class AbstractMSGraphItem : IMSGraphItemExtended
@@ -398,7 +470,7 @@ namespace pwiz.Skyline.Controls.Graphs
 
         private static void CustomizeAxis(Axis axis, string title)
         {
-            axis.Title.FontSpec.Family = "Arial"; // Not L10N
+            axis.Title.FontSpec.Family = @"Arial";
             axis.Title.FontSpec.Size = 14;
             axis.Color = axis.Title.FontSpec.FontColor = Color.Black;
             axis.Title.FontSpec.Border.IsVisible = false;
@@ -412,7 +484,7 @@ namespace pwiz.Skyline.Controls.Graphs
         /// </summary>
         public static void SetAxisText(Axis axis, string title)
         {
-            if (string.Equals(title, "m/z")) // Not L10N
+            if (string.Equals(title, @"m/z"))
                 axis.Title.FontSpec.IsItalic = true;
             axis.Title.Text = title;
         }

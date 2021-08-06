@@ -19,17 +19,16 @@
 using System;
 using System.Collections.Generic;
 using System.Data.SQLite;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using NHibernate;
 using NHibernate.Exceptions;
-using pwiz.Common.Collections;
+using pwiz.Common.Database.NHibernate;
 using pwiz.Common.SystemUtil;
-using pwiz.ProteomeDatabase.Util;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
@@ -46,21 +45,22 @@ namespace pwiz.Skyline.Model.Optimization
 
     public class OptimizationDb : Immutable, IValidating
     {
-        public const string EXT = ".optdb"; // Not L10N
+        public const string EXT = ".optdb";
 
         public static string FILTER_OPTDB
         {
             get { return TextUtil.FileDialogFilter(Resources.OptimizationDb_FILTER_OPTDB_Optimization_Libraries, EXT); }
         }
 
-        public const int SCHEMA_VERSION_CURRENT = 2;
+        public const int SCHEMA_VERSION_CURRENT = 3; // Version 3 saves Charge and ProductCharge as TEXT instead of INT to accomodate adduct descriptions
+                                                     // No special code needed for reading V2, SQLite is happy to present int as string
 
         private readonly string _path;
         private readonly ISessionFactory _sessionFactory;
         private readonly ReaderWriterLock _databaseLock;
 
         private DateTime _modifiedTime;
-        private ImmutableDictionary<OptimizationKey, double> _dictLibrary;
+        private OptimizationDictionary _dictLibrary;
 
         public OptimizationDb(string path, ISessionFactory sessionFactory)
         {
@@ -148,28 +148,15 @@ namespace pwiz.Skyline.Model.Optimization
             return ChangeProp(ImClone(this), im => im.LoadOptimizations(newOptimizations));
         }
 
-        public IDictionary<OptimizationKey, double> DictLibrary
+        public OptimizationDictionary DictLibrary
         {
             get { return _dictLibrary; }
-            set { _dictLibrary = new ImmutableDictionary<OptimizationKey, double>(value); }
+            set { _dictLibrary = value; }
         }
 
         private void LoadOptimizations(IEnumerable<DbOptimization> optimizations)
         {
-            var dictLoad = new Dictionary<OptimizationKey, double>();
-
-            foreach (var optimization in optimizations)
-            {
-                try
-                {
-                    dictLoad.Add(optimization.Key, optimization.Value);
-                }
-                catch (ArgumentException)
-                {
-                }
-            }
-
-            DictLibrary = dictLoad;
+            DictLibrary = new OptimizationDictionary(optimizations);
         }
 
         #endregion
@@ -300,24 +287,24 @@ namespace pwiz.Skyline.Model.Optimization
         public static OptimizationDb ConvertFromOldFormat(string path, IProgressMonitor loadMonitor, ProgressStatus status, SrmDocument document)
         {
             // Try to open assuming old format (Id, PeptideModSeq, Charge, Mz, Value, Type)
-            var precursors = new Dictionary<string, HashSet<int>>(); // PeptideModSeq -> charges
+            var precursors = new Dictionary<Target, HashSet<int>>(); // PeptideModSeq -> charges
             var optimizations = new List<Tuple<DbOptimization, double>>(); // DbOptimization, product m/z
             int maxCharge = 1;
-            using (SQLiteConnection connection = new SQLiteConnection("Data Source = " + path)) // Not L10N
+            using (SQLiteConnection connection = new SQLiteConnection(@"Data Source = " + path))
             using (SQLiteCommand command = new SQLiteCommand(connection))
             {
                 connection.Open();
-                command.CommandText = "SELECT PeptideModSeq, Charge, Mz, Value, Type FROM OptimizationLibrary"; // Not L10N
+                command.CommandText = @"SELECT PeptideModSeq, Charge, Mz, Value, Type FROM OptimizationLibrary";
                 using (SQLiteDataReader reader = command.ExecuteReader())
                 {
                     while (reader.Read())
                     {
-                        var type = (OptimizationType)reader["Type"]; // Not L10N
-                        var modifiedSequence = reader["PeptideModSeq"].ToString(); // Not L10N
-                        var charge = (int)reader["Charge"]; // Not L10N
-                        var productMz = (double)reader["Mz"]; // Not L10N
-                        var value = (double)reader["Value"]; // Not L10N
-                        optimizations.Add(new Tuple<DbOptimization, double>(new DbOptimization(type, modifiedSequence, charge, string.Empty, -1, value), productMz));
+                        var type = (OptimizationType)reader[@"Type"];
+                        var modifiedSequence = new Target(reader[@"PeptideModSeq"].ToString());
+                        var charge = (int)reader[@"Charge"];
+                        var productMz = (double)reader[@"Mz"];
+                        var value = (double)reader[@"Value"];
+                        optimizations.Add(new Tuple<DbOptimization, double>(new DbOptimization(type, modifiedSequence, Adduct.FromChargeProtonated(charge), string.Empty, Adduct.EMPTY, value), productMz));
 
                         if (!precursors.ContainsKey(modifiedSequence))
                         {
@@ -331,47 +318,51 @@ namespace pwiz.Skyline.Model.Optimization
                     }
                 }
             }
-
             var peptideList = (from precursor in precursors
                                from charge in precursor.Value
-                               select string.Format("{0}{1}", precursor.Key, Transition.GetChargeIndicator(charge)) // Not L10N
+                               select string.Format(@"{0}{1}", precursor.Key, Transition.GetChargeIndicator(Adduct.FromChargeProtonated(charge)))
                                ).ToList();
 
             var newDoc = new SrmDocument(document != null ? document.Settings : SrmSettingsList.GetDefault());
             newDoc = newDoc.ChangeSettings(newDoc.Settings
                 .ChangePeptideLibraries(libs => libs.ChangePick(PeptidePick.filter))
                 .ChangeTransitionFilter(filter =>
-                    filter.ChangeFragmentRangeFirstName("ion 1") // Not L10N
-                          .ChangeFragmentRangeLastName("last ion") // Not L10N
-                          .ChangeProductCharges(Enumerable.Range(1, maxCharge).ToList())
-                          .ChangeIonTypes(new []{ IonType.y, IonType.b }))
+                    filter.ChangeFragmentRangeFirstName(@"ion 1")
+                          .ChangeFragmentRangeLastName(@"last ion")
+                          .ChangePeptideProductCharges(Enumerable.Range(1, maxCharge).Select(Adduct.FromChargeProtonated).ToList()) // TODO(bspratt) negative charge peptides
+                          .ChangePeptideIonTypes(new []{ IonType.y, IonType.b })) // TODO(bspratt) generalize to molecules?
                 .ChangeTransitionLibraries(libs => libs.ChangePick(TransitionLibraryPick.none))
                 );
-            var matcher = new ModificationMatcher { FormatProvider = NumberFormatInfo.InvariantInfo };
+            var matcher = new ModificationMatcher();
             matcher.CreateMatches(newDoc.Settings, peptideList, Settings.Default.StaticModList, Settings.Default.HeavyModList);
             FastaImporter importer = new FastaImporter(newDoc, matcher);
-            string text = string.Format(">>{0}\r\n{1}", newDoc.GetPeptideGroupId(true), TextUtil.LineSeparate(peptideList)); // Not L10N
+            // ReSharper disable LocalizableElement
+            string text = string.Format(">>{0}\r\n{1}", newDoc.GetPeptideGroupId(true), TextUtil.LineSeparate(peptideList));
+            // ReSharper restore LocalizableElement
             PeptideGroupDocNode imported = importer.Import(new StringReader(text), null, Helpers.CountLinesInString(text)).First();
 
             int optimizationsUpdated = 0;
             foreach (PeptideDocNode nodePep in imported.Children)
             {
-                string sequence = newDoc.Settings.GetSourceTextId(nodePep);
                 foreach (var nodeGroup in nodePep.TransitionGroups)
                 {
-                    int charge = nodeGroup.PrecursorCharge;
+                    var charge = nodeGroup.PrecursorAdduct;
+                    var libKeyToMatch = newDoc.Settings.GetSourceTarget(nodePep).GetLibKey(charge).LibraryKey;
                     foreach (var nodeTran in nodeGroup.Transitions)
                     {
                         double productMz = nodeTran.Mz;
                         foreach (var optimization in optimizations.Where(opt =>
                             string.IsNullOrEmpty(opt.Item1.FragmentIon) &&
-                            opt.Item1.ProductCharge == -1 &&
-                            opt.Item1.PeptideModSeq == sequence &&
-                            opt.Item1.Charge == charge &&
+                            opt.Item1.ProductAdduct.IsEmpty &&  
                             Math.Abs(opt.Item2 - productMz) < 0.00001))
                         {
+                            var optLibKey = optimization.Item1.Target.GetLibKey(optimization.Item1.Adduct).LibraryKey;
+                            if (!LibKeyIndex.KeysMatch(optLibKey, libKeyToMatch))
+                            {
+                                continue;
+                            }
                             optimization.Item1.FragmentIon = nodeTran.FragmentIonName;
-                            optimization.Item1.ProductCharge = nodeTran.Transition.Charge;
+                            optimization.Item1.ProductAdduct = nodeTran.Transition.Adduct;
                             ++optimizationsUpdated;
                         }
                     }

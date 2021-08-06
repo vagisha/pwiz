@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -54,10 +54,12 @@ namespace pwiz.Skyline.Controls.Graphs
             : base(graphSummary)
         {
             PaneKey = paneKey;
-            string xAxisTitle = Resources.SummaryPeptideGraphPane_SummaryPeptideGraphPane_Peptide;
+            string xAxisTitle = 
+                Helpers.PeptideToMoleculeTextMapper.Translate(Resources.SummaryPeptideGraphPane_SummaryPeptideGraphPane_Peptide, 
+                    graphSummary.DocumentUIContainer.DocumentUI.DocumentType);
             if (null != paneKey.IsotopeLabelType && !paneKey.IsotopeLabelType.IsLight)
             {
-                xAxisTitle += " (" + paneKey.IsotopeLabelType + ")"; // Not L10N
+                xAxisTitle += @" (" + paneKey.IsotopeLabelType + @")";
             }
             XAxis.Title.Text = xAxisTitle;
             XAxis.Type = AxisType.Text;
@@ -70,7 +72,7 @@ namespace pwiz.Skyline.Controls.Graphs
 
         protected override IdentityPath GetIdentityPath(CurveItem curveItem, int barIndex)
         {
-            if (0 <= barIndex || barIndex < _graphData.XScalePaths.Length)
+            if (0 <= barIndex && barIndex < _graphData.XScalePaths.Length)
                 return _graphData.XScalePaths[barIndex];
             return null;
         }
@@ -232,6 +234,7 @@ namespace pwiz.Skyline.Controls.Graphs
 
         public abstract class GraphData : Immutable
         {
+            // ReSharper disable PossibleMultipleEnumeration
             protected GraphData(SrmDocument document, TransitionGroupDocNode selectedGroup, PeptideGroupDocNode selectedProtein, 
                              int? iResult, DisplayTypeChrom displayType, GraphValues.IRetentionTimeTransformOp retentionTimeTransformOp, 
                              PaneKey paneKey)
@@ -240,7 +243,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 // Determine the shortest possible unique ID for each peptide or molecule
                 var sequences = new List<Tuple<string, bool>>();
                 foreach (var nodePep in document.Molecules)
-                    sequences.Add(new Tuple<string, bool>(nodePep.RawTextId, nodePep.IsProteomic));
+                    sequences.Add(new Tuple<string, bool>(nodePep.ModifiedTarget.DisplayName, nodePep.IsProteomic));
                 var uniquePrefixGenerator = new UniquePrefixGenerator(sequences, 3);
 
                 int pointListCount = 0;
@@ -336,7 +339,8 @@ namespace pwiz.Skyline.Controls.Graphs
 
                 // Calculate lists and values
                 PeptideDocNode nodePepCurrent = null;
-                int chargeCount = 0, chargeCurrent = 0;
+                int chargeCount = 0;
+                var chargeCurrent = Adduct.EMPTY;
                 foreach (var dataPoint in listPoints)
                 {
                     var nodePep = dataPoint.NodePep;
@@ -346,31 +350,31 @@ namespace pwiz.Skyline.Controls.Graphs
                         nodePepCurrent = nodePep;
 
                         chargeCount = GetChargeCount(nodePep);
-                        chargeCurrent = 0;
+                        chargeCurrent = Adduct.EMPTY;
                     }
 
                     bool addLabel = !displayTotals;
-                    if (displayTotals && nodeGroup.TransitionGroup.PrecursorCharge != chargeCurrent)
+                    if (displayTotals && !Equals(nodeGroup.TransitionGroup.PrecursorAdduct, chargeCurrent))
                     {
                         LevelPointPairLists(pointPairLists);
                         addLabel = true;
                     }
-                    chargeCurrent = nodeGroup.TransitionGroup.PrecursorCharge;
+                    chargeCurrent = nodeGroup.TransitionGroup.PrecursorAdduct;
 
                     var transitionGroup = nodeGroup.TransitionGroup;
                     int iGroup = labels.Count;
 
                     if (addLabel)
                     {
-                        string label = uniquePrefixGenerator.GetUniquePrefix(nodePep.RawTextId, nodePep.IsProteomic) +
+                        string label = uniquePrefixGenerator.GetUniquePrefix(nodePep.ModifiedTarget.DisplayName, nodePep.IsProteomic) +
                                        (chargeCount > 1
-                                            ? Transition.GetChargeIndicator(transitionGroup.PrecursorCharge)
+                                            ? Transition.GetChargeIndicator(transitionGroup.PrecursorAdduct)
                                             : string.Empty);
                         if (!displayTotals && null == paneKey.IsotopeLabelType)
                             label += transitionGroup.LabelTypeText;
                         if (peptideOrder == SummaryPeptideOrder.time)
                         {
-                            label += string.Format(" ({0:F01})", displayTotals ? // Not L10N
+                            label += string.Format(@" ({0:F01})", displayTotals ?
                                                                                    dataPoint.TimePepCharge : dataPoint.TimeGroup);                            
                         }
                         labels.Add(label);
@@ -456,6 +460,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 if (minY != double.MaxValue)
                     MinY = minY;
             }
+            // ReSharper restore PossibleMultipleEnumeration
 
             public GraphValues.IRetentionTimeTransformOp RetentionTimeTransformOp { get; private set; }
             public IList<PointPairList> PointPairLists { get; private set; }
@@ -513,7 +518,7 @@ namespace pwiz.Skyline.Controls.Graphs
             private static int GetChargeCount(PeptideDocNode nodePep)
             {
                 return nodePep.TransitionGroups
-                    .Select(groupNode => groupNode.TransitionGroup.PrecursorCharge)
+                    .Select(groupNode => groupNode.TransitionGroup.PrecursorAdduct)
                     .Distinct()
                     .Count();
             }
@@ -585,9 +590,9 @@ namespace pwiz.Skyline.Controls.Graphs
                 return pointPair;
             }
 
-            protected RetentionTimeValues? ScaleRetentionTimeValues(ChromFileInfoId chromFileInfoId, RetentionTimeValues? retentionTimeValues)
+            protected RetentionTimeValues ScaleRetentionTimeValues(ChromFileInfoId chromFileInfoId, RetentionTimeValues retentionTimeValues)
             {
-                if (!retentionTimeValues.HasValue)
+                if (retentionTimeValues == null)
                 {
                     return null;
                 }
@@ -595,12 +600,12 @@ namespace pwiz.Skyline.Controls.Graphs
                 {
                     return retentionTimeValues;
                 }
-                IRegressionFunction regressionFunction;
+                RegressionLine regressionFunction;
                 if (!RetentionTimeTransformOp.TryGetRegressionFunction(chromFileInfoId, out regressionFunction))
                 {
                     return null;
                 }
-                return retentionTimeValues.Value.Scale(regressionFunction);
+                return retentionTimeValues.Scale(regressionFunction);
             }
 
             protected virtual bool AddBlankPointsForGraphPanes { get { return false; } }
@@ -635,7 +640,7 @@ namespace pwiz.Skyline.Controls.Graphs
                 {
                     double? meanArea, meanTime, meanMassError;
                     CalcStats(nodePepChild, out meanArea, out meanTime,out meanMassError);
-                    if (nodeGroup.TransitionGroup.PrecursorCharge != nodePepChild.TransitionGroup.PrecursorCharge)
+                    if (!Equals(nodeGroup.TransitionGroup.PrecursorAdduct, nodePepChild.TransitionGroup.PrecursorAdduct))
                         continue;
                     if (meanTime.HasValue)
                         times.Add(meanTime.Value);

@@ -32,7 +32,7 @@ namespace pwiz.SkylineTestUtil
     /// </summary>
     public class MovedDirectory : IDisposable
     {
-        public const string MOVED_PREFIX = "Moved_"; // Not L10N
+        public const string MOVED_PREFIX = "Moved_";
 
         public MovedDirectory(string dirPath, bool isLoopingTest)
         {
@@ -43,7 +43,7 @@ namespace pwiz.SkylineTestUtil
                 // Only move, if there is an existing Tools directory
                 if (Directory.Exists(SrcDirPath))
                 {
-                    DestDirPath = Path.Combine(Directory.GetParent(dirPath).FullName,
+                    DestDirPath = Path.Combine(Directory.GetParent(dirPath)?.FullName ?? string.Empty,
                                                MOVED_PREFIX + Path.GetFileName(dirPath));
                     if (Directory.Exists(DestDirPath))
                     {
@@ -64,10 +64,10 @@ namespace pwiz.SkylineTestUtil
             {
                 // Get rid of the tools directory created for this test
                 if (Directory.Exists(SrcDirPath))
-                    Helpers.Try<IOException>(() => Directory.Delete(SrcDirPath, true), 10, 1000); // More generous retry than Helper.TryTwice: 10, with 1 sec pause
+                    Helpers.TryTwice(() => Directory.Delete(SrcDirPath, true), 10, 1000); // More generous retry than default Helper.TryTwice: 10, with 1 sec pause
                 // If there was an existing tools directory move it back
                 if (DestDirPath != null)
-                    Helpers.Try<IOException>(() => Directory.Move(DestDirPath, SrcDirPath), 10, 1000);  // More generous retry than Helper.TryTwice: 10, with 1 sec pause
+                    Helpers.TryTwice(() => Directory.Move(DestDirPath, SrcDirPath), 10, 1000);  // More generous retry than default Helper.TryTwice: 10, with 1 sec pause
             }
         }
     }

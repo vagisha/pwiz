@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>IDPicker.DataModel</RootNamespace>
     <AssemblyName>IDPicker.DataModel</AssemblyName>
-    <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <FileUpgradeFlags>
     </FileUpgradeFlags>
@@ -34,6 +34,7 @@
     <TargetFrameworkProfile />
     <BaseIntermediateOutputPath>..\..\..\..\build-nt-x86\obj\</BaseIntermediateOutputPath>
     <BuildPath>$(BaseIntermediateOutputPath)\..</BuildPath>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
     <DebugSymbols>true</DebugSymbols>
@@ -95,7 +96,7 @@
     </Reference>
     <Reference Include="InteropQonverter, Version=3.0.214.0, Culture=neutral, processorArchitecture=x86">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>$(BuildPath)\obj\$(Platform)\$(Configuration)\InteropQonverter.dll</HintPath>
+      <HintPath>$(BuildPath)\IDPicker\obj\$(Platform)\$(Configuration)\InteropQonverter.dll</HintPath>
     </Reference>
     <Reference Include="NHibernate, Version=3.1.0.4000, Culture=neutral, PublicKeyToken=aa95f207798dfdb4, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>

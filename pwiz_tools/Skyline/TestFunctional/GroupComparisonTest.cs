@@ -34,11 +34,27 @@ using ZedGraph;
 namespace pwiz.SkylineTestFunctional
 {
     [TestClass]
-    public class GroupComparisonTest : AbstractFunctionalTest
+    public class GroupComparisonTest : AbstractFunctionalTestEx
     {
+        private bool _asSmallMolecules;
+
         [TestMethod]
         public void TestGroupComparison()
         {
+            TestFilesZip = @"TestFunctional\GroupComparisonTest.zip";
+            RunFunctionalTest();
+        }
+
+        [TestMethod]
+        public void TestGroupComparisonAsSmallMolecules()
+        {
+            if (!RunSmallMoleculeTestVersions)
+            {
+                Console.Write(MSG_SKIPPING_SMALLMOLECULE_TEST_VERSION);
+                return;
+            }
+
+            _asSmallMolecules = true;
             TestFilesZip = @"TestFunctional\GroupComparisonTest.zip";
             RunFunctionalTest();
         }
@@ -47,7 +63,7 @@ namespace pwiz.SkylineTestFunctional
         {
             RunUI(() =>
             {
-                SkylineWindow.OpenFile(TestFilesDir.GetTestPath("msstatstest.sky"));
+                SkylineWindow.OpenFile(TestFilesDir.GetTestPath(_asSmallMolecules ? "msstatstest.converted_to_small_molecules.sky" : "msstatstest.sky"));
             });
             WaitForDocumentLoaded();
             DefineOneTwoGroupComparison();
@@ -62,6 +78,7 @@ namespace pwiz.SkylineTestFunctional
             var editGroupComparisonDlg = ShowDialog<EditGroupComparisonDlg>(SkylineWindow.AddGroupComparison);
             RunUI(() =>
             {
+                Assert.IsTrue(string.IsNullOrEmpty(editGroupComparisonDlg.TextBoxName.Text));
                 editGroupComparisonDlg.TextBoxName.Text = "One-Two";
                 editGroupComparisonDlg.ComboControlAnnotation.SelectedItem = "DilutionNumber";
             });
@@ -118,7 +135,7 @@ namespace pwiz.SkylineTestFunctional
             {
                 foldChangeGridControl.SetSortDirection(foldChangeGridControl.GetPropertyDescriptor(foldChangeResultColumn), ListSortDirection.Ascending);
             });
-            WaitForConditionUI(() => foldChangeGridControl.IsComplete);
+            WaitForConditionUI(() => foldChangeGridControl.IsComplete && !foldChangeGraph.IsUpdatePending);
             var values = GetYValues(foldChangeGraph.ZedGraphControl.GraphPane.CurveList.First().Points);
             var sortedValues = (double[]) values.Clone();
             Array.Sort(sortedValues);
@@ -127,7 +144,7 @@ namespace pwiz.SkylineTestFunctional
             {
                 foldChangeGridControl.SetSortDirection(foldChangeGridControl.GetPropertyDescriptor(foldChangeResultColumn), ListSortDirection.Descending);
             });
-            WaitForConditionUI(() => foldChangeGridControl.IsComplete);
+            WaitForConditionUI(() => foldChangeGridControl.IsComplete && !foldChangeGraph.IsUpdatePending);
             values = GetYValues(foldChangeGraph.ZedGraphControl.GraphPane.CurveList.First().Points);
             CollectionAssert.AreNotEqual(sortedValues, values);
             Array.Reverse(sortedValues);

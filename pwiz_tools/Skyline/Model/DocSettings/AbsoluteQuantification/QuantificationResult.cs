@@ -77,11 +77,7 @@ namespace pwiz.Skyline.Model.DocSettings.AbsoluteQuantification
         {
             if (CalculatedConcentration.HasValue)
             {
-                if (Units == null)
-                {
-                    return CalculatedConcentration.Value.ToString(Formats.CalibrationCurve);
-                }
-                return TextUtil.SpaceSeparate(CalculatedConcentration.Value.ToString(Formats.Concentration), Units);
+                return FormatCalculatedConcentration(CalculatedConcentration.Value, Units);
             }
             else if (NormalizedArea.HasValue)
             {
@@ -89,6 +85,58 @@ namespace pwiz.Skyline.Model.DocSettings.AbsoluteQuantification
                     NormalizedArea.Value.ToString(Formats.CalibrationCurve));
             }
             return TextUtil.EXCEL_NA;
+        }
+
+        public static string FormatCalculatedConcentration(double calculatedConcentration, string units)
+        {
+            if (units == null)
+            {
+                return calculatedConcentration.ToString(Formats.CalibrationCurve);
+            }
+
+            return TextUtil.SpaceSeparate(calculatedConcentration.ToString(Formats.Concentration), units);
+        }
+    }
+
+    public class PrecursorQuantificationResult : QuantificationResult
+    {
+        #region duplicate properties from base class to control the order they appear in Report Editor
+        [Format(Formats.GLOBAL_STANDARD_RATIO, NullValue = TextUtil.EXCEL_NA)]
+        [InvariantDisplayName("PrecursorNormalizedArea")]
+        public new double? NormalizedArea
+        {
+            get { return base.NormalizedArea; }
+        }
+
+        [Format(Formats.GLOBAL_STANDARD_RATIO, NullValue = TextUtil.EXCEL_NA)]
+        [InvariantDisplayName("PrecursorCalculatedConcentration")]
+        public new double? CalculatedConcentration
+        {
+            get { return base.CalculatedConcentration; }
+        }
+
+        [Format(Formats.CV, NullValue = TextUtil.EXCEL_NA)]
+        [InvariantDisplayName("PrecursorAccuracy")]
+        public new double? Accuracy
+        {
+            get { return base.Accuracy; }
+        }
+        #endregion
+
+        [Format(Formats.STANDARD_RATIO)]
+        public double? QualitativeIonRatio { get; private set; }
+        public ValueStatus QualitativeIonRatioStatus { get; private set; }
+        [InvariantDisplayName("BatchTargetQualitativeIonRatio")]
+        [Format(Formats.STANDARD_RATIO)]
+        public double? TargetQualitativeIonRatio { get; private set; }
+        public PrecursorQuantificationResult ChangeIonRatio(double? targetIonRatio, double? ionRatio, ValueStatus ionRatioStatus)
+        {
+            return ChangeProp(ImClone(this), im =>
+            {
+                im.TargetQualitativeIonRatio = targetIonRatio;
+                im.QualitativeIonRatio = ionRatio;
+                im.QualitativeIonRatioStatus = ionRatioStatus;
+            });
         }
     }
 }

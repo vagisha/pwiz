@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Translator: Brendan MacLean <brendanx .at. u.washington.edu>,
  *             MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -30,14 +30,14 @@ using System.Linq;
 
 namespace pwiz.Skyline.Model.Esp
 {
-    public class PiCalc
+    public static class PiCalc
     {
         private const double PH_MIN = 0;       /* minimum pH value */
         private const double PH_MAX = 14;    /* maximum pH value */
         private const double MAXLOOP = 2000;    /* maximum number of iterations */
         private const double EPSI = 0.0001;  /* desired precision */
 
-        // Not L10N: Amino Acids
+        // Amino Acids
         /* the 7 amino acid which matter */
         private static readonly int R = AminoAcid.ToIndex('R');
         private static readonly int H = AminoAcid.ToIndex('H');

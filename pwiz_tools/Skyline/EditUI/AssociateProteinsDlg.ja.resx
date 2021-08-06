@@ -268,7 +268,7 @@
     <value>0</value>
   </data>
   <data name="lblDescription.Text" xml:space="preserve">
-    <value>FASTAファイルか現在のバックグラウンドプロテオームのいずれかを用いて、ペプチドをタンパク質に関連付けます。  変更を適用する前に、一致項目を確認することができます。</value>
+    <value>FASTAファイルか現在のバックグラウンドプロテオームのいずれかを用いて、ペプチドをタンパク質に関連付けます。 変更を適用する前に、合致しているかを確認することができます。</value>
   </data>
   <data name="&gt;&gt;lblDescription.Name" xml:space="preserve">
     <value>lblDescription</value>

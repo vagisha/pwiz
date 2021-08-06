@@ -20,13 +20,14 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using pwiz.Common.SystemUtil;
 
 namespace pwiz.Common.Collections
 {
     /// <summary>
     /// Immutable sorted set of elements.
     /// </summary>
-    public abstract class ValueSet<TSet, TElement> : IEnumerable<TElement> where TSet : ValueSet<TSet, TElement>, new()
+    public abstract class ValueSet<TSet, TElement> : IAuditLogObject, IEnumerable<TElement> where TSet : ValueSet<TSet, TElement>, new()
     {
         private TElement[] _array;
         protected ValueSet()
@@ -68,6 +69,11 @@ namespace pwiz.Common.Collections
             result._array = MakeElementArray(result, values);
             return result;
         }
+
+        // ReSharper disable LocalizableElement
+        public string AuditLogText { get { return string.Format("\"{0}\"", ToString()); } }
+        // ReSharper restore LocalizableElement
+        public bool IsName { get { return false; } }
 
         #region Equality Members
         public override int GetHashCode()
@@ -194,7 +200,7 @@ namespace pwiz.Common.Collections
             }
             return (TElement) Convert.ChangeType(stringValue, typeof (TElement));
         }
-        protected virtual string ElementSeparator { get { return ", "; } } // Not L10N?
+        protected virtual string ElementSeparator { get { return @", "; } } // CONSIDER: localize?
         protected virtual IEnumerable<TElement> ParseElements(string stringValue)
         {
             if (string.IsNullOrEmpty(stringValue))

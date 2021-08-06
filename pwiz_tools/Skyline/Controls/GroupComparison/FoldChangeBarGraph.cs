@@ -22,12 +22,12 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
-using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Controls;
 using pwiz.Skyline.Controls.Graphs;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.Databinding;
 using pwiz.Skyline.Model.GroupComparison;
+using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Util;
 using ZedGraph;
 
@@ -36,7 +36,7 @@ namespace pwiz.Skyline.Controls.GroupComparison
     public partial class FoldChangeBarGraph : FoldChangeForm
     {
         private BindingListSource _bindingListSource;
-        private AxisLabelScaler _axisLabelScaler;
+        private readonly AxisLabelScaler _axisLabelScaler;
         private CurveItem _barGraph;
         private FoldChangeBindingSource.FoldChangeRow[] _rows;
         private SkylineWindow _skylineWindow;
@@ -52,13 +52,14 @@ namespace pwiz.Skyline.Controls.GroupComparison
             zedGraphControl.GraphPane.YAxis.MajorTic.IsOpposite = false;
             zedGraphControl.GraphPane.XAxis.MinorTic.IsOpposite = false;
             zedGraphControl.GraphPane.YAxis.MinorTic.IsOpposite = false;
+            zedGraphControl.IsZoomOnMouseCenter = true;
 
             _axisLabelScaler = new AxisLabelScaler(zedGraphControl.GraphPane);
         }
 
         public override string GetTitle(string groupComparisonName)
         {
-            return base.GetTitle(groupComparisonName) + ':' + GroupComparisonStrings.FoldChangeBarGraph_GetTitle_Graph;
+            return base.GetTitle(groupComparisonName) + ':' + GroupComparisonStrings.FoldChangeBarGraph_GetTitle_Bar_Graph;
         }
 
         protected override void OnShown(EventArgs e)
@@ -68,7 +69,7 @@ namespace pwiz.Skyline.Controls.GroupComparison
             {
                 _bindingListSource = FoldChangeBindingSource.GetBindingListSource();
                 _bindingListSource.ListChanged += BindingListSourceOnListChanged;
-                _bindingListSource.AllRowsChanged += (sender, args)=>QueueUpdateGraph();
+                _bindingListSource.AllRowsChanged += BindingListSourceAllRowsChanged;
                 if (_skylineWindow == null)
                 {
                     _skylineWindow = ((SkylineDataSchema) _bindingListSource.ViewInfo.DataSchema).SkylineWindow;
@@ -88,7 +89,25 @@ namespace pwiz.Skyline.Controls.GroupComparison
                 _skylineWindow.SequenceTree.AfterSelect -= SequenceTreeOnAfterSelect;
                 _skylineWindow = null;
             }
+
+            if (_bindingListSource != null)
+            {
+                _bindingListSource.AllRowsChanged -= BindingListSourceAllRowsChanged;
+                _bindingListSource.ListChanged -= BindingListSourceOnListChanged;
+            }
+
             base.OnHandleDestroyed(e);
+        }
+
+        private void BindingListSourceAllRowsChanged(object sender, EventArgs e)
+        {
+            QueueUpdateGraph();
+        }
+
+        private void zedGraphControl_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+                Program.MainWindow.FocusDocument();
         }
 
         private void SequenceTreeOnAfterSelect(object sender, TreeViewEventArgs treeViewEventArgs)
@@ -113,6 +132,8 @@ namespace pwiz.Skyline.Controls.GroupComparison
             }
         }
 
+        public bool IsUpdatePending { get { return _updatePending; } }
+
         private void UpdateGraph()
         {
             if (!IsHandleCreated)
@@ -128,14 +149,12 @@ namespace pwiz.Skyline.Controls.GroupComparison
             var groupComparisonDef = groupComparisonModel.GroupComparisonDef;
             var document = groupComparisonModel.Document;
             var sequences = new List<Tuple<string, bool>>();
+
             foreach (var nodePep in document.Molecules)
-                sequences.Add(new Tuple<string, bool>(nodePep.RawTextId, nodePep.IsProteomic));
+                sequences.Add(new Tuple<string, bool>(nodePep.ModifiedTarget.DisplayName, nodePep.IsProteomic));
             var uniquePrefixGenerator = new UniquePrefixGenerator(sequences, 3);
             var textLabels = new List<string>();
-            var rows = _bindingListSource.OfType<RowItem>()
-                .Select(rowItem => rowItem.Value)
-                .OfType<FoldChangeBindingSource.FoldChangeRow>()
-                .ToArray();
+            var rows = GetFoldChangeRows(_bindingListSource).ToArray();
             bool showLabelType = rows.Select(row => row.IsotopeLabelType).Distinct().Count() > 1;
             bool showMsLevel = rows.Select(row => row.MsLevel).Distinct().Count() > 1;
             bool showGroup = rows.Select(row => row.Group).Distinct().Count() > 1;
@@ -148,23 +167,33 @@ namespace pwiz.Skyline.Controls.GroupComparison
                 string label;
                 if (null != row.Peptide)
                 {
-                    label = uniquePrefixGenerator.GetUniquePrefix(row.Peptide.GetDocNode().RawTextId, row.Peptide.GetDocNode().IsProteomic);
+                    try
+                    {
+                        label = uniquePrefixGenerator.GetUniquePrefix(
+                            row.Peptide.GetDocNode().ModifiedTarget.DisplayName, row.Peptide.GetDocNode().IsProteomic);
+                    }
+                    catch
+                    {
+                        // Peptide must have been deleted.
+                        label = row.Peptide.GetDocNode().ModifiedTarget.DisplayName;
+                    }
                 }
                 else
                 {
-                    label = row.Protein.Name;
+                    label = ProteinMetadataManager.ProteinModalDisplayText(row.Protein.DocNode);
                 }
                 if (showMsLevel && row.MsLevel.HasValue)
                 {
-                    label += " MS" + row.MsLevel; // Not L10N;
+                    label += @" MS" + row.MsLevel; //;
                 }
                 if (showLabelType && row.IsotopeLabelType != null)
                 {
-                    label += " (" + row.IsotopeLabelType.Title + ")"; // Not L10N
+                    label += @" (" + row.IsotopeLabelType.Title + @")";
                 }
+                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
                 if (showGroup && !Equals(row.Group, default(GroupIdentifier)))
                 {
-                    label += " " + row.Group; // Not L10N
+                    label += @" " + row.Group;
                 }
                 textLabels.Add(label);
                 if (IsSelected(row))
@@ -191,6 +220,8 @@ namespace pwiz.Skyline.Controls.GroupComparison
             zedGraphControl.GraphPane.YAxis.Title.Text = GroupComparisonStrings.FoldChangeBarGraph_UpdateGraph_Log_2_Fold_Change;
             var barGraph = new MeanErrorBarItem(null, points, Color.Black, Color.Blue);
             zedGraphControl.GraphPane.CurveList.Add(barGraph);
+            zedGraphControl.GraphPane.XAxis.Scale.MinAuto = zedGraphControl.GraphPane.XAxis.Scale.MaxAuto =
+            zedGraphControl.GraphPane.YAxis.Scale.MinAuto = zedGraphControl.GraphPane.YAxis.Scale.MaxAuto = true;
             zedGraphControl.GraphPane.XAxis.Type = AxisType.Text;
             zedGraphControl.GraphPane.XAxis.Scale.TextLabels = textLabels.ToArray();
             _axisLabelScaler.ScaleAxisLabels();
@@ -283,7 +314,7 @@ namespace pwiz.Skyline.Controls.GroupComparison
 
         private bool IsPathSelected(IdentityPath selectedPath, IdentityPath identityPath)
         {
-            if (selectedPath.Depth < identityPath.Depth)
+            if (selectedPath == null || identityPath == null || selectedPath.Depth < identityPath.Depth)
             {
                 return false;
             }
@@ -292,7 +323,18 @@ namespace pwiz.Skyline.Controls.GroupComparison
 
         private void zedGraphControl_ContextMenuBuilder(ZedGraphControl graphControl, ContextMenuStrip menuStrip, Point mousePt, ZedGraphControl.ContextMenuObjectState objState)
         {
-            ZedGraphHelper.BuildContextMenu(graphControl, menuStrip, true);
+            BuildContextMenu(graphControl, menuStrip, mousePt, objState);
+        }
+
+        private void FoldChangeBarGraph_KeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.Escape:
+                    _skylineWindow.FocusDocument();
+                    e.Handled = true;
+                    break;
+            }
         }
     }
 }

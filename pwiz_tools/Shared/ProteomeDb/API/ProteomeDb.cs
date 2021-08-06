@@ -25,6 +25,8 @@ using System.Linq;
 using System.Threading;
 using NHibernate;
 using NHibernate.Criterion;
+using pwiz.Common.Database;
+using pwiz.Common.Database.NHibernate;
 using pwiz.Common.SystemUtil;
 using pwiz.ProteomeDatabase.DataModel;
 using pwiz.ProteomeDatabase.Fasta;
@@ -37,7 +39,7 @@ namespace pwiz.ProteomeDatabase.API
     /// </summary>
     public class ProteomeDb : IDisposable
     {
-        public const string EXT_PROTDB = ".protdb"; // Not L10N
+        public const string EXT_PROTDB = ".protdb";
 
         internal static readonly Type TYPE_DB = typeof(DbVersionInfo);
         public const int SCHEMA_VERSION_MAJOR_0 = 0;
@@ -61,24 +63,20 @@ namespace pwiz.ProteomeDatabase.API
             _schemaVersionMajorAsRead = -1; // unknown
             _schemaVersionMinorAsRead = -1; // unknown
             _isTmp = isTmp;
-            _databaseResource = DatabaseResource.GetDbResource(path);
-            CancellationToken = cancellationToken;
             if (!File.Exists(path))
             {
                 // Do not try to open the file if it does not exist, because that would create a zero byte file.
                 throw new FileLoadException(String.Format(Resources.ProteomeDb_ProteomeDb_The_file__0__does_not_exist_, path));
             }
+            _databaseResource = DatabaseResource.GetDbResource(path);
+            CancellationToken = cancellationToken;
             using (var session = OpenSession())
             {
                 // Is this even a proper protDB file? (https://skyline.gs.washington.edu/labkey/announcements/home/issues/exceptions/thread.view?rowId=14893)
-                using (IDbCommand command = session.Connection.CreateCommand())
+                if (!SqliteOperations.TableExists(session.Connection, @"ProteomeDbProteinName"))
                 {
-                    command.CommandText =
-                        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='ProteomeDbProteinName'"; // Not L10N
-                    var obj = command.ExecuteScalar();
-                    if (Convert.ToInt32(obj) == 0)
-                        throw new FileLoadException(
-                            String.Format(Resources.ProteomeDb_ProteomeDb__0__does_not_appear_to_be_a_valid___protDB__background_proteome_file_, path));
+                    throw new FileLoadException(
+                        String.Format(Resources.ProteomeDb_ProteomeDb__0__does_not_appear_to_be_a_valid___protDB__background_proteome_file_, path));
                 }
 
                 // Do we need to update the db to current version?
@@ -118,35 +116,29 @@ namespace pwiz.ProteomeDatabase.API
 
         private void ReadVersion(ISession session)
         {
-            using (IDbCommand cmd = session.Connection.CreateCommand())
+            // do we even have a version? 0th-gen protdb doesn't have this.
+            if (!SqliteOperations.TableExists(session.Connection, @"ProteomeDbSchemaVersion"))
             {
-                // do we even have a version? 0th-gen protdb doesn't have this.
-                cmd.CommandText =
-                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='ProteomeDbSchemaVersion'"; // Not L10N
-                var obj = cmd.ExecuteScalar();
-                if (Convert.ToInt32(obj) == 0)
-                {
-                    _schemaVersionMajor = SCHEMA_VERSION_MAJOR_0; // an ancient, unversioned file
-                    _schemaVersionMinor = SCHEMA_VERSION_MINOR_0; // an ancient, unversioned file
-                }
-                else
-                {
-                    using (IDbCommand cmd2 = session.Connection.CreateCommand())
-                    {
-                        cmd2.CommandText = "SELECT SchemaVersionMajor FROM ProteomeDbSchemaVersion"; // Not L10N
-                        var obj2 = cmd2.ExecuteScalar();
-                        _schemaVersionMajor = Convert.ToInt32(obj2);
-                    }
-                    using (IDbCommand cmd3 = session.Connection.CreateCommand())
-                    {
-                        cmd3.CommandText = "SELECT SchemaVersionMinor FROM ProteomeDbSchemaVersion"; // Not L10N
-                        var obj3 = cmd3.ExecuteScalar();
-                        _schemaVersionMinor = Convert.ToInt32(obj3);
-                    }
-                }
-                _schemaVersionMajorAsRead = _schemaVersionMajor;
-                _schemaVersionMinorAsRead = _schemaVersionMinor;
+                _schemaVersionMajor = SCHEMA_VERSION_MAJOR_0; // an ancient, unversioned file
+                _schemaVersionMinor = SCHEMA_VERSION_MINOR_0; // an ancient, unversioned file
             }
+            else
+            {
+                using (IDbCommand cmd2 = session.Connection.CreateCommand())
+                {
+                    cmd2.CommandText = @"SELECT SchemaVersionMajor FROM ProteomeDbSchemaVersion";
+                    var obj2 = cmd2.ExecuteScalar();
+                    _schemaVersionMajor = Convert.ToInt32(obj2);
+                }
+                using (IDbCommand cmd3 = session.Connection.CreateCommand())
+                {
+                    cmd3.CommandText = @"SELECT SchemaVersionMinor FROM ProteomeDbSchemaVersion";
+                    var obj3 = cmd3.ExecuteScalar();
+                    _schemaVersionMinor = Convert.ToInt32(obj3);
+                }
+            }
+            _schemaVersionMajorAsRead = _schemaVersionMajor;
+            _schemaVersionMinorAsRead = _schemaVersionMinor;
         }
 
         public bool IsDigested()
@@ -159,28 +151,39 @@ namespace pwiz.ProteomeDatabase.API
 
         public void Digest(IProgressMonitor progressMonitor, ref IProgressStatus progressStatus)
         {
-            using (var session = OpenStatelessSession(true))
+            try
             {
-                using (var transation = session.BeginTransaction())
+                using (var session = OpenStatelessSession(true))
                 {
-                    var noNames = new DbProteinName[0];
-                    var proteinSequences =
-                        session.CreateQuery("SELECT P.Sequence, P.Id FROM " + typeof(DbProtein) + " P") // Not L10N
-                            .List<object[]>()
-                            .ToDictionary(row => (string) row[0], row => new ProtIdNames((long) row[1], noNames));
+                    using (var transation = session.BeginTransaction())
+                    {
+                        var noNames = new DbProteinName[0];
+                        var proteinSequences =
+                            session.CreateQuery(@"SELECT P.Sequence, P.Id FROM " + typeof(DbProtein) + @" P")
+                                .List<object[]>()
+                                .ToDictionary(row => (string) row[0], row => new ProtIdNames((long) row[1], noNames));
 
-                    if (!HasSubsequencesTable(() => session.Connection))
-                    {
-                        session.CreateSQLQuery("CREATE TABLE ProteomeDbSubsequence (Sequence TEXT not null, ProteinIdBytes BLOB, primary key (Sequence));") // Not L10N
-                            .ExecuteUpdate();
+                        if (!HasSubsequencesTable(() => session.Connection))
+                        {
+                            session.CreateSQLQuery(
+                                    @"CREATE TABLE ProteomeDbSubsequence (Sequence TEXT not null, ProteinIdBytes BLOB, primary key (Sequence));")
+                                .ExecuteUpdate();
+                        }
+                        DigestProteins(session.Connection, proteinSequences, progressMonitor, ref progressStatus);
+                        if (progressMonitor.IsCanceled)
+                        {
+                            return;
+                        }
+                        transation.Commit();
                     }
-                    DigestProteins(session.Connection, proteinSequences, progressMonitor, ref progressStatus);
-                    if (progressMonitor.IsCanceled)
-                    {
-                        return;
-                    }
-                    transation.Commit();
                 }
+            }
+            catch (Exception)
+            {
+                // If the operation was cancelled, then we want to throw OperationCancelledException instead of whatever we caught
+                CancellationToken.ThrowIfCancellationRequested();
+                // Otherwise, throw the original exception
+                throw;
             }
         }
 
@@ -195,15 +198,15 @@ namespace pwiz.ProteomeDatabase.API
                 {
                     foreach (
                         var col in
-                            new[] {"PreferredName", "Accession", "Gene", "Species", "WebSearchStatus"}) // Not L10N
-                        // new protein metadata for v2  // Not L10N
+                            new[] {@"PreferredName", @"Accession", @"Gene", @"Species", @"WebSearchStatus"})
+                        // new protein metadata for v2
                     {
                         command.CommandText =
-                            String.Format("ALTER TABLE ProteomeDbProteinName ADD COLUMN {0} TEXT", col); // Not L10N
+                            String.Format(@"ALTER TABLE ProteomeDbProteinName ADD COLUMN {0} TEXT", col);
                         command.ExecuteNonQuery();
                     }
                     command.CommandText =
-                        "CREATE TABLE ProteomeDbSchemaVersion (Id integer primary key autoincrement, SchemaVersionMajor INT, SchemaVersionMinor INT )"; // Not L10N
+                        @"CREATE TABLE ProteomeDbSchemaVersion (Id integer primary key autoincrement, SchemaVersionMajor INT, SchemaVersionMinor INT )";
                     command.ExecuteNonQuery();
                     _schemaVersionMajor = SCHEMA_VERSION_MAJOR_0;
                     _schemaVersionMinor = SCHEMA_VERSION_MINOR_1;
@@ -284,10 +287,10 @@ namespace pwiz.ProteomeDatabase.API
                 {
                     WebEnabledFastaImporter fastaImporter = new WebEnabledFastaImporter(new WebEnabledFastaImporter.DelayedWebSearchProvider()); // just parse, no search for now
                     insertProtein.CommandText =
-                        "INSERT INTO ProteomeDbProtein (Version, Sequence) Values (1,?);select last_insert_rowid();"; // Not L10N
+                        @"INSERT INTO ProteomeDbProtein (Version, Sequence) Values (1,?);select last_insert_rowid();";
                     insertProtein.Parameters.Add(new SQLiteParameter());
                     insertName.CommandText =
-                        "INSERT INTO ProteomeDbProteinName (Version, Protein, IsPrimary, Name, Description, PreferredName, Accession, Gene, Species, WebSearchStatus) Values(1,?,?,?,?,?,?,?,?,?)"; // Not L10N
+                        @"INSERT INTO ProteomeDbProteinName (Version, Protein, IsPrimary, Name, Description, PreferredName, Accession, Gene, Species, WebSearchStatus) Values(1,?,?,?,?,?,?,?,?,?)";
                     insertName.Parameters.Add(new SQLiteParameter()); // Id
                     insertName.Parameters.Add(new SQLiteParameter()); // IsPrimary
                     insertName.Parameters.Add(new SQLiteParameter()); // Name
@@ -378,7 +381,7 @@ namespace pwiz.ProteomeDatabase.API
         {
             using(IDbCommand command = connection.CreateCommand())
             {
-                command.CommandText = "Analyze;"; // Not L10N
+                command.CommandText = @"Analyze;";
                 command.ExecuteNonQuery();
             }
         }
@@ -407,7 +410,7 @@ namespace pwiz.ProteomeDatabase.API
             {
                 return
                     Convert.ToInt32(
-                        session.CreateQuery("SELECT Count(P.Id) From " + typeof(DbProtein) + " P").UniqueResult()); // Not L10N
+                        session.CreateQuery(@"SELECT Count(P.Id) From " + typeof(DbProtein) + @" P").UniqueResult());
             }
         }
 
@@ -439,13 +442,7 @@ namespace pwiz.ProteomeDatabase.API
 
         internal static bool CheckHasSubsequenceTable(IDbConnection connection)
         {
-            using (IDbCommand command = connection.CreateCommand())
-            {
-                command.CommandText =
-                    "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='ProteomeDbSubsequence'"; // Not L10N
-                var obj = command.ExecuteScalar();
-                return Convert.ToInt32(obj) != 0;
-            }
+            return SqliteOperations.TableExists(connection, @"ProteomeDbSubsequence");
         }
 
         private bool? _hasSubsequencesTable;
@@ -463,7 +460,7 @@ namespace pwiz.ProteomeDatabase.API
             // Get a list of proteins with unresolved metadata websearches
             using (var session = OpenSession())
             {
-                var hql = "SELECT WebSearchStatus FROM " + typeof (DbProteinName); // Not L10N
+                var hql = @"SELECT WebSearchStatus FROM " + typeof (DbProteinName);
                 var query = session.CreateQuery(hql);
                 foreach (var value in query.List())
                 {
@@ -497,8 +494,8 @@ namespace pwiz.ProteomeDatabase.API
             {
                 List<DbProteinName> proteinNames = new List<DbProteinName>();
                 ICriteria criteria = session.CreateCriteria(typeof(DbProteinName))
-                    .Add(Restrictions.InsensitiveLike("Name", prefix + "%")) // Not L10N
-                    .AddOrder(Order.Asc("Name")) // Not L10N
+                    .Add(Restrictions.InsensitiveLike(@"Name", prefix + @"%"))
+                    .AddOrder(Order.Asc(@"Name"))
                     .SetMaxResults(maxResults);
                 criteria.List(proteinNames);
                 List<Protein> result = new List<Protein>();
@@ -555,11 +552,11 @@ namespace pwiz.ProteomeDatabase.API
         private static DbProteinName GetProteinName(ISession session, string searchName)
         {
             ICriteria criteriaName = session.CreateCriteria(typeof(DbProteinName))
-                .Add(Restrictions.Eq("Name", searchName)); // Not L10N
+                .Add(Restrictions.Eq(@"Name", searchName));
             DbProteinName proteinName = (DbProteinName)criteriaName.UniqueResult();
             if (proteinName != null)
                 return proteinName;
-            string[] hints = {"Accession", "Gene", "PreferredName"}; // Not L10N
+            string[] hints = {@"Accession", @"Gene", @"PreferredName"};
             var criterion = Restrictions.Disjunction();
             foreach (var name in hints)
             {
@@ -581,14 +578,15 @@ namespace pwiz.ProteomeDatabase.API
         private bool DigestProteins(IDbConnection connection, IDictionary<String, ProtIdNames> protSequences, IProgressMonitor progressMonitor, ref IProgressStatus status)
         {
             progressMonitor.UpdateProgress(status = status.ChangeMessage(Resources.ProteomeDb_DigestProteins_Analyzing_protein_sequences));
-            Dictionary<String, List<long>> subsequenceProteinIds = new Dictionary<string, List<long>>();
+            Dictionary<String, byte[]> subsequenceProteinIds = new Dictionary<string, byte[]>();
             foreach (var entry in protSequences)
             {
                 if (progressMonitor.IsCanceled)
                 {
                     return false;
                 }
-                int id = (int) entry.Value.Id;
+                long id = entry.Value.Id;
+                byte[] idBytes = DbSubsequence.ProteinIdsToBytes(new[] {id});
                 String proteinSequence = entry.Key;
                 HashSet<string> subsequences = new HashSet<string>();
                 for (int ich = 0; ich < proteinSequence.Length - MIN_SEQUENCE_LENGTH; ich++)
@@ -597,26 +595,31 @@ namespace pwiz.ProteomeDatabase.API
                         Math.Min(proteinSequence.Length - ich, MAX_SEQUENCE_LENGTH));
                     if (subsequences.Add(subsequence))
                     {
-                        List<long> ids;
-                        if (!subsequenceProteinIds.TryGetValue(subsequence, out ids))
+                        byte[] idListBytes;
+                        if (!subsequenceProteinIds.TryGetValue(subsequence, out idListBytes))
                         {
-                            ids = new List<long>();
-                            subsequenceProteinIds.Add(subsequence, ids);
+                            subsequenceProteinIds.Add(subsequence, idBytes);
                         }
-                        ids.Add(id);
+                        else
+                        {
+                            var bytesNew = new byte[idListBytes.Length + idBytes.Length];
+                            Array.Copy(idListBytes, 0, bytesNew, 0, idListBytes.Length);
+                            Array.Copy(idBytes, 0, bytesNew, idListBytes.Length, idBytes.Length);
+                            subsequenceProteinIds[subsequence] = bytesNew;
+                        }
                     }
                 }
             }
             using (var cmd = connection.CreateCommand())
             {
-                cmd.CommandText = "DELETE FROM ProteomeDbSubsequence"; // Not L10N
+                cmd.CommandText = @"DELETE FROM ProteomeDbSubsequence";
                 cmd.ExecuteNonQuery();
             }
-            var tuples = subsequenceProteinIds.Select(entry => Tuple.Create(entry.Key, entry.Value)).ToArray();
-            Array.Sort(tuples, (t1, t2) => StringComparer.Ordinal.Compare(t1.Item1, t2.Item1));
+            var tuples = subsequenceProteinIds.ToArray();
+            Array.Sort(tuples, (t1, t2) => StringComparer.Ordinal.Compare(t1.Key, t2.Key));
             using (var insertCommand = connection.CreateCommand())
             {
-                insertCommand.CommandText = "INSERT INTO ProteomeDbSubsequence (Sequence, ProteinIdBytes) VALUES(?,?)"; // Not L10N
+                insertCommand.CommandText = @"INSERT INTO ProteomeDbSubsequence (Sequence, ProteinIdBytes) VALUES(?,?)";
                 insertCommand.Parameters.Add(new SQLiteParameter());
                 insertCommand.Parameters.Add(new SQLiteParameter());
                 for (int iTuple = 0; iTuple < tuples.Length; iTuple++)
@@ -628,10 +631,10 @@ namespace pwiz.ProteomeDatabase.API
                     }
                     var tuple = tuples[iTuple];
                     // Now write to db
-                    DbSubsequence dbSubsequence = new DbSubsequence()
+                    DbSubsequence dbSubsequence = new DbSubsequence
                     {
-                        Sequence = tuple.Item1,
-                        ProteinIds = tuple.Item2.ToArray()
+                        Sequence = tuple.Key,
+                        ProteinIdBytes = tuple.Value
                     };
                     ((SQLiteParameter) insertCommand.Parameters[0]).Value = dbSubsequence.Sequence;
                     ((SQLiteParameter) insertCommand.Parameters[1]).Value = dbSubsequence.ProteinIdBytes;
@@ -656,9 +659,11 @@ namespace pwiz.ProteomeDatabase.API
         {
             using (var session = OpenSession())
             {
-                var hql = "SELECT p.Sequence, p.Id, pn.Gene, pn.Species \n" + // Not L10N
-                          "FROM " + typeof(DbProtein) + " p, " + typeof(DbProteinName) + " pn\n" + // Not L10N
-                          "WHERE p.Id = pn.Protein.Id AND pn.IsPrimary <> 0";// Not L10N
+                // ReSharper disable LocalizableElement
+                var hql = "SELECT p.Sequence, p.Id, pn.Gene, pn.Species \n" +
+                          "FROM " + typeof(DbProtein) + " p, " + typeof(DbProteinName) + " pn\n" +
+                          // ReSharper restore LocalizableElement
+                          @"WHERE p.Id = pn.Protein.Id AND pn.IsPrimary <> 0";
                 var query = session.CreateQuery(hql);
                 foreach (object[] values in query.List())
                 {
@@ -728,11 +733,11 @@ namespace pwiz.ProteomeDatabase.API
                 var proteinLengths = new Dictionary<long, int>();
                 using (var cmd = session.Connection.CreateCommand())
                 {
-                    string sql = "SELECT Id, LENGTH(Sequence) AS SequenceLength FROM ProteomeDbProtein P"; // Not L10N
+                    string sql = @"SELECT Id, LENGTH(Sequence) AS SequenceLength FROM ProteomeDbProtein P";
                     if (proteinIds.Length < 1000)
                     {
-                        sql += " WHERE P.Id IN (" + // Not L10N
-                        string.Join(",", proteinIds) + ")"; // Not L10N
+                        sql += @" WHERE P.Id IN (" +
+                        string.Join(@",", proteinIds) + @")";
                     }
                     cmd.CommandText = sql;
                     using (var reader = cmd.ExecuteReader())
@@ -788,7 +793,7 @@ namespace pwiz.ProteomeDatabase.API
                                                                unsearchedProteins.Count);
                                 // Make it clearer when web access is faked during testing
                                 if (fastaImporter.IsAccessFaked)
-                                    message = "FAKED: " + message;  // Not L10N
+                                    message = @"FAKED: " + message;
                                 if (!UpdateProgressAndCheckForCancellation(progressMonitor, ref status, message, 100*resultsCount++/unsearchedCount))
                                 {
                                     return false;
@@ -828,13 +833,13 @@ namespace pwiz.ProteomeDatabase.API
 
             return BatchUpArgumentsForFunction(ids =>
             {
-                // ReSharper disable NonLocalizedString
+                // ReSharper disable LocalizableElement
                 var hql = "SELECT p, pn"
                   + "\nFROM " + typeof(DbProtein) + " p, " + typeof(DbProteinName) + " pn"
                   + "\nWHERE p.Id = pn.Protein.Id AND p.Id IN (:Ids)";
                 var query = session.CreateQuery(hql);
                 query.SetParameterList("Ids", ids);
-                // ReSharper restore NonLocalizedString
+                // ReSharper restore LocalizableElement
                 var proteins = new List<Protein>();
 
                 var rowsByProteinId = query.List().Cast<object[]>().ToLookup(row => ((DbProtein) row[0]).Id.Value);

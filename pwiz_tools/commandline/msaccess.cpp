@@ -81,7 +81,7 @@ void initializeAnalyzers(MSDataAnalyzerContainer& analyzers,
         string name, args;
         istringstream iss(*it);
         iss >> name;
-        getline(iss, args);
+        getlinePortable(iss, args);
 
         if (supportedAnalyzer(name, analyzer_strings<MetadataReporter>::id()))
         {
@@ -172,7 +172,7 @@ string usage(const MSDataAnalyzerApplication& app)
 
     oss << endl
         << "Questions, comments, and bug reports:\n"
-        << "http://proteowizard.sourceforge.net\n"
+        << "https://github.com/ProteoWizard\n"
         << "support@proteowizard.org\n"
         << "\n"
         << "ProteoWizard release: " << pwiz::Version::str() << endl

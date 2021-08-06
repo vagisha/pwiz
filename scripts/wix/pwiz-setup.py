@@ -34,10 +34,14 @@ templatePath = sys.argv[1]
 buildPath = sys.argv[2]
 installPath = sys.argv[3]
 version = sys.argv[4]
+numericVersion = sys.argv[5]
+addressModel = sys.argv[6]
 
 installerSuffix = "-x86"
-if sys.argv[5] == "64":
+platform = "x86"
+if addressModel == "64":
     installerSuffix = "-x86_64"
+    platform = "x64"
 
 # a unique ProductGuid every time allows multiple parallel installations of pwiz
 guid = str(uuid.uuid4())
@@ -73,17 +77,23 @@ def contextMenuRegistries() :
     for appName in appNames :
         txt = componentText.replace("_MY_APPU_",appName.upper())
         txt = txt.replace("__MY_APP__","Open with "+appName)
-        txt = txt.replace("__MY_PATH__","[APPLICATIONROOTDIRECTORY]"+appName+".exe")
+        txt = txt.replace("__MY_PATH__","[APPLICATIONFOLDER]"+appName+".exe")
         registries = registries + txt
     return registries
 
 wxsTemplate = open(templatePath + "/pwiz-setup.wxs.template").read()
+installerVendorFiles = open(buildPath + "/" + platform + "/INSTALLER_VENDOR_FILES.txt").read().strip().split("\n")
+wxsVendorDlls = []
+for file in installerVendorFiles:
+	wxsVendorDlls.append(f'<Component Feature="MainFeature"><File Source="{installPath}\{file}" KeyPath="yes"/></Component>')
 wxsTemplate = wxsTemplate.replace("__CONTEXTMENU_PROPERTIES__",contextMenuProperties())
 wxsTemplate = wxsTemplate.replace("__CONTEXTMENU_REGISTRY__",contextMenuRegistries())
 wxsTemplate = wxsTemplate.replace("__CONTEXTMENU_CHECKBOXEN__",contextMenuOptions())
 wxsTemplate = wxsTemplate.replace("{ProductGuid}", guid)
 wxsTemplate = wxsTemplate.replace("{version}", version)
+wxsTemplate = wxsTemplate.replace("{numeric-version}", numericVersion)
 wxsTemplate = wxsTemplate.replace("msvc-release", installPath)
+wxsTemplate = wxsTemplate.replace("__VENDOR_DLLS__", '\n'.join(wxsVendorDlls))
 
 # delete old wxs and wixObj files
 for filepath in glob.glob(buildPath + "/*.wxs"):

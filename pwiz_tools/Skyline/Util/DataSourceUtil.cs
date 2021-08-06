@@ -30,9 +30,10 @@ namespace pwiz.Skyline.Util
 {
     public static class DataSourceUtil
     {
-        // ReSharper disable NonLocalizedString
+        // ReSharper disable LocalizableElement
         public const string EXT_THERMO_RAW = ".raw";
         public const string EXT_WIFF = ".wiff";
+        public const string EXT_WIFF2 = ".wiff2";
         public const string EXT_SHIMADZU_RAW = ".lcd";
         public const string EXT_MZXML =  ".mzxml";
         public const string EXT_MZDATA = ".mzdata";
@@ -40,12 +41,13 @@ namespace pwiz.Skyline.Util
         public const string EXT_MZ5 = ".mz5";
         public const string EXT_XML = ".xml";
         public const string EXT_UIMF = ".uimf";
-        public const string EXT_CHORUSRESPONSE = ".chorusresponse";
+        public const string EXT_WATERS_RAW = ".raw";
+        public const string EXT_AGILENT_BRUKER_RAW = ".d";
 
-        public const string TYPE_WIFF = "ABSciex WIFF";
-        public const string TYPE_AGILENT = "Agilent Data";
-        public const string TYPE_BRUKER = "Bruker Data";
-        public const string TYPE_SHIMADZU = "Shimadzu Data";
+        public const string TYPE_WIFF = "Sciex WIFF/WIFF2";
+        public const string TYPE_AGILENT = "Agilent MassHunter Data";
+        public const string TYPE_BRUKER = "Bruker BAF/TDF";
+        public const string TYPE_SHIMADZU = "Shimadzu LCD";
         public const string TYPE_THERMO_RAW = "Thermo RAW";
         public const string TYPE_WATERS_RAW = "Waters RAW";
         public const string TYPE_MZML = "mzML";
@@ -56,7 +58,7 @@ namespace pwiz.Skyline.Util
         public const string TYPE_CHORUSRESPONSE = "Chorus Response";
         public const string FOLDER_TYPE = "File Folder";
         public const string UNKNOWN_TYPE = "unknown";
-        // ReSharper restore NonLocalizedString
+        // ReSharper restore LocalizableElement
 
         public static bool IsDataSource(string path)
         {
@@ -70,22 +72,23 @@ namespace pwiz.Skyline.Util
 
         public static string GetSourceType(DirectoryInfo dirInfo)
         {
-            // ReSharper disable NonLocalizedString
+            // ReSharper disable LocalizableElement
             try
             {
-                if (dirInfo.HasExtension(".raw") &&
+                if (dirInfo.HasExtension(EXT_WATERS_RAW) &&
                         dirInfo.GetFiles("_FUNC*.DAT").Length > 0)
                     return TYPE_WATERS_RAW;
-                if (dirInfo.HasExtension(".d"))
+                if (dirInfo.HasExtension(EXT_AGILENT_BRUKER_RAW))
                 {
                     if (dirInfo.GetDirectories("AcqData").Length > 0)
                         return TYPE_AGILENT;
-                    if (dirInfo.GetFiles("analysis.baf").Length > 0)
+                    if (dirInfo.GetFiles("analysis.baf").Length > 0 || 
+                        dirInfo.GetFiles("analysis.tdf").Length > 0) // TIMS ion mobility data
                         return TYPE_BRUKER;
                 }
                 return FOLDER_TYPE;
             }
-            // ReSharper restore NonLocalizedString
+            // ReSharper restore LocalizableElement
             catch (Exception)
             {
                 // TODO: Folder without access type
@@ -110,6 +113,7 @@ namespace pwiz.Skyline.Util
             {
                 case EXT_THERMO_RAW: return TYPE_THERMO_RAW;
                 case EXT_WIFF: return TYPE_WIFF;
+                case EXT_WIFF2: return TYPE_WIFF;
                 case EXT_SHIMADZU_RAW: return TYPE_SHIMADZU;
                 //case ".mgf": return "Mascot Generic";
                 //case ".dta": return "Sequest DTA";
@@ -121,14 +125,6 @@ namespace pwiz.Skyline.Util
                 case EXT_MZML: return TYPE_MZML;
                 case EXT_MZ5: return TYPE_MZ5;
                 case EXT_XML: return GetSourceTypeFromXML(fileInfo.FullName);
-                case EXT_CHORUSRESPONSE:
-                {
-                    if (Settings.Default.EnableChorus)
-                    {
-                        return TYPE_CHORUSRESPONSE;
-                    }
-                    return UNKNOWN_TYPE;
-                }
                 case EXT_UIMF: return TYPE_UIMF;
                 default: return UNKNOWN_TYPE;
             }
@@ -172,10 +168,9 @@ namespace pwiz.Skyline.Util
                     {
                         if (reader.NodeType == XmlNodeType.Element)
                         {
-                            // ReSharper disable NonLocalizedString
+                            // ReSharper disable LocalizableElement
                             switch (reader.Name.ToLowerInvariant())
                             {
-                                // Not L10N
                                 case "mzml":
                                 case "indexmzml":
                                     return "mzML";
@@ -189,7 +184,7 @@ namespace pwiz.Skyline.Util
                                 default:
                                     return UNKNOWN_TYPE;
                             }
-                            // ReSharper restore NonLocalizedString
+                            // ReSharper restore LocalizableElement
                         }
                     }
                 }
@@ -203,9 +198,9 @@ namespace pwiz.Skyline.Util
 
         // This method can throw an IOException if there is an error reading .wiff files in 
         // the given directory.
-        public static IEnumerable<KeyValuePair<string, MsDataFileUri[]>> GetDataSources(string dirRoot)
+        public static IEnumerable<KeyValuePair<string, MsDataFileUri[]>> GetDataSources(string dirRoot, bool addSourcesInSubDirs = true)
         {
-            return GetDataSources(dirRoot, true, true);
+            return GetDataSources(dirRoot, true, addSourcesInSubDirs);
         }
 
         public static IEnumerable<KeyValuePair<string, MsDataFileUri[]>> GetDataSourcesInSubdirs(string dirRoot)
@@ -379,6 +374,20 @@ namespace pwiz.Skyline.Util
             if (listPaths.Count == 0)
                 return null;
             return listPaths.ToArray();
+        }
+
+        /// <summary>
+        /// If the passed in MsDataFileUri is a multi-sample wiff file, then return a list of
+        /// MsDataFileUri's representing the samples, otherwise, return the MsDataFileUri itself.
+        /// </summary>
+        public static IEnumerable<MsDataFileUri> ListSubPaths(MsDataFileUri msDataFileUri)
+        {
+            var msDataFilePath = msDataFileUri as MsDataFilePath;
+            if (msDataFilePath == null || !IsWiffFile(msDataFilePath.FilePath))
+            {
+                return new[] {msDataFileUri};
+            }
+            return GetWiffSubPaths(msDataFilePath.FilePath);
         }
     }
 }

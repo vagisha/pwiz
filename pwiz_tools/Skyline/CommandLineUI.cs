@@ -42,7 +42,7 @@ namespace pwiz.Skyline
                 return;
             }
 
-            Program.FunctionalTest = true;
+            Program.UnitTest = Program.FunctionalTest = true;
             Program.TestExceptions = new List<Exception>();
             Program.NoSaveSettings = true;
             Program.DisableJoining = _commandArgs.ImportDisableJoining;
@@ -70,10 +70,6 @@ namespace pwiz.Skyline
         {
             WaitForSkyline();
             OpenDocument(_commandArgs.SkylineFile);
-            foreach (var replicateFile in _commandArgs.ReplicateFile)
-            {
-                ImportResults(replicateFile);
-            }
             SkylineWindow.DiscardChanges = true;
             RunUI(SkylineWindow.Close);
         }

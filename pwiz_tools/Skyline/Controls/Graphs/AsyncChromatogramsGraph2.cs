@@ -19,8 +19,11 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.CompilerServices;
+using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Properties;
+using pwiz.Skyline.Util;
 using ZedGraph;
 
 namespace pwiz.Skyline.Controls.Graphs
@@ -70,7 +73,7 @@ namespace pwiz.Skyline.Controls.Graphs
         private bool _backgroundInitialized;
 
         public AsyncChromatogramsGraph2()
-            : base("AllChromatograms background render") // Not L10N
+            : base(@"AllChromatograms background render")
         {
             InitializeComponent();
         }
@@ -123,7 +126,7 @@ namespace pwiz.Skyline.Controls.Graphs
             };
             _canceledText = new TextObj(Resources.AsyncChromatogramsGraph2_AsyncChromatogramsGraph2_Canceled, 0.5, 0.5)
             {
-                FontSpec = new FontSpec("Arial", 24, Color.Gray, true, false, false)    // Not L10N
+                FontSpec = new FontSpec(@"Arial", 24, Color.Gray, true, false, false)
                 {
                     Border = new Border { IsVisible = false },
                     Fill = new Fill()
@@ -514,10 +517,10 @@ namespace pwiz.Skyline.Controls.Graphs
         private class CurveInfo
         {
             public LineItem Curve { get; private set; }
-            public string ModifiedSequence { get; private set; }
+            public Target ModifiedSequence { get; private set; }
             public bool IsActive { get; set; }
 
-            public CurveInfo(string modifiedSequence, Color peptideColor, double retentionTime, float intensity)
+            public CurveInfo(Target modifiedSequence, Color peptideColor, double retentionTime, float intensity)
             {
                 var fillColor = Color.FromArgb(
                     175 + 80 * peptideColor.R / 255,
@@ -559,5 +562,59 @@ namespace pwiz.Skyline.Controls.Graphs
                 }
             }
         }
+
+        private bool _inCreateHandle;
+        /// <summary>
+        /// Override CreateHandle in order to try to track down intermittent test failures.
+        /// TODO(nicksh): Remove this override once the intermittent failure is figured out
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
+        protected override void CreateHandle()
+        {
+            Assume.IsFalse(_inCreateHandle);
+            if (Program.FunctionalTest && Program.MainWindow != null && Program.MainWindow.InvokeRequired)
+            {
+                throw new ApplicationException(@"AsynchChromatogramsGraph2.CreateHandle called on wrong thread");
+            }
+
+            try
+            {
+                _inCreateHandle = true;
+                base.CreateHandle();
+            }
+            catch (Exception e)
+            {
+                Console.Out.WriteLine(@"Exception in AsynchChromatogramsGraph2 CreateHandle {0}", e);
+                throw new Exception(@"Exception in AsynchChromatogramsGraph2", e);
+            }
+            finally
+            {
+                _inCreateHandle = false;
+            }
+        }
+
+        /// <summary>
+        /// Clean up any resources being used.
+        /// Also, check "_inCreateHandle" in the hopes of tracking down intermittent test failures.
+        /// TODO(nicksh): Move this function back to AsyncChromatogramsGraph2.Designer.cs once the
+        /// test failures are figured out.
+        /// </summary>
+        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
+        [MethodImpl(MethodImplOptions.NoOptimization | MethodImplOptions.NoInlining)]
+        protected override void Dispose(bool disposing)
+        {
+            if (_inCreateHandle)
+            {
+                Console.Out.WriteLine(@"AsyncChromatogramsGraph2 _inCreateHandle is {0}", _inCreateHandle);
+            }
+
+            if (disposing && (components != null))
+            {
+                components.Dispose();
+            }
+            base.Dispose(disposing);
+        }
+
+
     }
 }

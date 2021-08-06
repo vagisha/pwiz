@@ -19,7 +19,7 @@ namespace pwiz.Skyline.Model.GroupComparison {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class GroupComparisonStrings {
@@ -61,6 +61,132 @@ namespace pwiz.Skyline.Model.GroupComparison {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Above.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Above {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Above", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Above right cutoff.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Above_right_cutoff {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Above_right_cutoff", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Below.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Below {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Below", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Below left cutoff.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Below_left_cutoff {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Below_left_cutoff", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Molecular Formula.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Molecula_Formula {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Molecula_Formula", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Molecule List Name.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Molecule_List_Name {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Molecule_List_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to None.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_None {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_None", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Peptide Modified Sequence.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Peptide_Modified_Sequence {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Peptide_Modified_Sequence", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Peptide Molecule Name.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Peptide_Molecule_Name {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Peptide_Molecule_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Peptide Sequence.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Peptide_Sequence {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Peptide_Sequence", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Protein Accession.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Protein_Accession {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Protein_Accession", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Protein Gene.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Protein_Gene {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Protein_Gene", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Protein Name.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Protein_Name {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Protein_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Protein Preferred Name.
+        /// </summary>
+        internal static string CreateMatchExpression_PopulateComboBoxes_Protein_Preferred_Name {
+            get {
+                return ResourceManager.GetString("CreateMatchExpression_PopulateComboBoxes_Protein_Preferred_Name", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to There is already a group comparison named {0}..
         /// </summary>
         internal static string EditGroupComparisonDlg_btnOK_Click_There_is_already_a_group_comparison_named__0__ {
@@ -71,11 +197,29 @@ namespace pwiz.Skyline.Model.GroupComparison {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Graph.
+        ///   Looks up a localized string similar to -Log10(P Value).
         /// </summary>
-        internal static string FoldChangeBarGraph_GetTitle_Graph {
+        internal static string FoldChange__Log10_P_Value_ {
             get {
-                return ResourceManager.GetString("FoldChangeBarGraph_GetTitle_Graph", resourceCulture);
+                return ResourceManager.GetString("FoldChange__Log10_P_Value_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Log2(Fold Change).
+        /// </summary>
+        internal static string FoldChange_Log2_Fold_Change_ {
+            get {
+                return ResourceManager.GetString("FoldChange_Log2_Fold_Change_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Bar Graph.
+        /// </summary>
+        internal static string FoldChangeBarGraph_GetTitle_Bar_Graph {
+            get {
+                return ResourceManager.GetString("FoldChangeBarGraph_GetTitle_Bar_Graph", resourceCulture);
             }
         }
         
@@ -148,6 +292,96 @@ namespace pwiz.Skyline.Model.GroupComparison {
         internal static string FoldChangeOptionsUi_UpdateSettings_Elapsed_time___0_ {
             get {
                 return ResourceManager.GetString("FoldChangeOptionsUi_UpdateSettings_Elapsed_time___0_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Fold Change.
+        /// </summary>
+        internal static string FoldChangeRowTipProvider_RenderTip_Fold_Change {
+            get {
+                return ResourceManager.GetString("FoldChangeRowTipProvider_RenderTip_Fold_Change", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to P Value.
+        /// </summary>
+        internal static string FoldChangeRowTipProvider_RenderTip_P_Value {
+            get {
+                return ResourceManager.GetString("FoldChangeRowTipProvider_RenderTip_P_Value", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Peptide.
+        /// </summary>
+        internal static string FoldChangeRowTipProvider_RenderTip_Peptide {
+            get {
+                return ResourceManager.GetString("FoldChangeRowTipProvider_RenderTip_Peptide", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Protein.
+        /// </summary>
+        internal static string FoldChangeRowTipProvider_RenderTip_Protein {
+            get {
+                return ResourceManager.GetString("FoldChangeRowTipProvider_RenderTip_Protein", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Formatting....
+        /// </summary>
+        internal static string FoldChangeVolcanoPlot_BuildContextMenu_Formatting___ {
+            get {
+                return ResourceManager.GetString("FoldChangeVolcanoPlot_BuildContextMenu_Formatting___", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Properties....
+        /// </summary>
+        internal static string FoldChangeVolcanoPlot_BuildContextMenu_Properties___ {
+            get {
+                return ResourceManager.GetString("FoldChangeVolcanoPlot_BuildContextMenu_Properties___", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Remove Below Cutoffs.
+        /// </summary>
+        internal static string FoldChangeVolcanoPlot_BuildContextMenu_Remove_Below_Cutoffs {
+            get {
+                return ResourceManager.GetString("FoldChangeVolcanoPlot_BuildContextMenu_Remove_Below_Cutoffs", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Selection.
+        /// </summary>
+        internal static string FoldChangeVolcanoPlot_BuildContextMenu_Selection {
+            get {
+                return ResourceManager.GetString("FoldChangeVolcanoPlot_BuildContextMenu_Selection", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Volcano Plot.
+        /// </summary>
+        internal static string FoldChangeVolcanoPlot_GetTitle_Volcano_Plot {
+            get {
+                return ResourceManager.GetString("FoldChangeVolcanoPlot_GetTitle_Volcano_Plot", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Remove peptides below cutoffs.
+        /// </summary>
+        internal static string FoldChangeVolcanoPlot_RemoveBelowCutoffs_Remove_peptides_below_cutoffs {
+            get {
+                return ResourceManager.GetString("FoldChangeVolcanoPlot_RemoveBelowCutoffs_Remove_peptides_below_cutoffs", resourceCulture);
             }
         }
         
@@ -300,6 +534,15 @@ namespace pwiz.Skyline.Model.GroupComparison {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Total Ion Current.
+        /// </summary>
+        internal static string NormalizationMethod_TIC_Total_Ion_Current {
+            get {
+                return ResourceManager.GetString("NormalizationMethod_TIC_Total_Ion_Current", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Averaging.
         /// </summary>
         internal static string SummarizationMethod_AVERAGING_Averaging {
@@ -359,6 +602,159 @@ namespace pwiz.Skyline.Model.GroupComparison {
         internal static string VolcanoPlot_VolcanoPlot_Volcano_Plot {
             get {
                 return ResourceManager.GetString("VolcanoPlot_VolcanoPlot_Volcano_Plot", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Circle.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Circle {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Circle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Diamond.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Diamond {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Diamond", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Expression.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Expression {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Expression", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Labeled.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Labeled {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Labeled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Large.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Large {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Large", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Normal.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Normal {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Normal", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Plus.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Plus {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Plus", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Size.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Size {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Size", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Small.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Small {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Small", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Square.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Square {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Square", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Star.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Star {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Star", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Symbol.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Symbol {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Symbol", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Triangle.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Triangle {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_Triangle", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Triangle Down.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_TriangleDown {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_TriangleDown", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to X Cross.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_X_Cross {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_X_Cross", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to X-Large.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_X_Large {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_X_Large", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to X-Small.
+        /// </summary>
+        internal static string VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_X_Small {
+            get {
+                return ResourceManager.GetString("VolcanoPlotFormattingDlg_VolcanoPlotFormattingDlg_X_Small", resourceCulture);
             }
         }
     }

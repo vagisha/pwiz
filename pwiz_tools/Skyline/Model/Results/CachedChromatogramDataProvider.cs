@@ -21,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using pwiz.Common.Chemistry;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Util;
 
@@ -92,9 +93,9 @@ namespace pwiz.Skyline.Model.Results
             get { return _chromKeyIndices.Select((v, i) => new ChromKeyProviderIdPair(v.Key, i)); }
         }
 
-        public override bool GetChromatogram(
-            int id, string modifiedSequence, Color peptideColor,
-            out ChromExtra extra, out TimeIntensities timeIntensities)
+        public override eIonMobilityUnits IonMobilityUnits { get { return _cache != null ? _cache.CachedFiles[_fileIndex].IonMobilityUnits : eIonMobilityUnits.none; } }
+
+        public override bool GetChromatogram(int id, Target modifiedSequence, Color peptideColor, out ChromExtra extra, out TimeIntensities timeIntensities)
         {
             var chromKeyIndices = _chromKeyIndices[id];
             if (_lastChromGroupInfo == null || _lastIndices.GroupIndex != chromKeyIndices.GroupIndex)
@@ -103,7 +104,7 @@ namespace pwiz.Skyline.Model.Results
                 _lastChromGroupInfo.ReadChromatogram(_cache);
             }
             _lastIndices = chromKeyIndices;
-            var tranInfo = _lastChromGroupInfo.GetTransitionInfo(chromKeyIndices.TranIndex);
+            var tranInfo = _lastChromGroupInfo.GetTransitionInfo(chromKeyIndices.TranIndex, TransformChrom.raw);
             timeIntensities = tranInfo.TimeIntensities;
 
             // Assume that each chromatogram will be read once, though this may

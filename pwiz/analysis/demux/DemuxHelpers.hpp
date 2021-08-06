@@ -26,43 +26,14 @@
 #ifndef _DEMUXHELPERS_HPP
 #define _DEMUXHELPERS_HPP
 
-#include "DemuxTypes.hpp"
-#include "EnumConstantNotPresentException.hpp"
 #include <boost/tokenizer.hpp>
-#include "pwiz/utility/chemistry/MZTolerance.hpp"
+#include <boost/format.hpp>
+#include "pwiz/data/msdata/MSData.hpp"
 
 namespace pwiz
 {
 namespace analysis
 {
-    /**
-    * Converts an enum to it's corresponding string in a prebuilt map. Exception is thrown if map does not contain enum.
-    * @param[in] e The enum
-    * @param[out] m The map pairing each enum to a string
-    * @return Returns the string from the map
-    */
-    template <typename T>
-    const std::string& enumToString(T e, std::map<T, std::string> m)
-    {
-        return m.at(e);
-    }
-
-    /**
-    * Converts a string to it's corresponding enum in a prebuilt map. Exception is thrown if map does not contain string.
-    * @param[in] s The string
-    * @param[out] m The map pairing each enum to a string
-    * @return Returns the enum from the map
-    */
-    template<typename T>
-    T stringToEnum(const std::string& s, std::map<T, std::string> m)
-    {
-        for (auto it = m.begin(); it != m.end(); ++it) {
-            if (it->second.compare(s) == 0)
-                return it->first;
-        }
-        throw EnumConstantNotPresentException("Given string doesn't correspond to an enum");
-    }
-
     /// Tool for pulling each scan id attribute and its value from a scan id.
     /// Scan ids contain sets of attribute-value pairs. Each pair is separated from others by a space. Each attribute is separated from its
     /// value by an "=". E.g. "attribute1=value1 attribute2=value2 attribute3=value3"
@@ -77,6 +48,15 @@ namespace analysis
     * @return false if the given token does not exist in the SpectrumIdentity id
     */
     bool TryGetScanIDToken(const msdata::SpectrumIdentity& spectrumIdentity, const std::string& tokenName, std::string& value);
+
+    /**
+    * Tries to read the scan index of the spectrum. This is a value that is used for indexing spectra and is not necessarily preserved 
+    * after demultiplexing but is unique within a given file.
+    * @param[in] spectrumIdentity The SpectrumIdentity to search
+    * @param[out] index The scan index of the spectrum
+    * @return false if the given SpectrumIdentity does not contain information about the scan index
+    */
+    bool TryGetScanIndex(const msdata::SpectrumIdentity& spectrumIdentity, size_t& index);
 
     /**
     * Tries to read the index of the demultiplexed spectrum relative to the multiplexed spectrum it was derived from.
@@ -135,8 +115,68 @@ namespace analysis
                           the chosen total number of spectra. This is useful when ms2 spectra are collected cyclically and only a single index within that cycle is desired.
     * @return false if not enough spectra can be found
     */
-    bool FindNearbySpectra(std::vector<size_t>& spectraIndices, pwiz::msdata::SpectrumList_const_ptr slPtr, size_t centerIndex,
+    bool FindNearbySpectra(std::vector<size_t>& spectraIndices, boost::shared_ptr<const msdata::SpectrumList> slPtr, size_t centerIndex,
                            size_t numSpectraToFind, size_t stride = 1);
+
+    inline double precursor_upper_offset(const msdata::Precursor& p)
+    {
+        auto upperOffsetParam = p.isolationWindow.cvParam(cv::MS_isolation_window_upper_offset);
+        if (upperOffsetParam.value.empty())
+            throw std::runtime_error("precursor_upper_offset() No isolation window upper offset m/z specified");
+        double upperOffset = upperOffsetParam.valueAs<double>();
+        if (upperOffset <= 0.0)
+            throw std::runtime_error("precursor_upper_offset() Positive values expected for isolation window m/z offsets");
+        return upperOffset;
+    }
+
+    inline double precursor_lower_offset(const msdata::Precursor& p)
+    {
+        auto lowerOffsetParam = p.isolationWindow.cvParam(cv::MS_isolation_window_lower_offset);
+        if (lowerOffsetParam.value.empty())
+            throw std::runtime_error("precursor_lower_offset() No isolation window lower offset m/z specified");
+        double lowerOffset = lowerOffsetParam.valueAs<double>();
+        if (lowerOffset <= 0.0)
+            throw std::runtime_error("precursor_lower_offset() Positive values expected for isolation window m/z offsets");
+        return lowerOffset;
+    }
+
+    inline double precursor_target(const msdata::Precursor& p)
+    {
+        auto targetParam = p.isolationWindow.cvParam(cv::MS_isolation_window_target_m_z);
+        if (targetParam.value.empty())
+            throw std::runtime_error("precursor_target() No isolation window target m/z specified");
+        return targetParam.valueAs<double>();
+    }
+
+    inline double precursor_mz_low(const msdata::Precursor& p)
+    {
+        return precursor_target(p) - precursor_lower_offset(p);
+    }
+
+    inline double precursor_mz_high(const msdata::Precursor& p)
+    {
+        return precursor_target(p) + precursor_upper_offset(p);
+    }
+
+    inline double precursor_iso_center(const msdata::Precursor& p)
+    {
+        double target = precursor_target(p);
+        double mzLow = target - precursor_lower_offset(p);
+        double mzHigh = target + precursor_upper_offset(p);
+        return (mzLow + mzHigh) / 2.0;
+    }
+
+    inline double precursor_iso_width(const msdata::Precursor& p)
+    {
+        return precursor_lower_offset(p) + precursor_upper_offset(p);
+    }
+
+    inline std::string prec_to_string(const msdata::Precursor& p)
+    {
+        return str(boost::format("%.2f") % precursor_iso_center(p));
+    }
+
+    inline bool stringToFloatCompare(std::string i, std::string j){ return stof(i) < stof(j); }
 } // namespace analysis
 } // namespace pwiz
 #endif // _DEMUXHELPERS_HPP

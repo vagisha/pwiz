@@ -34,29 +34,39 @@ namespace MSConvertGUI
 {
     public partial class ProgressForm : Form
     {
-        public struct JobInfo
+        public class JobInfo
         {
             public MainLogic workProcess;
             public TextBox updateTextbox;
             public DataGridViewRow rowShown;
         }
 
-        private IEnumerable<string> _filesToProcess;
+        private IEnumerable<object> _filesToProcess;
         private string _outputFolder;
         private string _options;
         private List<MainLogic> _tasksRunningList;
+        private Map<string, UnifiBrowserForm.Credentials> _unifiCredentialsByUrl;
+        private Map<string, int> _usedOutputFilenames;
+        private object _calculateSHA1Mutex = new object();
+        private object _cancelMutex = new object();
 
-        public ProgressForm(IEnumerable<string> filesToProcess, string outputFolder, string options)
+        public ProgressForm(IEnumerable<object> filesToProcess, string outputFolder, string options, Map<string, UnifiBrowserForm.Credentials> unifiCredentialsByUrl)
         {
             InitializeComponent();
             _filesToProcess = filesToProcess;
             _outputFolder = outputFolder;
             _options = options;
             _tasksRunningList = new List<MainLogic>();
+            _unifiCredentialsByUrl = unifiCredentialsByUrl;
+            _usedOutputFilenames = new Map<string, int>();
         }
 
         internal void UpdatePercentage(int result, int maxValue, JobInfo info)
         {
+            lock (_cancelMutex)
+                if (info.workProcess.Canceled)
+                    return;
+
             if (InvokeRequired)
             {
                 Invoke(new MethodInvoker(() => UpdatePercentage(result, maxValue, info)));
@@ -77,6 +87,10 @@ namespace MSConvertGUI
 
         internal void UpdateLog(string result, JobInfo info)
         {
+            lock (_cancelMutex)
+                if (info.workProcess.Canceled)
+                    return;
+
             if (InvokeRequired)
             {
                 Invoke(new MethodInvoker(() => UpdateLog(result, info)));
@@ -90,6 +104,10 @@ namespace MSConvertGUI
 
         private void UpdateBarStatus(string status, ProgressBarStyle style, JobInfo info)
         {
+            lock (_cancelMutex)
+                if (info.workProcess.Canceled)
+                    return;
+
             if (InvokeRequired)
             {
                 Invoke(new MethodInvoker(() => UpdateBarStatus(status, style, info)));
@@ -146,7 +164,7 @@ namespace MSConvertGUI
                 row.Tag = info;
                 info.rowShown = row;
 
-                var runProgram = new MainLogic(info)
+                var runProgram = new MainLogic(info, _usedOutputFilenames, _calculateSHA1Mutex)
                                      {
                                          PercentageUpdate = UpdatePercentage,
                                          LogUpdate = UpdateLog,
@@ -155,7 +173,11 @@ namespace MSConvertGUI
                 _tasksRunningList.Add(runProgram);
                 info.workProcess = runProgram;
 
-                var config = runProgram.ParseCommandLine(_outputFolder, (item + "|" + _options).Trim('|'));
+                string workItem = (item as INetworkSource)?.Url ?? item.ToString();
+                if (MainForm.IsNetworkSource(item))
+                    workItem = _unifiCredentialsByUrl[workItem].GetUrlWithAuthentication(workItem);
+
+                var config = runProgram.ParseCommandLine(_outputFolder, (workItem + "|" + _options).Trim('|'));
                 runProgram.QueueWork(config);
             }
 
@@ -164,8 +186,12 @@ namespace MSConvertGUI
 
         private void ProgressForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            foreach(var item in _tasksRunningList)
-                item.ForceExit();
+            lock (_cancelMutex)
+            {
+                MainLogic.ClearQueue();
+                foreach (var item in _tasksRunningList)
+                    item.ForceExit();
+            }
         }
     }
 }

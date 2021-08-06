@@ -43,7 +43,7 @@ namespace sqlite3pp
         class aggregate;
     }
 
-    class null_type {};
+	struct null_type { bool operator==(const null_type&) const { return true; } };
     extern null_type ignore;
 
     int enable_shared_cache(bool fenable);
@@ -94,10 +94,18 @@ namespace sqlite3pp
 
         sqlite3* connected() {return db_;}
 
+        /// The sqlite3_load_extension() interface attempts to load an SQLite extension library contained in the file zFile.
+        /// If the file cannot be loaded directly, attempts are made to load with various operating - system specific extensions added.
+        /// So for example, if "samplelib" cannot be loaded, then names like "samplelib.so" or "samplelib.dylib" or "samplelib.dll" might be tried also.
+        void load_extension(const std::string& name);
+
         int load_from_file(const std::string& dbname);
         int save_to_file(const std::string& dbname);
 
         sqlite3_int64 last_insert_rowid() const;
+
+        bool has_table(const std::string& table);
+        bool has_table(const char* table);
 
         int error_code() const;
         char const* error_msg() const;
@@ -135,6 +143,20 @@ namespace sqlite3pp
     class statement : boost::noncopyable
     {
     public:
+
+        struct blob
+        {
+            blob(void const* bytes, int size, bool fstatic = true)
+                : bytes_(bytes), n_(size), fstatic_(fstatic)
+            {}
+
+            private:
+            void const* bytes_;
+            int n_;
+            bool fstatic_;
+            friend class statement;
+        };
+
         int prepare(const std::string& stmt);
         int finish();
 
@@ -145,6 +167,7 @@ namespace sqlite3pp
         int bind(int idx, const std::string& value);
         int bind(int idx, char const* value, bool fstatic = true);
         int bind(int idx, void const* value, int n, bool fstatic = true);
+        int bind(int idx, const blob& value);
         int bind(int idx);
         int bind(int idx, null_type);
 

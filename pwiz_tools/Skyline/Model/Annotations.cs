@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Nick Shulman <nicksh .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -26,7 +26,6 @@ using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Serialization;
 using pwiz.Skyline.Properties;
-using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.Model
 {
@@ -73,10 +72,21 @@ namespace pwiz.Skyline.Model
             }
         }
 
+        [Track(defaultValues:typeof(DefaultValuesNull))]
         public String Note { get; private set; }
 
         public int ColorIndex { get; private set; }
 
+        private class DefaultValuesBrush : DefaultValues
+        {
+            public override bool IsDefault(object obj, object parentObject)
+            {
+                var annotations = parentObject as Annotations;
+                return annotations != null && annotations.ColorIndex == -1;
+            }
+        }
+
+        [Track(defaultValues:typeof(DefaultValuesBrush))]
         public Brush ColorBrush
         {
             get { return COLOR_BRUSHES[Math.Max(0, Math.Min(COLOR_BRUSHES.Count - 1, ColorIndex))]; }
@@ -89,6 +99,69 @@ namespace pwiz.Skyline.Model
                 return Note == null && _annotations == null;
             }
         }
+
+        public class Annotation : IAuditLogObject
+        {
+            private string _value;
+            public Annotation(KeyValuePair<string, string> annotation)
+            {
+                Name = annotation.Key;
+                Value = annotation.Value;
+
+                AnnotationDef = Settings.Default.AnnotationDefList.FirstOrDefault(a => a.Name == Name);
+            }
+
+            
+            public string Name { get; private set; }
+
+            [Track(ignoreName:true)]
+            public string Value
+            {
+                get {
+                    if (AnnotationDef != null && AnnotationDef.Type == AnnotationDef.AnnotationType.true_false)
+                        return !string.IsNullOrEmpty(_value) ? @"{2:True}" : @"{2:False}";
+
+                    return _value;
+                }
+                set { _value = value; }
+            }
+
+            public AnnotationDef AnnotationDef { get; private set; }
+
+            public string AuditLogText { get { return Name; } }
+            public bool IsName { get { return true; } }
+
+            protected bool Equals(Annotation other)
+            {
+                return string.Equals(Name, other.Name) && string.Equals(Value, other.Value);
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != GetType()) return false;
+                return Equals((Annotation) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((Name != null ? Name.GetHashCode() : 0) * 397) ^ (Value != null ? Value.GetHashCode() : 0);
+                }
+            }
+        }
+
+        [TrackChildren(ignoreName:true)]
+        public IEnumerable<Annotation> AnnotationsEnumerable
+        {
+            get
+            {
+                return ListAnnotations().Select(kvp => new Annotation(kvp));
+            }
+        }
+
         public KeyValuePair<string,string>[] ListAnnotations()
         {
             if (_annotations == null)
@@ -227,7 +300,9 @@ namespace pwiz.Skyline.Model
 
         private static IEnumerable<string> SplitNotes(string note)
         {
-            return note.Split(new[] {"\r\n\r\n"}, StringSplitOptions.RemoveEmptyEntries); // Not L10N
+            // ReSharper disable LocalizableElement
+            return note.Split(new[] {"\r\n\r\n"}, StringSplitOptions.RemoveEmptyEntries);
+            // ReSharper restore LocalizableElement
         }
 
         public bool Equals(Annotations other)
@@ -322,18 +397,36 @@ namespace pwiz.Skyline.Model
             return protoAnnotations;
         }
 
-        public static Annotations FromProtoAnnotations(StringPool stringPool, SkylineDocumentProto.Types.Annotations protoAnnotations)
+        public static Annotations FromProtoAnnotations(SkylineDocumentProto.Types.Annotations protoAnnotations)
         {
-            Assume.IsNotNull(stringPool);
             if (protoAnnotations == null)
             {
                 return EMPTY;
             }
             return new Annotations(protoAnnotations.Note, protoAnnotations.Values
                 .Select(value=>new KeyValuePair<string, string>(
-                    stringPool.GetString(value.Name), 
-                    stringPool.GetString(value.TextValue))), 
+                    value.Name, 
+                    value.TextValue)), 
                     protoAnnotations.Color);
+        }
+
+        /// <summary>
+        /// Removes all annotation values whose names are not in the specified Set.
+        /// </summary>
+        public Annotations RetainAnnotationNames(HashSet<string> namesToRetain)
+        {
+            if (_annotations == null)
+            {
+                return this;
+            }
+
+            var newAnnotations = _annotations.Where(kvp => namesToRetain.Contains(kvp.Key)).ToArray();
+            if (newAnnotations.Length == _annotations.Count)
+            {
+                return this;
+            }
+
+            return new Annotations(Note, newAnnotations, ColorIndex);
         }
     }
 }

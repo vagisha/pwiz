@@ -46,6 +46,8 @@ namespace pwiz.SkylineTestFunctional
         {
             TestFilesZip = @"TestFunctional\PeakScoringModelTest.zip";
             RunFunctionalTest();
+
+            Assert.IsFalse(IsRecordMode);   // Make sure this doesn't get committed as true
         }
 
         /// <summary>
@@ -55,17 +57,17 @@ namespace pwiz.SkylineTestFunctional
 
         private readonly string[] SCORES_AND_WEIGHTS =
         {
-            "-15.1397702665673",
-            "True|0.2450|8.5%;False||;False||;True|3.9834|5.5%;True|2.4351|11.4%;True|-0.3654|17.7%;True|0.2842|6.7%;False||;False||;True|4.0887|11.5%;True|10.1119|45.7%;True|0.2570|-16.6%;True|0.2915|6.3%;True|0.2071|6.6%;True|-1.7227|-3.2%;False||;False||;False||;False||;",
-            "True|1.2219|36.9%;False||;False||;False||;True|3.7739|16.1%;True|0.0254|-1.6%;False||;False||;False||;True|5.5237|10.8%;True|10.9832|40.5%;True|-0.0269|1.4%;True|0.1405|2.8%;True|-0.3405|-9.5%;True|1.9959|2.4%;False||;False||;False||;False||;",
-            "-18.6182315183255",
-            "-9.37936230823946",
+            "-14.1764344689507",
+            "True|0.1532|5.7%;False||;True|3.4162|5.3%;True|2.8635|14.0%;True|-0.4625|22.4%;True|0.2158|5.8%;False||;False||;True|3.8557|11.6%;True|10.0079|48.3%;True|0.3344|-23.7%;True|0.2500|6.2%;True|0.2602|8.8%;True|-2.1446|-4.3%;False||;False||;False||;False||;",
+            "True|0.5479|19.8%;False||;True|4.0247|6.1%;False||;True|-0.4378|26.3%;True|0.2784|6.2%;False||;False||;True|4.6641|13.6%;True|10.8428|55.4%;True|0.3545|-29.2%;True|0.3185|7.3%;True|-0.0349|-1.2%;True|-2.1477|-4.2%;False||;False||;False||;False||;",
+            "-14.8785512519375",
+            "-9.37936231171802",
             "True|0.9834|74.8%;True|0.9834|15.7%;False||;True|2.9503|9.5%;False||;False||;False||;",
-            "-11.6384433498956",
+            "-11.6384433459567",
             "True|1.1144|79.9%;True|1.1144|18.5%;False||;True|3.3433|1.6%;False||;False||;False||;",
             "True|0.8633|31.5%;True|2.0177|3.5%;True|6.2170|27.4%;False||;False||;False||;True|7.5352|31.7%;True|-0.1277|5.8%;False||;False||;",
-            "True|0.5606|19.4%;False||;False||;True|4.2627|5.9%;False||;True|-0.3570|21.2%;True|0.3287|7.0%;False||;False||;True|4.6915|12.6%;True|10.8650|52.1%;True|0.2813|-21.6%;True|0.3696|7.7%;True|-0.0418|-1.3%;True|-1.5876|-2.8%;False||;False||;False||;False||;",
-            "True|0.5322|;False|-1.0352|;False||;False||;True|1.4744|;True|0.0430|;True|0.0477|;False|-0.2740|;False||;True|2.0096|;True|7.7726|;True|-0.0566|;True|0.4751|;True|0.5000|;True|0.5000|;False||;False||;False||;False||;False||;False||;False||;False||;",
+            "True|0.5479|19.8%;False||;True|4.0247|6.1%;False||;True|-0.4378|26.3%;True|0.2784|6.2%;False||;False||;True|4.6641|13.6%;True|10.8428|55.4%;True|0.3545|-29.2%;True|0.3185|7.3%;True|-0.0349|-1.2%;True|-2.1477|-4.2%;False||;False||;False||;False||;",
+            "True|0.5322|;False|-1.0352|;False||;True|1.4744|;True|0.0430|;True|0.0477|;False|-0.2740|;False||;True|2.0096|;True|7.7726|;True|-0.0566|;True|0.4751|;True|0.5000|;True|0.5000|;False||;False||;False||;False||;False||;False||;False||;False||;",
         };
 
         protected override void DoTest()
@@ -311,7 +313,7 @@ namespace pwiz.SkylineTestFunctional
         protected void TestIncompatibleDataSet()
         {
             // Define an incompatible model
-            var weights = new[] {0.5322, -1.0352, double.NaN, double.NaN, 1.4744, 0.0430, 0.0477, -0.2740, double.NaN, 
+            var weights = new[] {0.5322, -1.0352, /* double.NaN, */ double.NaN, 1.4744, 0.0430, 0.0477, -0.2740, double.NaN, 
                                  2.0096, 7.7726, -0.0566, 0.4751, 0.5, 0.5, double.NaN, double.NaN, 
                                  double.NaN, double.NaN, double.NaN, double.NaN, double.NaN, double.NaN};
             var parameters = new LinearModelParams(weights, -2.5);
@@ -336,7 +338,7 @@ namespace pwiz.SkylineTestFunctional
                 editDlgTemp.TrainModelClick();
                 // Cell values go back to the standard trained model after we train and enable calculators, 
                 // despite having been loaded with weird values
-                editDlgTemp.SetChecked(3, true);
+                editDlgTemp.SetChecked(2, true);
                 editDlgTemp.TrainModelClick();
                 VerifyCellValues(editDlgTemp, SCORES_AND_WEIGHTS[1], 1.0, false);
                 editDlgTemp.CancelDialog();
@@ -363,8 +365,8 @@ namespace pwiz.SkylineTestFunctional
                 // Find missing scores
                 editDlgTemp.PeakScoringModelName = "missing_scores";
                 editDlgTemp.TrainModelClick();
-                editDlgTemp.PeakCalculatorsGrid.SelectRow(3);
-                editDlgTemp.FindMissingValues(3);
+                editDlgTemp.PeakCalculatorsGrid.SelectRow(2);   // Retention times
+                editDlgTemp.FindMissingValues(2);
                 editDlgTemp.OkDialog();
             });
             var missingPeptides = new List<string> { "LGGNEQVTR", "IPVDSIYSPVLK", "YFNDGDIVEGTIVK", 
@@ -389,16 +391,16 @@ namespace pwiz.SkylineTestFunctional
             RunEditPeakScoringDlg("missing_scores", editDlgTemp =>
             {
                 // No missing values for these scores any more
-                Assert.IsTrue(editDlgTemp.IsActiveCell(3, 0));
+                Assert.IsTrue(editDlgTemp.IsActiveCell(2, 0));
+                Assert.IsTrue(editDlgTemp.IsActiveCell(8, 0));
                 Assert.IsTrue(editDlgTemp.IsActiveCell(9, 0));
                 Assert.IsTrue(editDlgTemp.IsActiveCell(10, 0));
-                Assert.IsTrue(editDlgTemp.IsActiveCell(11, 0));
                
                 // But they aren't automatically enabled
-                Assert.IsFalse(editDlgTemp.PeakCalculatorsGrid.Items[3].IsEnabled);
+                Assert.IsFalse(editDlgTemp.PeakCalculatorsGrid.Items[2].IsEnabled);
+                Assert.IsFalse(editDlgTemp.PeakCalculatorsGrid.Items[8].IsEnabled);
                 Assert.IsFalse(editDlgTemp.PeakCalculatorsGrid.Items[9].IsEnabled);
                 Assert.IsFalse(editDlgTemp.PeakCalculatorsGrid.Items[10].IsEnabled);
-                Assert.IsFalse(editDlgTemp.PeakCalculatorsGrid.Items[11].IsEnabled);
                 editDlgTemp.SetChecked(10, true);
                 editDlgTemp.TrainModelClick();
                 editDlgTemp.OkDialog();

@@ -19,16 +19,19 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
+using SkylineTester.Properties;
 
 namespace SkylineTester
 {
     static class Program
     {
         public static bool IsRunning { get; private set; }
+        public static bool UserKilledTestRun { get; set; }
 
         /// <summary>
         /// The main entry point for the application.
@@ -36,6 +39,25 @@ namespace SkylineTester
         [STAThread]
         static void Main(string[] args)
         {
+            // The current recommendation from MSFT for future-proofing HTTPS https://docs.microsoft.com/en-us/dotnet/framework/network-programming/tls
+            // is don't specify TLS levels at all, let the OS decide. But we worry that this will mess up Win7 and Win8 installs, so we continue to specify explicitly
+            try
+            {
+                var Tls13 = (SecurityProtocolType)12288; // From decompiled SecurityProtocolType - compiler has no definition for some reason
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12 | Tls13;
+            }
+            catch (NotSupportedException)
+            {
+                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12; // Probably an older Windows Server
+            }
+
+            if (Settings.Default.SettingsUpgradeRequired)
+            {
+                Settings.Default.Upgrade();
+                Settings.Default.SettingsUpgradeRequired = false;
+                Settings.Default.Save();
+            }
+
             // The SkylineTester installation puts SkylineTester one directory too high.
             var nestedDirectory = Path.Combine(
                 Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "",
@@ -53,25 +75,40 @@ namespace SkylineTester
                     }
                 };
                 restartSkylineTester.Start();
-                return;
+                ExitWithStatusCodeForSkylineNightly();
             }
 
             if (args.Length == 1 && args[0].EndsWith(".zip"))
             {
-                AllocConsole();
-                CreateZipInstallerWindow.CreateZipFile(args[0]);
-                Thread.Sleep(2000);
-                return;
+                try
+                {
+                    AttachConsole(ATTACH_PARENT_PROCESS);
+                    CreateZipInstallerWindow.CreateZipFile(args[0]);
+                    Thread.Sleep(2000);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("FAILURE: Installer zip file \"{0}\" not created:", args[0]);
+                    Console.WriteLine(e);
+                    Environment.Exit(2);
+                }
+                ExitWithStatusCodeForSkylineNightly();
             }
 
             IsRunning = true;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             Application.Run(new SkylineTesterWindow(args));
+            ExitWithStatusCodeForSkylineNightly();
         }
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        static extern bool AllocConsole();
+        private static void ExitWithStatusCodeForSkylineNightly()
+        {
+            Environment.Exit(UserKilledTestRun ? 0xDEAD : 0);
+        }
 
+        [DllImport("kernel32.dll")]
+        static extern bool AttachConsole(int dwProcessId);
+        private const int ATTACH_PARENT_PROCESS = -1;
     }
 }

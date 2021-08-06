@@ -34,14 +34,26 @@ namespace pwiz.Skyline.ToolsUI
             this.listboxServers = new System.Windows.Forms.ListBox();
             this.lblServers = new System.Windows.Forms.Label();
             this.btnEditServers = new System.Windows.Forms.Button();
-            this.tabChorus = new System.Windows.Forms.TabPage();
-            this.listBoxChorusAccounts = new System.Windows.Forms.ListBox();
-            this.lblChorusAccounts = new System.Windows.Forms.Label();
-            this.btnEditChorusAccountList = new System.Windows.Forms.Button();
+            this.tabRemote = new System.Windows.Forms.TabPage();
+            this.listBoxRemoteAccounts = new System.Windows.Forms.ListBox();
+            this.lblRemoteAccounts = new System.Windows.Forms.Label();
+            this.btnEditRemoteAccountList = new System.Windows.Forms.Button();
+            this.tabProsit = new System.Windows.Forms.TabPage();
+            this.ceLabel = new System.Windows.Forms.Label();
+            this.ceCombo = new System.Windows.Forms.ComboBox();
+            this.prositServerStatusLabel = new System.Windows.Forms.Label();
+            this.label3 = new System.Windows.Forms.Label();
+            this.iRTModelCombo = new System.Windows.Forms.ComboBox();
+            this.label2 = new System.Windows.Forms.Label();
+            this.intensityModelCombo = new System.Windows.Forms.ComboBox();
+            this.prositServerLabel = new System.Windows.Forms.Label();
+            this.prositDescrLabel = new System.Windows.Forms.LinkLabel();
+            this.pictureBox1 = new System.Windows.Forms.PictureBox();
             this.tabLanguage = new System.Windows.Forms.TabPage();
             this.labelDisplayLanguage = new System.Windows.Forms.Label();
             this.listBoxLanguages = new System.Windows.Forms.ListBox();
             this.tabMisc = new System.Windows.Forms.TabPage();
+            this.btnResetSettings = new System.Windows.Forms.Button();
             this.comboCompactFormatOption = new System.Windows.Forms.ComboBox();
             this.lblCompactDocumentFormat = new System.Windows.Forms.Label();
             this.checkBoxShowWizard = new System.Windows.Forms.CheckBox();
@@ -51,9 +63,12 @@ namespace pwiz.Skyline.ToolsUI
             this.powerOfTenCheckBox = new System.Windows.Forms.CheckBox();
             this.btnCancel = new System.Windows.Forms.Button();
             this.btnOK = new System.Windows.Forms.Button();
+            this.tbxPrositServer = new System.Windows.Forms.TextBox();
             this.tabControl.SuspendLayout();
             this.tabPanorama.SuspendLayout();
-            this.tabChorus.SuspendLayout();
+            this.tabRemote.SuspendLayout();
+            this.tabProsit.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).BeginInit();
             this.tabLanguage.SuspendLayout();
             this.tabMisc.SuspendLayout();
             this.tabDisplay.SuspendLayout();
@@ -63,7 +78,8 @@ namespace pwiz.Skyline.ToolsUI
             // 
             resources.ApplyResources(this.tabControl, "tabControl");
             this.tabControl.Controls.Add(this.tabPanorama);
-            this.tabControl.Controls.Add(this.tabChorus);
+            this.tabControl.Controls.Add(this.tabRemote);
+            this.tabControl.Controls.Add(this.tabProsit);
             this.tabControl.Controls.Add(this.tabLanguage);
             this.tabControl.Controls.Add(this.tabMisc);
             this.tabControl.Controls.Add(this.tabDisplay);
@@ -98,33 +114,113 @@ namespace pwiz.Skyline.ToolsUI
             this.btnEditServers.UseVisualStyleBackColor = true;
             this.btnEditServers.Click += new System.EventHandler(this.btnEditServers_Click);
             // 
-            // tabChorus
+            // tabRemote
             // 
-            this.tabChorus.Controls.Add(this.listBoxChorusAccounts);
-            this.tabChorus.Controls.Add(this.lblChorusAccounts);
-            this.tabChorus.Controls.Add(this.btnEditChorusAccountList);
-            resources.ApplyResources(this.tabChorus, "tabChorus");
-            this.tabChorus.Name = "tabChorus";
-            this.tabChorus.UseVisualStyleBackColor = true;
+            this.tabRemote.Controls.Add(this.listBoxRemoteAccounts);
+            this.tabRemote.Controls.Add(this.lblRemoteAccounts);
+            this.tabRemote.Controls.Add(this.btnEditRemoteAccountList);
+            resources.ApplyResources(this.tabRemote, "tabRemote");
+            this.tabRemote.Name = "tabRemote";
+            this.tabRemote.UseVisualStyleBackColor = true;
             // 
-            // listBoxChorusAccounts
+            // listBoxRemoteAccounts
             // 
-            resources.ApplyResources(this.listBoxChorusAccounts, "listBoxChorusAccounts");
-            this.listBoxChorusAccounts.FormattingEnabled = true;
-            this.listBoxChorusAccounts.Name = "listBoxChorusAccounts";
-            this.listBoxChorusAccounts.SelectionMode = System.Windows.Forms.SelectionMode.None;
+            resources.ApplyResources(this.listBoxRemoteAccounts, "listBoxRemoteAccounts");
+            this.listBoxRemoteAccounts.FormattingEnabled = true;
+            this.listBoxRemoteAccounts.Name = "listBoxRemoteAccounts";
+            this.listBoxRemoteAccounts.SelectionMode = System.Windows.Forms.SelectionMode.None;
             // 
-            // lblChorusAccounts
+            // lblRemoteAccounts
             // 
-            resources.ApplyResources(this.lblChorusAccounts, "lblChorusAccounts");
-            this.lblChorusAccounts.Name = "lblChorusAccounts";
+            resources.ApplyResources(this.lblRemoteAccounts, "lblRemoteAccounts");
+            this.lblRemoteAccounts.Name = "lblRemoteAccounts";
             // 
-            // btnEditChorusAccountList
+            // btnEditRemoteAccountList
             // 
-            resources.ApplyResources(this.btnEditChorusAccountList, "btnEditChorusAccountList");
-            this.btnEditChorusAccountList.Name = "btnEditChorusAccountList";
-            this.btnEditChorusAccountList.UseVisualStyleBackColor = true;
-            this.btnEditChorusAccountList.Click += new System.EventHandler(this.btnEditChorusAccountList_Click);
+            resources.ApplyResources(this.btnEditRemoteAccountList, "btnEditRemoteAccountList");
+            this.btnEditRemoteAccountList.Name = "btnEditRemoteAccountList";
+            this.btnEditRemoteAccountList.UseVisualStyleBackColor = true;
+            this.btnEditRemoteAccountList.Click += new System.EventHandler(this.btnEditRemoteAccountList_Click);
+            // 
+            // tabProsit
+            // 
+            this.tabProsit.Controls.Add(this.tbxPrositServer);
+            this.tabProsit.Controls.Add(this.ceLabel);
+            this.tabProsit.Controls.Add(this.ceCombo);
+            this.tabProsit.Controls.Add(this.prositServerStatusLabel);
+            this.tabProsit.Controls.Add(this.label3);
+            this.tabProsit.Controls.Add(this.iRTModelCombo);
+            this.tabProsit.Controls.Add(this.label2);
+            this.tabProsit.Controls.Add(this.intensityModelCombo);
+            this.tabProsit.Controls.Add(this.prositServerLabel);
+            this.tabProsit.Controls.Add(this.prositDescrLabel);
+            this.tabProsit.Controls.Add(this.pictureBox1);
+            resources.ApplyResources(this.tabProsit, "tabProsit");
+            this.tabProsit.Name = "tabProsit";
+            this.tabProsit.UseVisualStyleBackColor = true;
+            // 
+            // ceLabel
+            // 
+            resources.ApplyResources(this.ceLabel, "ceLabel");
+            this.ceLabel.Name = "ceLabel";
+            // 
+            // ceCombo
+            // 
+            this.ceCombo.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.ceCombo.FormattingEnabled = true;
+            resources.ApplyResources(this.ceCombo, "ceCombo");
+            this.ceCombo.Name = "ceCombo";
+            // 
+            // prositServerStatusLabel
+            // 
+            resources.ApplyResources(this.prositServerStatusLabel, "prositServerStatusLabel");
+            this.prositServerStatusLabel.Name = "prositServerStatusLabel";
+            // 
+            // label3
+            // 
+            resources.ApplyResources(this.label3, "label3");
+            this.label3.Name = "label3";
+            // 
+            // iRTModelCombo
+            // 
+            this.iRTModelCombo.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.iRTModelCombo.FormattingEnabled = true;
+            resources.ApplyResources(this.iRTModelCombo, "iRTModelCombo");
+            this.iRTModelCombo.Name = "iRTModelCombo";
+            this.iRTModelCombo.SelectedIndexChanged += new System.EventHandler(this.iRTModelCombo_SelectedIndexChanged);
+            // 
+            // label2
+            // 
+            resources.ApplyResources(this.label2, "label2");
+            this.label2.Name = "label2";
+            // 
+            // intensityModelCombo
+            // 
+            this.intensityModelCombo.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDownList;
+            this.intensityModelCombo.FormattingEnabled = true;
+            resources.ApplyResources(this.intensityModelCombo, "intensityModelCombo");
+            this.intensityModelCombo.Name = "intensityModelCombo";
+            this.intensityModelCombo.SelectedIndexChanged += new System.EventHandler(this.intensityModelCombo_SelectedIndexChanged);
+            // 
+            // prositServerLabel
+            // 
+            resources.ApplyResources(this.prositServerLabel, "prositServerLabel");
+            this.prositServerLabel.Name = "prositServerLabel";
+            // 
+            // prositDescrLabel
+            // 
+            resources.ApplyResources(this.prositDescrLabel, "prositDescrLabel");
+            this.prositDescrLabel.Name = "prositDescrLabel";
+            this.prositDescrLabel.TabStop = true;
+            this.prositDescrLabel.UseCompatibleTextRendering = true;
+            this.prositDescrLabel.LinkClicked += new System.Windows.Forms.LinkLabelLinkClickedEventHandler(this.prositDescrLabel_LinkClicked);
+            // 
+            // pictureBox1
+            // 
+            this.pictureBox1.Image = global::pwiz.Skyline.Properties.Resources.prosit_logo_dark_blue;
+            resources.ApplyResources(this.pictureBox1, "pictureBox1");
+            this.pictureBox1.Name = "pictureBox1";
+            this.pictureBox1.TabStop = false;
             // 
             // tabLanguage
             // 
@@ -147,12 +243,20 @@ namespace pwiz.Skyline.ToolsUI
             // 
             // tabMisc
             // 
+            this.tabMisc.Controls.Add(this.btnResetSettings);
             this.tabMisc.Controls.Add(this.comboCompactFormatOption);
             this.tabMisc.Controls.Add(this.lblCompactDocumentFormat);
             this.tabMisc.Controls.Add(this.checkBoxShowWizard);
             resources.ApplyResources(this.tabMisc, "tabMisc");
             this.tabMisc.Name = "tabMisc";
             this.tabMisc.UseVisualStyleBackColor = true;
+            // 
+            // btnResetSettings
+            // 
+            resources.ApplyResources(this.btnResetSettings, "btnResetSettings");
+            this.btnResetSettings.Name = "btnResetSettings";
+            this.btnResetSettings.UseVisualStyleBackColor = true;
+            this.btnResetSettings.Click += new System.EventHandler(this.btnResetSettings_Click);
             // 
             // comboCompactFormatOption
             // 
@@ -214,6 +318,12 @@ namespace pwiz.Skyline.ToolsUI
             this.btnOK.Name = "btnOK";
             this.btnOK.UseVisualStyleBackColor = true;
             // 
+            // tbxPrositServer
+            // 
+            resources.ApplyResources(this.tbxPrositServer, "tbxPrositServer");
+            this.tbxPrositServer.Name = "tbxPrositServer";
+            this.tbxPrositServer.ReadOnly = true;
+            // 
             // ToolOptionsUI
             // 
             this.AcceptButton = this.btnOK;
@@ -227,11 +337,15 @@ namespace pwiz.Skyline.ToolsUI
             this.MinimizeBox = false;
             this.Name = "ToolOptionsUI";
             this.ShowInTaskbar = false;
+            this.Shown += new System.EventHandler(this.ToolOptionsUI_Shown);
             this.tabControl.ResumeLayout(false);
             this.tabPanorama.ResumeLayout(false);
             this.tabPanorama.PerformLayout();
-            this.tabChorus.ResumeLayout(false);
-            this.tabChorus.PerformLayout();
+            this.tabRemote.ResumeLayout(false);
+            this.tabRemote.PerformLayout();
+            this.tabProsit.ResumeLayout(false);
+            this.tabProsit.PerformLayout();
+            ((System.ComponentModel.ISupportInitialize)(this.pictureBox1)).EndInit();
             this.tabLanguage.ResumeLayout(false);
             this.tabMisc.ResumeLayout(false);
             this.tabMisc.PerformLayout();
@@ -254,10 +368,10 @@ namespace pwiz.Skyline.ToolsUI
         private System.Windows.Forms.TabPage tabLanguage;
         private System.Windows.Forms.ListBox listBoxLanguages;
         private System.Windows.Forms.Label labelDisplayLanguage;
-        private System.Windows.Forms.TabPage tabChorus;
-        private System.Windows.Forms.ListBox listBoxChorusAccounts;
-        private System.Windows.Forms.Label lblChorusAccounts;
-        private System.Windows.Forms.Button btnEditChorusAccountList;
+        private System.Windows.Forms.TabPage tabRemote;
+        private System.Windows.Forms.ListBox listBoxRemoteAccounts;
+        private System.Windows.Forms.Label lblRemoteAccounts;
+        private System.Windows.Forms.Button btnEditRemoteAccountList;
         private System.Windows.Forms.CheckBox checkBoxShowWizard;
         private System.Windows.Forms.TabPage tabDisplay;
         private System.Windows.Forms.CheckBox powerOfTenCheckBox;
@@ -265,5 +379,18 @@ namespace pwiz.Skyline.ToolsUI
         private System.Windows.Forms.Label lblCompactDocumentFormat;
         private System.Windows.Forms.ComboBox comboColorScheme;
         private System.Windows.Forms.Label label1;
+        private System.Windows.Forms.Button btnResetSettings;
+        private System.Windows.Forms.TabPage tabProsit;
+        private System.Windows.Forms.PictureBox pictureBox1;
+        private System.Windows.Forms.LinkLabel prositDescrLabel;
+        private System.Windows.Forms.Label label3;
+        private System.Windows.Forms.ComboBox iRTModelCombo;
+        private System.Windows.Forms.Label label2;
+        private System.Windows.Forms.ComboBox intensityModelCombo;
+        private System.Windows.Forms.Label prositServerLabel;
+        private System.Windows.Forms.Label prositServerStatusLabel;
+        private System.Windows.Forms.Label ceLabel;
+        private System.Windows.Forms.ComboBox ceCombo;
+        private System.Windows.Forms.TextBox tbxPrositServer;
     }
 }

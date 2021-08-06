@@ -20,7 +20,7 @@ using System;
 using System.Data.Common;
 using System.Data.SQLite;
 using System.IO;
-using pwiz.ProteomeDatabase.Util;
+using pwiz.Common.Database.NHibernate;
 using pwiz.Skyline.Properties;
 
 namespace pwiz.Skyline.Util
@@ -71,7 +71,7 @@ namespace pwiz.Skyline.Util
             get
             {
                 if (!IsModified)
-                    return "Unmodified";    // Not L10N
+                    return @"Unmodified";
                 return FileEx.GetElapsedTimeExplanation(FileTime, File.GetLastWriteTime(FilePath));
             }
         }

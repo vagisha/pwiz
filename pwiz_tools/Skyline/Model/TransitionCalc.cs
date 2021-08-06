@@ -27,9 +27,9 @@ namespace pwiz.Skyline.Model
     public static class TransitionCalc
     {
         /// <summary>
-        /// Calculates the matching charge within a tolerance for a mass.
+        /// Calculates the matching charge within a tolerance for a mass, assuming (de)protonation.
         /// </summary>
-        /// <param name="massH">The mass to calculate charge for</param>
+        /// <param name="mass">The mass to calculate charge for (actually massH if !IsCustomIon)</param>
         /// <param name="mz">The desired m/z value the charge should produce</param>
         /// <param name="tolerance">How far off the actual m/z is allowed to be</param>
         /// <param name="isCustomIon">Is this a custom ion formula?</param>
@@ -40,7 +40,7 @@ namespace pwiz.Skyline.Model
         /// <param name="massShift">Mass shift required to to achieve this charge state or zero</param>
         /// <param name="nearestCharge">closest matching charge, useful when return value is null</param>
         /// <returns>A matching charge or null, in which case the closest non-matching charge can be found in the nearestCharge value.</returns>
-        public static int? CalcCharge(double massH, double mz, double tolerance, bool isCustomIon, int minCharge, int maxCharge,
+        public static Adduct CalcCharge(TypedMass mass, double mz, double tolerance, bool isCustomIon, int minCharge, int maxCharge,
             ICollection<int> massShifts, MassShiftType massShiftType, out int massShift, out int nearestCharge)
         {
             Assume.IsTrue(minCharge <= maxCharge);
@@ -54,7 +54,10 @@ namespace pwiz.Skyline.Model
             {
                 if (i != 0) // Avoid z=0 if we're entertaining negative charge states
                 {
-                    double delta = mz - ( isCustomIon ? BioMassCalc.CalculateIonMz(massH, i) : SequenceMassCalc.GetMZ(massH, i) );
+                    double calculatedMz = isCustomIon
+                        ? Adduct.FromChargeProtonated(i).MzFromNeutralMass(mass)
+                        : SequenceMassCalc.GetMZ(mass, i);
+                    double delta = mz - calculatedMz;
                     double deltaAbs = Math.Abs(delta);
                     int potentialShift = (int) Math.Round(deltaAbs);
                     double fractionalDelta = deltaAbs - potentialShift;
@@ -63,21 +66,25 @@ namespace pwiz.Skyline.Model
                         massShift = potentialShift;
                         if (delta < 0)
                             massShift = -massShift;
-                        int? result = i;
+                        var result = i;
                         nearestCharge = i;
-                        return result;
+                        return Adduct.FromCharge(result, isCustomIon ? Adduct.ADDUCT_TYPE.non_proteomic : Adduct.ADDUCT_TYPE.proteomic);
                     }
                     if (deltaAbs < nearestDelta)
                     {
                         nearestDelta = deltaAbs;
                         nearestCharge = i;
                     }
+                    // If the charge is positive and the calculated m/z is smaller than the desired m/z
+                    // increasing the charge further cannot possibly produce a match
+                    if (massShiftType == MassShiftType.none && minCharge > 0 && delta > 0)
+                        break;
                 }
             }
 
             Debug.Assert(nearestCharge != 0);   // Could only happen if min > max
 
-            return null;
+            return Adduct.EMPTY;
         }
 
         private static bool MatchMassShift(int potentialShift, ICollection<int> massShifts, MassShiftType massShiftType)
@@ -91,7 +98,8 @@ namespace pwiz.Skyline.Model
             return (delta <= tolerance);
         }
 
-        public static int? CalcPrecursorCharge(double precursorMassH,
+        public static Adduct CalcPrecursorCharge(TypedMass precursorMassH,
+                                              int? precursorZ,
                                               double precursorMz,
                                               double tolerance,
                                               bool isCustomIon,
@@ -100,19 +108,19 @@ namespace pwiz.Skyline.Model
                                               out int nearestCharge)
         {
             return CalcCharge(precursorMassH, precursorMz, tolerance, isCustomIon,
-                TransitionGroup.MIN_PRECURSOR_CHARGE,
-                TransitionGroup.MAX_PRECURSOR_CHARGE,
+                precursorZ ?? TransitionGroup.MIN_PRECURSOR_CHARGE,
+                precursorZ ?? TransitionGroup.MAX_PRECURSOR_CHARGE,
                 TransitionGroup.MassShifts,
                 isDecoy ? MassShiftType.shift_only : MassShiftType.none,
                 out massShift, out nearestCharge);
         }
 
-        private static int? CalcProductCharge(double productMassH, double productMz, double tolerance, bool isCustomIon,
-                                             int maxCharge, MassShiftType massShiftType, out int massShift, out int nearestCharge)
+        private static Adduct CalcProductCharge(TypedMass productMassH, int? productZ, double productMz, double tolerance, bool isCustomIon,
+                                             Adduct maxCharge, MassShiftType massShiftType, out int massShift, out int nearestCharge)
         {
             return CalcCharge(productMassH, productMz, tolerance, isCustomIon,
-                Transition.MIN_PRODUCT_CHARGE,
-                Math.Min(maxCharge, Transition.MAX_PRODUCT_CHARGE),
+                productZ ?? Transition.MIN_PRODUCT_CHARGE,
+                productZ ?? Math.Min(maxCharge.AdductCharge, Transition.MAX_PRODUCT_CHARGE),
                 Transition.MassShifts,
                 massShiftType,
                 out massShift,
@@ -121,26 +129,39 @@ namespace pwiz.Skyline.Model
 
         public enum MassShiftType { none, shift_only, either }
 
-        public static int CalcProductCharge(double productPrecursorMass,
-                                            int precursorCharge,
-                                            IList<IonType> acceptedIonTypes,
-                                            double[,] productMasses,
-                                            IList<IList<ExplicitLoss>> potentialLosses,
-                                            double productMz,
-                                            double tolerance,
-                                            MassType massType,
-                                            MassShiftType massShiftType,
-                                            out IonType? ionType,
-                                            out int? ordinal,
-                                            out TransitionLosses losses,
-                                            out int massShift)
+        public static Adduct CalcProductCharge(TypedMass productPrecursorMass,
+            int? productZ,
+            Adduct precursorCharge,
+            IList<IonType> acceptedIonTypes,
+            IonTable<TypedMass> productMasses,
+            IList<IList<ExplicitLoss>> potentialLosses,
+            double productMz,
+            double tolerance,
+            MassType massType,
+            MassShiftType massShiftType,
+            out IonType? ionType,
+            out int? ordinal,
+            out TransitionLosses losses,
+            out int massShift)
         {
             // Get length of fragment ion mass array
             int len = productMasses.GetLength(1);
 
             // Check all possible ion types and offsets
-            double minDelta = double.MaxValue;
-            int bestCharge = 0;
+            double? minDelta = null;
+            double? minFragmentMass = null, maxFragmentMass = null, maxLoss = null;
+            if (massShiftType == MassShiftType.none)
+            {
+                if (!productZ.HasValue)
+                    minFragmentMass = productMz - tolerance;
+                else
+                {
+                    minFragmentMass = SequenceMassCalc.GetMH(productMz - tolerance, productZ.Value);
+                    maxFragmentMass = SequenceMassCalc.GetMH(productMz + tolerance, productZ.Value);
+                }
+            }
+
+            var bestCharge = Adduct.EMPTY;
             IonType? bestIonType = null;
             int? bestOrdinal = null;
             TransitionLosses bestLosses = null;
@@ -149,19 +170,24 @@ namespace pwiz.Skyline.Model
             // Check to see if it is the precursor
             foreach (var lossesTrial in TransitionGroup.CalcTransitionLosses(IonType.precursor, 0, massType, potentialLosses))
             {
-                double productMass = productPrecursorMass - (lossesTrial != null ? lossesTrial.Mass : 0);
+                var productMass = productPrecursorMass;
+                if (lossesTrial != null)
+                {
+                    productMass -= lossesTrial.Mass;
+                    maxLoss = Math.Max(maxLoss ?? 0, lossesTrial.Mass);
+                }
                 int potentialMassShift;
                 int nearestCharge;
-                int? charge = CalcProductCharge(productMass, productMz, tolerance, false, precursorCharge,
+                var charge = CalcProductCharge(productMass, productZ, productMz, tolerance, false, precursorCharge,
                                                massShiftType, out potentialMassShift, out nearestCharge);
-                if (charge.HasValue && charge.Value == precursorCharge)
+                if (Equals(charge, precursorCharge))
                 {
-                    double potentialMz = SequenceMassCalc.GetMZ(productMass, charge.Value) + potentialMassShift;
+                    double potentialMz = SequenceMassCalc.GetMZ(productMass, charge) + potentialMassShift;
                     double delta = Math.Abs(productMz - potentialMz);
 
                     if (CompareIonMatch(delta, lossesTrial, potentialMassShift, minDelta, bestLosses, bestMassShift) < 0)
                     {
-                        bestCharge = charge.Value;
+                        bestCharge = charge;
                         bestIonType = IonType.precursor;
                         bestOrdinal = len + 1;
                         bestLosses = lossesTrial;
@@ -172,6 +198,9 @@ namespace pwiz.Skyline.Model
                 }
             }
 
+            if (maxLoss.HasValue)
+                maxFragmentMass += maxLoss.Value;
+
             var categoryLast = -1;
             foreach (var typeAccepted in GetIonTypes(acceptedIonTypes))
             {
@@ -180,33 +209,42 @@ namespace pwiz.Skyline.Model
 
                 // Types have priorities.  If changing type category, and there is already a
                 // suitable answer stop looking.
-                if (category != categoryLast && MatchMz(minDelta, tolerance))
+                if (category != categoryLast && minDelta.HasValue && MatchMz(minDelta.Value, tolerance))
                     break;
                 categoryLast = category;
 
-                for (int offset = 0; offset < len; offset++)
+                // The peptide length is 1 longer than the mass array
+                for (int ord = len; ord > 0; ord--)
                 {
+                    int offset = Transition.OrdinalToOffset(type, ord, len + 1);
+                    var productMassBase = productMasses[type, offset];
+                    // Until below the maximum fragment mass no possible matches
+                    if (maxFragmentMass.HasValue && productMassBase > maxFragmentMass.Value)
+                        continue;
+                    // Once below the minimum fragment mass no more possible matches, so stop
+                    if (minFragmentMass.HasValue && productMassBase < minFragmentMass.Value)
+                        break;
+
                     foreach (var lossesTrial in TransitionGroup.CalcTransitionLosses(type, offset, massType, potentialLosses))
                     {
                         // Look for the closest match.
-                        double productMass = productMasses[(int) type, offset];
+                        var productMass = productMassBase;
                         if (lossesTrial != null)
                             productMass -= lossesTrial.Mass;
                         int potentialMassShift;
                         int nearestCharge;
-                        int? chargeFound = CalcProductCharge(productMass, productMz, tolerance, false, precursorCharge,
+                        var chargeFound = CalcProductCharge(productMass, productZ, productMz, tolerance, false, precursorCharge,
                                                        massShiftType, out potentialMassShift, out nearestCharge);
-                        if (chargeFound.HasValue)
+                        if (!chargeFound.IsEmpty)
                         {
-                            int charge = chargeFound.Value;
+                            var charge = chargeFound;
                             double potentialMz = SequenceMassCalc.GetMZ(productMass, charge) + potentialMassShift;
                             double delta = Math.Abs(productMz - potentialMz);
                             if (CompareIonMatch(delta, lossesTrial, potentialMassShift, minDelta, bestLosses, bestMassShift) < 0)
                             {
                                 bestCharge = charge;
                                 bestIonType = type;
-                                // The peptide length is 1 longer than the mass array
-                                bestOrdinal = Transition.OffsetToOrdinal(type, offset, len + 1);
+                                bestOrdinal = ord;
                                 bestLosses = lossesTrial;
                                 bestMassShift = potentialMassShift;
 
@@ -225,31 +263,39 @@ namespace pwiz.Skyline.Model
         }
 
         private static int CompareIonMatch(double delta, TransitionLosses losses, int shift,
-            double bestDelta, TransitionLosses bestLosses, int bestShift)
+            double? bestDelta, TransitionLosses bestLosses, int bestShift)
         {
+            if (!bestDelta.HasValue)
+            {
+                return -1;
+            }
             // No shift is always better (less than) a shift
             if ((shift == 0) != (bestShift == 0))
-                return shift > 0 ? -1 : 1;
+                return shift == 0 ? -1 : 1;
             // No losses is always better (less than) losses
             if ((losses == null) != (bestLosses == null))
-                return losses != null ? -1 : 1;
+                return losses == null ? -1 : 1;
             // Otherise, compare the deltas
             return delta.CompareTo(bestDelta);
         }
 
         private static IEnumerable<IonTypeAccepted> GetIonTypes(IList<IonType> acceptedIonTypes)
         {
-            foreach (var ionType in acceptedIonTypes)
-            {
-                if (ionType != IonType.precursor)   // Precursor is handled separately
-                    yield return new IonTypeAccepted { IonType = ionType, Accepted = true };
-            }
+            // RECONSIDERED: Let's try only ion type pairs which are possible together
+//            foreach (var ionType in acceptedIonTypes)
+//            {
+//                if (ionType != IonType.precursor)   // Precursor is handled separately
+//                    yield return new IonTypeAccepted { IonType = ionType, Accepted = true };
+//            }
             // CONSIDER: Should we allow types other than the ones in the settings?
             //           We always have, but this also makes it impossible to keep Skyline from
-            //           guessing wierd types like c, x and z, when the problem is something else
-            foreach (var ionType in Transition.ALL_TYPES)
+            //           guessing weird types like c, x and z, when the problem is something else
+            for (int i = 0; i < Transition.PEPTIDE_ION_TYPES.Length; i++)
             {
-                if (!acceptedIonTypes.Contains(ionType))
+                var ionType = Transition.PEPTIDE_ION_TYPES[i];
+                int pairIndex = i % 2 == 0 ? i + 1 : i - 1;
+                var ionTypePair = Transition.PEPTIDE_ION_TYPES[pairIndex];
+                if (acceptedIonTypes.Contains(ionType) || acceptedIonTypes.Contains(ionTypePair))
                     yield return new IonTypeAccepted { IonType = ionType };
             }
         }

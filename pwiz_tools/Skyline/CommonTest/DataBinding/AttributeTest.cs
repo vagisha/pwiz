@@ -16,6 +16,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+using JetBrains.Annotations;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using pwiz.Common.DataBinding;
 using pwiz.Common.DataBinding.Attributes;
@@ -38,16 +40,17 @@ namespace CommonTest.DataBinding
             var coldescRetentionTime = coldescRoot.ResolveChild("RetentionTime");
             var coldescMinRetentionTime = coldescRetentionTime.ResolveChild("Min");
             var coldescMeanRetentionTime = coldescRetentionTime.ResolveChild("Mean");
-            Assert.AreEqual("MinRetentionTime", dataSchema.GetColumnCaption(coldescMinRetentionTime).InvariantCaption);
-            Assert.AreEqual("AverageRetentionTime", dataSchema.GetColumnCaption(coldescMeanRetentionTime).InvariantCaption);
+            Assert.AreEqual("MinRetentionTime", dataSchema.GetColumnCaption(coldescMinRetentionTime).GetCaption(DataSchemaLocalizer.INVARIANT));
+            Assert.AreEqual("AverageRetentionTime", dataSchema.GetColumnCaption(coldescMeanRetentionTime).GetCaption(DataSchemaLocalizer.INVARIANT));
             var coldescParent = coldescRoot.ResolveChild("Parent");
             var coldescParentRetentionTime = coldescParent.ResolveChild("RetentionTime");
             var coldescParentMeanRetentionTime = coldescParentRetentionTime.ResolveChild("Mean");
-            Assert.AreEqual("Parent", dataSchema.GetColumnCaption(coldescParent).InvariantCaption);
-            Assert.AreEqual("ParentRetentionTime", dataSchema.GetColumnCaption(coldescParentRetentionTime).InvariantCaption);
-            Assert.AreEqual("ParentAverageRetentionTime", dataSchema.GetColumnCaption(coldescParentMeanRetentionTime).InvariantCaption);
+            Assert.AreEqual("Parent", dataSchema.GetColumnCaption(coldescParent).GetCaption(DataSchemaLocalizer.INVARIANT));
+            Assert.AreEqual("ParentRetentionTime", dataSchema.GetColumnCaption(coldescParentRetentionTime).GetCaption(DataSchemaLocalizer.INVARIANT));
+            Assert.AreEqual("ParentAverageRetentionTime", dataSchema.GetColumnCaption(coldescParentMeanRetentionTime).GetCaption(DataSchemaLocalizer.INVARIANT));
         }
 
+        [UsedImplicitly]
         class Stats
         {
             public double Min { get; set; }

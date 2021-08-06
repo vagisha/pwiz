@@ -17,48 +17,29 @@
  * limitations under the License.
  */
 
-using System.IO;
-using System.Reflection;
+using JetBrains.Profiler.Api;
 
+// ReSharper disable LocalizableElement
 namespace TestRunner
 {
     /// <summary>
-    /// MemoryProfiler creates memory snapshots if the SciTech Memory Profiler is running.
+    /// MemoryProfiler creates memory snapshots if the JetBrains DotMemory is running.
     /// </summary>
     public static class MemoryProfiler
     {
-        private const string PROFILER4_DLL = @"C:\Program Files\SciTech\NetMemProfiler4\Redist\MemProfiler2.dll";    // Not L10N
-        private const string PROFILER5_DLL = @"C:\Program Files\SciTech\NetMemProfiler5\Redist\MemProfiler2.dll";    // Not L10N
-        private const string PROFILER_TYPE = "SciTech.NetMemProfiler.MemProfiler";   // Not L10N
-
-        private static readonly MethodInfo FULL_SNAP_SHOT;
-
-        static MemoryProfiler()
-        {
-            var profilerDll =
-                File.Exists(PROFILER5_DLL) ? PROFILER5_DLL :
-                File.Exists(PROFILER4_DLL) ? PROFILER4_DLL :
-                null;
-            if (profilerDll != null)
-            {
-                var profilerAssembly = Assembly.LoadFrom(profilerDll);
-                var profiler = profilerAssembly.GetType(PROFILER_TYPE);
-                if (profiler != null && (bool) profiler.GetMethod("get_IsProfiling").Invoke(null, null))
-                {
-                    FULL_SNAP_SHOT = profiler.GetMethod("FullSnapShot", new []{typeof(string)});
-                }
-            }
-        }
-
         /// <summary>
-        /// Take a memory shapshot.
+        /// Take a memory snapshot.
         /// </summary>
         public static void Snapshot(string name)
         {
-            if (FULL_SNAP_SHOT != null)
+            if (0 != (JetBrains.Profiler.Api.MemoryProfiler.GetFeatures() & MemoryFeatures.Ready))
             {
-                FULL_SNAP_SHOT.Invoke(null, new object[]{name});
+                // Uncomment to start collecting the stack traces of all allocations.
+                //JetBrains.Profiler.Api.MemoryProfiler.CollectAllocations(true);
+
+                JetBrains.Profiler.Api.MemoryProfiler.GetSnapshot(name);
             }
+            // Consider: support other types of profilers.
         }
     }
 }

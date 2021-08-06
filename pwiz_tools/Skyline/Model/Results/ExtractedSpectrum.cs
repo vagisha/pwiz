@@ -25,17 +25,17 @@ namespace pwiz.Skyline.Model.Results
 {
     public sealed class ExtractedSpectrum
     {
-        public ExtractedSpectrum(string textId,
+        public ExtractedSpectrum(Target target,
                                  Color peptideColor,
                                  SignedMz precursorMz,
-                                 DriftTimeFilter ionMobility,
+                                 IonMobilityFilter ionMobility,
                                  ChromExtractor chromExtractor,
                                  int filterIndex,
                                  SpectrumProductFilter[] productFilters,
                                  float[] intensities,
                                  float[] massErrors)
         {
-            TextId = textId;
+            Target = target;
             PeptideColor = peptideColor;
             PrecursorMz = precursorMz;
             IonMobility = ionMobility;
@@ -46,10 +46,10 @@ namespace pwiz.Skyline.Model.Results
             MassErrors = massErrors;
         }
 
-        public string TextId { get; private set; } // Peptide modified sequence or custom ion id
+        public Target Target { get; private set; } // Peptide modified sequence or custom ion id
         public Color PeptideColor { get; private set; }
         public SignedMz PrecursorMz { get; private set; }
-        public DriftTimeFilter IonMobility { get; private set; }
+        public IonMobilityFilter IonMobility { get; private set; }
         public int FilterIndex { get; private set; }
         public SpectrumProductFilter[] ProductFilters { get; private set; }
         public float[] Intensities { get; private set; }

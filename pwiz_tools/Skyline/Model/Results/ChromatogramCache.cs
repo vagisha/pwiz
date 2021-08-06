@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Original author: Brendan MacLean <brendanx .at. u.washington.edu>,
  *                  MacCoss Lab, Department of Genome Sciences, UW
  *
@@ -26,6 +26,7 @@ using pwiz.Common.Chemistry;
 using pwiz.Common.Collections;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.DocSettings;
+using pwiz.Skyline.Model.Lib;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 
@@ -44,10 +45,10 @@ namespace pwiz.Skyline.Model.Results
         public const CacheFormatVersion FORMAT_VERSION_CACHE_3 = CacheFormatVersion.Three;
         public const CacheFormatVersion FORMAT_VERSION_CACHE_2 = CacheFormatVersion.Two;
 
-        public const string EXT = ".skyd"; // Not L10N
-        public const string PEAKS_EXT = ".peaks"; // Not L10N
-        public const string SCANS_EXT = ".scans"; // Not L10N
-        public const string SCORES_EXT = ".scores"; // Not L10N
+        public const string EXT = ".skyd";
+        public const string PEAKS_EXT = ".peaks";
+        public const string SCANS_EXT = ".scans";
+        public const string SCORES_EXT = ".scores";
 
         public static CacheFormatVersion FORMAT_VERSION_CACHE
         {
@@ -66,7 +67,7 @@ namespace pwiz.Skyline.Model.Results
         public static string FinalPathForName(string documentPath, string name)
         {
             string documentDir = Path.GetDirectoryName(documentPath) ?? string.Empty;
-            string modifier = (name != null ? '_' + name : string.Empty); // Not L10N
+            string modifier = (name != null ? '_' + name : string.Empty);
             return Path.Combine(documentDir,
                 Path.GetFileNameWithoutExtension(documentPath) + modifier + EXT);
         }
@@ -115,6 +116,7 @@ namespace pwiz.Skyline.Model.Results
         private BlockedArray<ChromGroupHeaderInfo> _chromatogramEntries;
         private BlockedArray<ChromTransition> _chromTransitions;
         private BlockedArray<ChromPeak> _chromatogramPeaks;
+        private readonly LibKeyMap<int[]> _chromEntryIndex;
         private readonly Dictionary<Type, int> _scoreTypeIndices;
         private BlockedArray<float> _scores;
         private byte[] _textIdBytes;
@@ -137,6 +139,7 @@ namespace pwiz.Skyline.Model.Results
             _locationScanIds = raw.LocationScanIds;
             _countBytesScanIds = raw.CountBytesScanIds;
             ReadStream = readStream;
+            _chromEntryIndex = MakeChromEntryIndex();
         }
 
         public string CachePath { get; private set; }
@@ -146,7 +149,7 @@ namespace pwiz.Skyline.Model.Results
 
         public IEnumerable<MsDataFileUri> CachedFilePaths
         {
-            get { return CachedFiles.Select(cachedFile => cachedFile.FilePath); }
+            get { return CachedFiles.Select(cachedFile => cachedFile.FilePath.GetLocation()); } // Strip any "?combine_ims=true" etc decoration
         }
 
         /// <summary>
@@ -220,7 +223,7 @@ namespace pwiz.Skyline.Model.Results
         /// </summary>
         private static bool IsCovered(MsDataFileUri path, IEnumerable<ChromatogramCache> caches)
         {
-            return caches.Any(cache => cache.CachedFilePaths.Contains(path));
+            return caches.Any(cache => cache.CachedFilePaths.Contains(path.GetLocation())); // Strip any "?combine_ims=true" etc decoration
         }
 
         public MsDataFileScanIds LoadMSDataFileScanIds(int fileIndex)
@@ -251,27 +254,13 @@ namespace pwiz.Skyline.Model.Results
             float tolerance, ChromatogramSet chromatograms)
         {
             var precursorMz = nodeGroup != null ? nodeGroup.PrecursorMz : SignedMz.ZERO;
-            // First try to find the entry with zero tolerance, since this is the fastest approach
-            // for large proteomewide extractions from DDA or DIA
-            int i = FindEntry(precursorMz, 0);
-            if (i != -1)
-            {
-                tolerance = 0;
-            }
-            else
-            {
-                i = FindEntry(precursorMz, tolerance);
-                if (i == -1)
-                    return new ChromatogramGroupInfo[0];
-            }
-
             double? explicitRT = null;
             if (nodePep != null && nodePep.ExplicitRetentionTime != null)
             {
                 explicitRT = nodePep.ExplicitRetentionTime.RetentionTime;
             }
 
-            return GetHeaderInfos(nodePep, precursorMz, explicitRT, tolerance, chromatograms, i);
+            return GetHeaderInfos(nodePep, precursorMz, explicitRT, tolerance, chromatograms);
         }
 
         public bool HasAllIonsChromatograms
@@ -297,6 +286,7 @@ namespace pwiz.Skyline.Model.Results
         {
             return new ChromatogramGroupInfo(chromGroupHeaderInfo,
                                              _scoreTypeIndices,
+                                             _textIdBytes,
                                              _cachedFiles,
                                              _chromTransitions,
                                              _chromatogramPeaks,
@@ -329,26 +319,70 @@ namespace pwiz.Skyline.Model.Results
         }
 
         private IEnumerable<ChromatogramGroupInfo> GetHeaderInfos(PeptideDocNode nodePep, SignedMz precursorMz, double? explicitRT, float tolerance,
-            ChromatogramSet chromatograms, int i)
+            ChromatogramSet chromatograms)
         {
-            // Add entries to a list until they no longer match
+            foreach (int i in ChromatogramIndexesMatching(nodePep, precursorMz, tolerance, chromatograms))
+            {
+                var entry = _chromatogramEntries[i];
+                // If explict retention time info is available, use that to discard obvious mismatches
+                if (!explicitRT.HasValue || // No explicit RT
+                    !entry.StartTime.HasValue || // No time data loaded yet
+                    (entry.StartTime <= explicitRT && explicitRT <= entry.EndTime))
+                    // No overlap
+                {
+                    yield return LoadChromatogramInfo(entry);
+                }
+            }
+        }
+
+        public IEnumerable<int> ChromatogramIndexesMatching(PeptideDocNode nodePep, SignedMz precursorMz,
+            float tolerance, ChromatogramSet chromatograms)
+        {
+            if (nodePep != null && nodePep.IsProteomic && _chromEntryIndex != null)
+            {
+                bool anyFound = false;
+                var key = new LibKey(nodePep.ModifiedTarget, Adduct.EMPTY).LibraryKey;
+                foreach (var chromatogramIndex in _chromEntryIndex.ItemsMatching(key, false).SelectMany(list=>list))
+                {
+                    var entry = _chromatogramEntries[chromatogramIndex];
+                    if (!MatchMz(precursorMz, entry.Precursor, tolerance))
+                    {
+                        continue;
+                    }
+                    if (chromatograms != null &&
+                        !chromatograms.ContainsFile(_cachedFiles[entry.FileIndex]
+                            .FilePath))
+                    {
+                        continue;
+                    }
+                    anyFound = true;
+                    yield return chromatogramIndex;
+                }
+                if (anyFound)
+                {
+                    yield break;
+                }
+            }
+            int i = FindEntry(precursorMz, tolerance);
+            if (i < 0)
+            {
+                yield break;
+            }
             for (; i < _chromatogramEntries.Length; i++)
             {
                 var entry = _chromatogramEntries[i];
                 if (!MatchMz(precursorMz, entry.Precursor, tolerance))
                     break;
+                if (chromatograms != null &&
+                    !chromatograms.ContainsFile(_cachedFiles[entry.FileIndex]
+                        .FilePath))
+                {
+                    continue;
+                }
+
                 if (nodePep != null && !TextIdEqual(entry, nodePep))
                     continue;
-                if (chromatograms != null && !chromatograms.ContainsFile(_cachedFiles[entry.FileIndex].FilePath))
-                    continue;
-                // If explict retention time info is available, use that to discard obvious mismatches
-                if (!explicitRT.HasValue || // No explicit RT
-                    !entry.StartTime.HasValue || // No time data loaded yet
-                    (entry.StartTime <= explicitRT && explicitRT <= entry.EndTime))
-                // No overlap
-                {
-                    yield return LoadChromatogramInfo(entry);
-                }
+                yield return i;
             }
         }
 
@@ -361,27 +395,39 @@ namespace pwiz.Skyline.Model.Results
             if (textIdIndex == -1)
                 return true;
             int textIdLen = entry.TextIdLen;
-            string compareText = nodePep.RawTextId;
-            if (nodePep.Peptide.IsCustomIon)
+            if (nodePep.Peptide.IsCustomMolecule)
             {
-                var compareBytes = Encoding.UTF8.GetBytes(compareText);
-                if (textIdLen != compareBytes.Length)
-                    return false;
-                for (int i = 0; i < textIdLen; i++)
+                if (EqualTextIdBytes(nodePep.CustomMolecule.ToSerializableString(), textIdIndex, textIdLen))
                 {
-                    if (_textIdBytes[textIdIndex + i] != compareBytes[i])
-                        return false;
+                    return true;
                 }
+                // Older .skyd files used just the name of the molecule as the TextId.
+                // We can't rely on the formatversion in the .skyd, because of the way that .skyd files can get merged.
+                if (EqualTextIdBytes(nodePep.CustomMolecule.InvariantName, textIdIndex, textIdLen))
+                {
+                    return true;
+                }
+                return false;
             }
             else
             {
-                if (textIdLen != compareText.Length)
+                var key1 = new PeptideLibraryKey(nodePep.ModifiedSequence, 0);
+                var key2 = new PeptideLibraryKey(Encoding.ASCII.GetString(_textIdBytes, textIdIndex, textIdLen), 0);
+                return LibKeyIndex.KeysMatch(key1, key2);
+            }
+        }
+
+        private bool EqualTextIdBytes(string compareString, int textIdIndex, int textIdLen)
+        {
+            var compareBytes = Encoding.UTF8.GetBytes(compareString);
+            if (compareBytes.Length != textIdLen)
+            {
+                return false;
+            }
+            for (int i = 0; i < textIdLen; i++)
+            {
+                if (_textIdBytes[textIdIndex + i] != compareBytes[i])
                     return false;
-                for (int i = 0; i < textIdLen; i++)
-                {
-                    if (_textIdBytes[textIdIndex + i] != (byte)compareText[i])
-                        return false;
-                }
             }
             return true;
         }
@@ -477,7 +523,7 @@ namespace pwiz.Skyline.Model.Results
                 int offsetPeaks,
                 int offsetScores,
                 long offsetPoints,
-                Dictionary<string, int> dictTextIdToByteIndex,
+                Dictionary<Target, int> dictTextIdToByteIndex,
                 List<byte> listTextIdBytes)
             {
                 var entry = ChromatogramEntries[entryIndex];
@@ -492,13 +538,13 @@ namespace pwiz.Skyline.Model.Results
                 return entry;
             }
             
-            private string GetTextId(int entryIndex)
+            private Target GetTextId(int entryIndex)
             {
                 int textIdIndex = ChromatogramEntries[entryIndex].TextIdIndex;
                 if (textIdIndex == -1)
                     return null;
                 int textIdLen = ChromatogramEntries[entryIndex].TextIdLen;
-                return Encoding.UTF8.GetString(TextIdBytes, textIdIndex, textIdLen);
+                return Target.FromSerializableString(Encoding.UTF8.GetString(TextIdBytes, textIdIndex, textIdLen));
             }
         }
 
@@ -581,15 +627,18 @@ namespace pwiz.Skyline.Model.Results
         private static void Run(MsDataFileUri msDataFileUri, string documentFilePath, string cachePath, IProgressStatus status, ILoadMonitor loader)
         {
             // Arguments for child Skyline process.
-            string importProgressPipe = "SkylineImportProgress-" + Guid.NewGuid();  // Not L10N
+            string importProgressPipe = @"SkylineImportProgress-" + Guid.NewGuid();
             var argsText =
-                "--in=\"" + documentFilePath + "\" " +  // Not L10N
-                "--import-file=\"" + msDataFileUri.GetFilePath() + "\" " +  // Not L10N
-                "--import-file-cache=\"" + cachePath + "\" " +  // Not L10N
-                "--import-progress-pipe=\"" + importProgressPipe + "\" " +  // Not L10N
-                "--import-no-join";  // Not L10N
+                // ReSharper disable LocalizableElement
+                "--in=\"" + documentFilePath + "\" " +
+                "--import-file=\"" + msDataFileUri.GetFilePath() + "\" " +
+                "--import-file-cache=\"" + cachePath + "\" " +
+                "--import-progress-pipe=\"" + importProgressPipe + "\" " +
+                "--import-no-join";
+                // ReSharper restore LocalizableElement
             var psi = new ProcessStartInfo
             {
+                // ReSharper disable once PossibleNullReferenceException
                 FileName = Process.GetCurrentProcess().MainModule.FileName,
                 Arguments = argsText,
                 UseShellExecute = false,
@@ -605,7 +654,7 @@ namespace pwiz.Skyline.Model.Results
 
             var proc = Process.Start(psi);
             if (proc == null)
-                throw new IOException(string.Format("Failure starting {0} command.", psi.FileName)); // Not L10N
+                throw new IOException(string.Format(@"Failure starting {0} command.", psi.FileName));
 
             var reader = new ProcessStreamReader(proc);
             string errorPrefix = Resources.CommandLine_GeneralException_Error___0_.Split('{')[0];
@@ -613,7 +662,7 @@ namespace pwiz.Skyline.Model.Results
             string line;
             while ((line = reader.ReadLine()) != null)
             {
-                var index = line.IndexOf("%%", StringComparison.Ordinal);   // Not L10N
+                var index = line.IndexOf(@"%%", StringComparison.Ordinal);
                 if (index >= 0)
                 {
                     int percentComplete;
@@ -649,10 +698,16 @@ namespace pwiz.Skyline.Model.Results
                 raw = new RawData(CacheFormat.EMPTY);
                 return 0;
             }
+
+            if (cacheHeader.IsCorrupted(stream.Length))
+            {
+                throw new InvalidDataException(Resources.ChromatogramCache_LoadStructs_FileCorrupted);
+            }
+
             var formatVersion = cacheHeader.formatVersion;
             CacheFormat cacheFormat = CacheFormat.FromCacheHeader(cacheHeader);
             raw = new RawData(cacheFormat);
-            if (formatVersion > FORMAT_VERSION_CACHE_8)
+            if (formatVersion > CacheFormatVersion.Eight)
             {
                 raw.LocationScanIds = cacheHeader.locationScanIds;
             }
@@ -674,13 +729,31 @@ namespace pwiz.Skyline.Model.Results
                 int lenPath = cachedFileStruct.lenPath;
                 var filePathBuffer = new byte[lenPath];
                 ReadComplete(stream, filePathBuffer, lenPath);
-                string filePathString = formatVersion > FORMAT_VERSION_CACHE_6
+                string filePathString = formatVersion > CacheFormatVersion.Six
                                       ? Encoding.UTF8.GetString(filePathBuffer, 0, lenPath)
                                       : Encoding.Default.GetString(filePathBuffer, 0, lenPath); // Backward compatibility
                 var filePath = MsDataFileUri.Parse(filePathString);
 
+                string sampleId = null;
+                int lenSampleId = cachedFileStruct.lenSampleId;
+                if (formatVersion > CacheFormatVersion.Thirteen && lenSampleId > 0)
+                {
+                    byte[] sampleIdBuffer = new byte[lenSampleId];
+                    ReadComplete(stream, sampleIdBuffer, lenSampleId);
+                    sampleId = Encoding.UTF8.GetString(sampleIdBuffer, 0, lenSampleId);
+                }
+
+                string serialNumber = null;
+                int lenSerialNumber = cachedFileStruct.lenSerialNumber;
+                if (formatVersion > CacheFormatVersion.Thirteen && lenSerialNumber > 0)
+                {
+                    byte[] serialNumberBuffer = new byte[lenSerialNumber];
+                    ReadComplete(stream, serialNumberBuffer, lenSerialNumber);
+                    serialNumber = Encoding.UTF8.GetString(serialNumberBuffer, 0, lenSerialNumber);
+                }
+
                 string instrumentInfoStr = null;
-                if (formatVersion > FORMAT_VERSION_CACHE_3)
+                if (formatVersion > CacheFormatVersion.Three)
                 {
                     int lenInstrumentInfo = cachedFileStruct.lenInstrumentInfo;
                     byte[] instrumentInfoBuffer = new byte[lenInstrumentInfo];
@@ -700,6 +773,9 @@ namespace pwiz.Skyline.Model.Results
                                                              cachedFileStruct.sizeScanIds,
                                                              cachedFileStruct.locationScanIds,
                                                              cachedFileStruct.ticArea == 0 ? (float?) null : cachedFileStruct.ticArea,
+                                                             ChromCachedFile.IonMobilityUnitsFromFlags(cachedFileStruct.flags),
+                                                             sampleId,
+                                                             serialNumber,
                                                              instrumentInfoList);
             }
 
@@ -721,7 +797,7 @@ namespace pwiz.Skyline.Model.Results
                     chromGroupHeader => chromGroupHeader.ChangeChargeToNegative());
             }
 
-            if (formatVersion > FORMAT_VERSION_CACHE_4)
+            if (formatVersion > CacheFormatVersion.Four)
             {
                 // Read textId bytes (sequence, or custom ion id)
                 raw.TextIdBytes = new byte[cacheHeader.numTextIdBytes];
@@ -732,7 +808,7 @@ namespace pwiz.Skyline.Model.Results
             {
                 raw.TextIdBytes = null;
             }
-            if (formatVersion > FORMAT_VERSION_CACHE_4 && cacheHeader.numScoreTypes > 0)
+            if (formatVersion > CacheFormatVersion.Four && cacheHeader.numScoreTypes > 0)
             {
                 // Read scores
                 raw.ScoreTypes = new Type[cacheHeader.numScoreTypes];
@@ -915,9 +991,14 @@ namespace pwiz.Skyline.Model.Results
             var cachedFileSerializer = cacheFormat.CachedFileSerializer();
             foreach (var cachedFile in chromCachedFiles)
             {
-                var filePathBytes = Encoding.UTF8.GetBytes(cachedFile.FilePath.ToString());
+                var filePath = cachedFile.FilePath;
+                if (formatVersion < CacheFormatVersion.Fourteen)
+                    filePath = filePath.RestoreLegacyParameters(cachedFile.UsedMs1Centroids, cachedFile.UsedMs2Centroids);
+                var filePathBytes = Encoding.UTF8.GetBytes(filePath.ToString());
                 var instrumentInfoBytes =
                     Encoding.UTF8.GetBytes(InstrumentInfoUtil.GetInstrumentInfoString(cachedFile.InstrumentInfoList));
+                var sampleIdBytes = Encoding.UTF8.GetBytes(cachedFile.SampleId ?? string.Empty);
+                var serialNumberBytes = Encoding.UTF8.GetBytes(cachedFile.InstrumentSerialNumber ?? string.Empty);
                 var cachedFileStruct = new CachedFileHeaderStruct
                 {
                     modified = cachedFile.FileWriteTime.ToBinary(),
@@ -929,11 +1010,18 @@ namespace pwiz.Skyline.Model.Results
                     maxIntensity = cachedFile.MaxIntensity,
                     sizeScanIds = cachedFile.SizeScanIds,
                     locationScanIds = cachedFile.LocationScanIds,
-                    ticArea = cachedFile.TicArea.GetValueOrDefault()
+                    ticArea = cachedFile.TicArea.GetValueOrDefault(),
+                    lenSampleId = sampleIdBytes.Length,
+                    lenSerialNumber = serialNumberBytes.Length,
                 };
                 cachedFileSerializer.WriteItems(outStream, new []{cachedFileStruct});
                 // Write variable length buffers
                 outStream.Write(filePathBytes, 0, filePathBytes.Length);
+                if (formatVersion >= CacheFormatVersion.Fourteen)
+                {
+                    outStream.Write(sampleIdBytes, 0, sampleIdBytes.Length);
+                    outStream.Write(serialNumberBytes, 0, serialNumberBytes.Length);
+                }
                 outStream.Write(instrumentInfoBytes, 0, instrumentInfoBytes.Length);
             }
 
@@ -999,7 +1087,7 @@ namespace pwiz.Skyline.Model.Results
                     {
                         Buffer.BlockCopy(bytes, offset, scanIds[source], 0, sizeArrayScanIds);
                         offset += sizeArrayScanIds;
-        }
+                    }
                 }
             }
         }
@@ -1099,18 +1187,24 @@ namespace pwiz.Skyline.Model.Results
                 if (groupInfo.FileIndex != fileIndex)
                     continue;
 
+                IonMobilityValue ionMobilityValue = null;
                 for (int j = 0; j < groupInfo.NumTransitions; j++)
                 {
                     int tranIndex = groupInfo.StartTransitionIndex + j;
                     var tranInfo = _chromTransitions[tranIndex];
                     var product = new SignedMz(tranInfo.Product, groupInfo.NegativeCharge);
                     float extractionWidth = tranInfo.ExtractionWidth;
+                    var units = groupInfo.IonMobilityUnits;
+                    if (units == eIonMobilityUnits.none && extractionWidth != 0)
+                        units = eIonMobilityUnits.drift_time_msec; // Backward compatibility - drift time is all we had before
                     ChromSource source = tranInfo.Source;
+                    ionMobilityValue = ionMobilityValue == null ? 
+                        IonMobilityValue.GetIonMobilityValue(tranInfo.IonMobilityValue, units) :
+                        ionMobilityValue.ChangeIonMobility(tranInfo.IonMobilityValue); // This likely doesn't change from transition to transition, so reuse it
                     ChromKey key = new ChromKey(_textIdBytes, groupInfo.TextIdIndex, groupInfo.TextIdLen,
                         groupInfo.Precursor, product, extractionWidth, 
-                        DriftTimeFilter.GetDriftTimeFilter(tranInfo.DriftTime, tranInfo.DriftTimeExtractionWidth, groupInfo.CollisionalCrossSection),
-                        source, groupInfo.Extractor, true, true,
-                        null, null);    // this provider can't provide these optional times
+                        IonMobilityFilter.GetIonMobilityFilter(ionMobilityValue, tranInfo.IonMobilityExtractionWidth, groupInfo.CollisionalCrossSection),
+                        source, groupInfo.Extractor, true, true);
 
                     int id = groupInfo.HasStatusId ? groupInfo.StatusId : i;
                     int rank = groupInfo.HasStatusRank ? groupInfo.StatusRank : -1;
@@ -1147,6 +1241,7 @@ namespace pwiz.Skyline.Model.Results
                 // Copy the cache, if moving to a new location
                 using (FileSaver fs = new FileSaver(cachePathOpt))
                 {
+                    // ReSharper disable once AssignNullToNotNullAttribute
                     File.Copy(CachePath, fs.SafeName, true);
                     fs.Commit(ReadStream);
                 }
@@ -1224,7 +1319,8 @@ namespace pwiz.Skyline.Model.Results
                             lastEntry.StatusRank,
                             lastEntry.StartTime,
                             lastEntry.EndTime,
-                            lastEntry.CollisionalCrossSection));
+                            lastEntry.CollisionalCrossSection, 
+                            lastEntry.IonMobilityUnits));
                         int start = lastEntry.StartTransitionIndex;
                         int end = start + lastEntry.NumTransitions;
                         for (int j = start; j < end; j++)
@@ -1242,7 +1338,7 @@ namespace pwiz.Skyline.Model.Results
                                 }
                                 else
                                 {
-                                    chromPeakSerializer.WriteItems(fsPeaks.FileStream, peaks.Skip(startIndex).Take(count));    
+                                    chromPeakSerializer.WriteItems(fsPeaks.FileStream, ReadOnlyList.Create(count, index => peaks[startIndex + index]));    
                                 }
                             },
                             start,
@@ -1365,6 +1461,10 @@ namespace pwiz.Skyline.Model.Results
         {
             public bool Equals(ChromatogramCache x, ChromatogramCache y)
             {
+                if (ReferenceEquals(x, null) || ReferenceEquals(y, null))
+                {
+                    return ReferenceEquals(x, null) && ReferenceEquals(y, null);
+                }
                 return Equals(x.CachePath, y.CachePath);
             }
 
@@ -1379,6 +1479,75 @@ namespace pwiz.Skyline.Model.Results
         static ChromatogramCache()
         {
             PathComparer = new PathEqualityComparer();
+        }
+
+        /// <summary>
+        /// Create a map of LibraryKey to the indexes into _chromatogramEntries that have that particular
+        /// TextId.
+        /// </summary>
+        private LibKeyMap<int[]> MakeChromEntryIndex()
+        {
+            if (_textIdBytes == null)
+            {
+                return null;
+            }
+
+            var libraryKeyIndexes= new Dictionary<KeyValuePair<int, int>, int>();
+            List<LibraryKey> libraryKeys = new List<LibraryKey>();
+            List<List<int>> chromGroupIndexes = new List<List<int>>();
+
+            for (int i = 0; i < _chromatogramEntries.Count; i++)
+            {
+                var entry = _chromatogramEntries[i];
+                int textIdIndex = entry.TextIdIndex;
+                int textIdLength = entry.TextIdLen;
+                if (textIdLength == 0)
+                {
+                    continue;
+                }
+                var kvp = new KeyValuePair<int, int>(textIdIndex, textIdLength);
+                int libraryKeyIndex;
+                List<int> chromGroupIndexList;
+                if (libraryKeyIndexes.TryGetValue(kvp, out libraryKeyIndex))
+                {
+                    chromGroupIndexList = chromGroupIndexes[libraryKeyIndex];
+                }
+                else
+                {
+                    libraryKeyIndexes.Add(kvp, libraryKeys.Count);
+                    LibraryKey libraryKey;
+                    if (_textIdBytes[textIdIndex] == '#')
+                    {
+                        var customMolecule =
+                            CustomMolecule.FromSerializableString(Encoding.UTF8.GetString(_textIdBytes, textIdIndex,
+                                textIdLength));
+                        libraryKey = new MoleculeLibraryKey(customMolecule.GetSmallMoleculeLibraryAttributes(), Adduct.EMPTY);
+                    }
+                    else
+                    {
+                        libraryKey =
+                            new PeptideLibraryKey(Encoding.ASCII.GetString(_textIdBytes, textIdIndex, textIdLength), 0);
+                    }
+                    libraryKeys.Add(libraryKey);
+                    chromGroupIndexList = new List<int>();
+                    chromGroupIndexes.Add(chromGroupIndexList);
+                }
+                chromGroupIndexList.Add(i);
+            }
+            return new LibKeyMap<int[]>(
+                ImmutableList.ValueOf(chromGroupIndexes.Select(indexes=>indexes.ToArray())), 
+                libraryKeys);
+        }
+
+        public byte[] GetTextIdBytes(int textIdOffset, int textIdLength)
+        {
+            if (textIdOffset == -1)
+            {
+                return null;
+            }
+            byte[] result = new byte[textIdLength];
+            Array.Copy(_textIdBytes, textIdOffset, result, 0, textIdLength);
+            return result;
         }
     }
 

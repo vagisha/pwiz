@@ -17,12 +17,11 @@
  * limitations under the License.
  */
 
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Text;
+using System.Linq;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.Lib;
+using pwiz.Skyline.Util;
 
 namespace pwiz.Skyline.SettingsUI
 {
@@ -33,50 +32,67 @@ namespace pwiz.Skyline.SettingsUI
     /// in order to correctly display neutral loss ions, display heavy modifications
     /// correctly, and facilitate adding peptides to a document.
     /// </summary>
-    public struct ViewLibraryPepInfo
+    public class ViewLibraryPepInfo : Immutable
     {
-        private const int PEPTIDE_CHARGE_OFFSET = 3;
-        //            private const int PEPTIDE_MODIFICATION_OFFSET_LOWER = 2;
-        //            private const int PEPTIDE_MODIFICATION_OFFSET_UPPER = 1;
-
-        public ViewLibraryPepInfo(LibKey key, ICollection<byte> lookupPool)
-            : this()
+        public ViewLibraryPepInfo(LibKey key, SpectrumHeaderInfo libInfo = null)
         {
             Key = key;
-            IndexLookup = lookupPool.Count;
-            foreach (char aa in key.AminoAcids)
-                lookupPool.Add((byte)aa);
-
-            // Order extra bytes so that a byte-by-byte comparison of the
-            // lookup bytes will order correctly.
-            lookupPool.Add((byte)key.Charge);
-            int countMods = key.ModificationCount;
-            lookupPool.Add((byte)(countMods & 0xFF));
-            lookupPool.Add((byte)((countMods >> 8) & 0xFF)); // probably never non-zero, but to be safe
-            LengthLookup = lookupPool.Count - IndexLookup;
+            LibInfo = libInfo;
+            UnmodifiedTargetText = GetUnmodifiedTargetText(key.LibraryKey);
         }
 
         public LibKey Key { get; private set; }
-        private int IndexLookup { get; set; }
-        private int LengthLookup { get; set; }
+        public SpectrumHeaderInfo LibInfo { get; private set; } // Provides peptide/protein association when available
+        public PeptideDocNode PeptideNode { get; private set; }
 
-        public PeptideDocNode PeptideNode { get; set; }
+        public ViewLibraryPepInfo ChangePeptideNode(PeptideDocNode peptideDocNode)
+        {
+            return ChangeProp(ImClone(this), im => im.PeptideNode = peptideDocNode);
+        }
 
         /// <summary>
         /// The modified peptide string and charge indicator for a spectrum,
-        /// e.g. PEPT[+80]IDER++
+        /// e.g. PEPT[+80]IDER++. This is used by test code that wants to select
+        /// a particular peptide.
         /// </summary>
-        public string DisplayString { get { return Key.ToString(); } }
+        public string AnnotatedDisplayText 
+        {
+            get
+            {
+                var peptideKey = Key.LibraryKey as PeptideLibraryKey;
+                if (peptideKey != null)
+                {
+                    return peptideKey.ModifiedSequence + Transition.GetChargeIndicator(peptideKey.Adduct);
+                }
+                return DisplayText;
+            } 
+        }
+
+        /// <summary>
+        /// Returns the unmodified peptide sequence. This, plus the Adduct is what gets displayed
+        /// in the list box.
+        /// </summary>
+        public string UnmodifiedTargetText { get; private set; }
+
+        public string DisplayText
+        {
+            get
+            {
+                return UnmodifiedTargetText + (Key.Adduct.IsEmpty
+                           ? string.Empty
+                           : Transition.GetChargeIndicator(Key.Adduct));
+            }
+        }
 
         /// <summary>
         /// The charge state of the peptide matched to a spectrum
         /// </summary>
-        public int Charge { get { return Key.Charge; } }
+        public Adduct Adduct { get { return Key.Adduct; } }
 
         /// <summary>
         /// The modified peptide sequence associated with a spectrum
         /// </summary>
-        public string Sequence { get { return Key.Sequence; } }
+        public Target Target { get { return Key.Target; } }
 
         /// <summary>
         /// True if the peptide sequence associated with a spectrum is contains
@@ -91,56 +107,51 @@ namespace pwiz.Skyline.SettingsUI
         public bool HasPeptide { get { return PeptideNode != null; }}
 
         /// <summary>
-        /// Unmodified length of the peptide sequence for a spectrum
+        /// Unmodified length of the peptide sequence or moleculeID for a spectrum
         /// </summary>
-        private int SequenceLength { get { return LengthLookup - PEPTIDE_CHARGE_OFFSET; } }
 
-        /// <summary>
-        /// The plain peptide string, with modifications removed for a spectrum
-        /// </summary>
-        public string GetAASequence(byte[] lookupPool)
+        public SmallMoleculeLibraryAttributes GetSmallMoleculeLibraryAttributes()
         {
-            return Encoding.UTF8.GetString(lookupPool, IndexLookup, SequenceLength);
+            var smallMoleculeKey = Key.LibraryKey as MoleculeLibraryKey;
+            if (smallMoleculeKey == null)
+            {
+                return SmallMoleculeLibraryAttributes.EMPTY;
+            }
+            return smallMoleculeKey.SmallMoleculeLibraryAttributes;
         }
 
         /// <summary>
-        /// The plain peptide string, with modifications removed, and charge indicator
+        /// The moleculeID or plain peptide string, with modifications removed, and charge indicator
         /// for a spectrum
         /// </summary>
-        public string GetPlainDisplayString(byte[] lookupPool)
+        public string GetPlainDisplayString()
         {
-            return (HasPeptide ? PeptideNode.Peptide.Sequence : GetAASequence(lookupPool)) +
-                Transition.GetChargeIndicator(Charge);
+            return DisplayText;
         }
 
-        public static int Compare(ViewLibraryPepInfo p1, ViewLibraryPepInfo p2, IList<byte> lookupPool)
+        public static string GetUnmodifiedTargetText(LibraryKey key)
         {
-            // If they point to the same look-up index, then they are equal.
-            if (p1.IndexLookup == p2.IndexLookup)
-                return 0;
-
-            int lenP1 = p1.SequenceLength;
-            int lenP2 = p2.SequenceLength;
-            // If sequences are equal length compare charge and mod count also
-            int lenCompare = lenP1 == lenP2 ? p1.LengthLookup : Math.Min(lenP1, lenP2);
-            // Compare bytes in the lookup pool
-            for (int i = 0; i < lenCompare; i++)
+            var peptideKey = key as PeptideLibraryKey;
+            if (peptideKey != null)
             {
-                byte b1 = lookupPool[p1.IndexLookup + i];
-                byte b2 = lookupPool[p2.IndexLookup + i];
-                // If unequal bytes are found, compare the bytes
-                if (b1 != b2)
-                    return b1 - b2;
+                return peptideKey.UnmodifiedSequence;
+            }
+            var moleculeKey = key as MoleculeLibraryKey;
+            if (moleculeKey != null)
+            {
+                if (!string.IsNullOrEmpty(moleculeKey.SmallMoleculeLibraryAttributes.MoleculeName))
+                {
+                    return moleculeKey.SmallMoleculeLibraryAttributes.MoleculeName;
+                }
+                return moleculeKey.ToString();
             }
 
-            // If sequence length is not equal, the shorter should be first.
-            if (lenP1 != lenP2)
-                return lenP1 - lenP2;
-
-            // p1 and p2 have the same unmodified sequence, same number
-            // of charges, and same number of modifications. Just 
-            // compare their display strings directly in this case.
-            return Comparer.Default.Compare(p1.DisplayString, p2.DisplayString);
+            var crosslinkKey = key as CrosslinkLibraryKey;
+            if (crosslinkKey != null)
+            {
+                return crosslinkKey.PeptideLibraryKeys.First().UnmodifiedSequence;
+            }
+            return key.ToString();
         }
     }
 }

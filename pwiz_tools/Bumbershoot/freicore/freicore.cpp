@@ -22,23 +22,9 @@
 
 #include "stdafx.h"
 #include "freicore.h"
-#include "svnrev.hpp"
 
 namespace freicore
 {
-
-    int Version::Major()                {return 1;}
-    int Version::Minor()                {return 6;}
-    int Version::Revision()             {return SVN_REV;}
-    string Version::LastModified()      {return SVN_REVDATE;}
-    string Version::str()               
-    {
-        std::ostringstream v;
-        v << Major() << "." << Minor() << "." << Revision();
-        return v.str();
-    }
-
-
     void GetHostname( char* buf, int len )
     {
     #ifdef WIN32
@@ -234,7 +220,7 @@ namespace freicore
         if( fileStream.is_open() )
         {
             string line1;
-            std::getline( fileStream, line1 );
+            getlinePortable( fileStream, line1 );
 
             // Is this an XML file?
             if( line1.find( "<?xml" ) == 0 )
@@ -244,7 +230,7 @@ namespace freicore
                 rootElIdx = line1.find( '<', 1 );
                 while( rootElIdx == string::npos || line1[rootElIdx+1] == '?' || line1[rootElIdx+1] == '!' )
                 {
-                    std::getline( fileStream, line1 );
+                    getlinePortable( fileStream, line1 );
                     rootElIdx = line1.find( '<' );
                 }
                 string rootEl = line1.substr( rootElIdx+1, line1.find_first_of( " >", rootElIdx+2 )-rootElIdx-1 );

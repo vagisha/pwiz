@@ -51,12 +51,12 @@ namespace pwiz.Skyline.FileUI
             this.listToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.detailsToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flowLayoutPanel1 = new System.Windows.Forms.FlowLayoutPanel();
-            this.chorusButton = new System.Windows.Forms.Button();
+            this.remoteAccountsButton = new System.Windows.Forms.Button();
             this.lookInImageList = new System.Windows.Forms.ImageList(this.components);
+            this.recentDocumentsButton = new System.Windows.Forms.Button();
             this.desktopButton = new System.Windows.Forms.Button();
             this.myDocumentsButton = new System.Windows.Forms.Button();
             this.myComputerButton = new System.Windows.Forms.Button();
-            this.recentDocumentsButton = new System.Windows.Forms.Button();
             this.navToolStrip.SuspendLayout();
             this.flowLayoutPanel1.SuspendLayout();
             this.SuspendLayout();
@@ -214,21 +214,21 @@ namespace pwiz.Skyline.FileUI
             resources.ApplyResources(this.flowLayoutPanel1, "flowLayoutPanel1");
             this.flowLayoutPanel1.BackColor = System.Drawing.SystemColors.Window;
             this.flowLayoutPanel1.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
-            this.flowLayoutPanel1.Controls.Add(this.chorusButton);
+            this.flowLayoutPanel1.Controls.Add(this.remoteAccountsButton);
             this.flowLayoutPanel1.Controls.Add(this.recentDocumentsButton);
             this.flowLayoutPanel1.Controls.Add(this.desktopButton);
             this.flowLayoutPanel1.Controls.Add(this.myDocumentsButton);
             this.flowLayoutPanel1.Controls.Add(this.myComputerButton);
             this.flowLayoutPanel1.Name = "flowLayoutPanel1";
             // 
-            // chorusButton
+            // remoteAccountsButton
             // 
-            this.chorusButton.FlatAppearance.BorderSize = 0;
-            resources.ApplyResources(this.chorusButton, "chorusButton");
-            this.chorusButton.ImageList = this.lookInImageList;
-            this.chorusButton.Name = "chorusButton";
-            this.chorusButton.UseVisualStyleBackColor = false;
-            this.chorusButton.Click += new System.EventHandler(this.chorusButton_Click);
+            this.remoteAccountsButton.FlatAppearance.BorderSize = 0;
+            resources.ApplyResources(this.remoteAccountsButton, "remoteAccountsButton");
+            this.remoteAccountsButton.ImageList = this.lookInImageList;
+            this.remoteAccountsButton.Name = "remoteAccountsButton";
+            this.remoteAccountsButton.UseVisualStyleBackColor = false;
+            this.remoteAccountsButton.Click += new System.EventHandler(this.remoteAccountsButton_Click);
             // 
             // lookInImageList
             // 
@@ -245,7 +245,16 @@ namespace pwiz.Skyline.FileUI
             this.lookInImageList.Images.SetKeyName(8, "folder.png");
             this.lookInImageList.Images.SetKeyName(9, "DataProcessing.png");
             this.lookInImageList.Images.SetKeyName(10, "File.png");
-            this.lookInImageList.Images.SetKeyName(11, "Chorus.png");
+            this.lookInImageList.Images.SetKeyName(11, "RemoteAccounts.png");
+            // 
+            // recentDocumentsButton
+            // 
+            this.recentDocumentsButton.FlatAppearance.BorderSize = 0;
+            resources.ApplyResources(this.recentDocumentsButton, "recentDocumentsButton");
+            this.recentDocumentsButton.ImageList = this.lookInImageList;
+            this.recentDocumentsButton.Name = "recentDocumentsButton";
+            this.recentDocumentsButton.UseVisualStyleBackColor = false;
+            this.recentDocumentsButton.Click += new System.EventHandler(this.recentDocumentsButton_Click);
             // 
             // desktopButton
             // 
@@ -273,15 +282,6 @@ namespace pwiz.Skyline.FileUI
             this.myComputerButton.Name = "myComputerButton";
             this.myComputerButton.UseVisualStyleBackColor = false;
             this.myComputerButton.Click += new System.EventHandler(this.myComputerButton_Click);
-            // 
-            // recentDocumentsButton
-            // 
-            this.recentDocumentsButton.FlatAppearance.BorderSize = 0;
-            resources.ApplyResources(this.recentDocumentsButton, "recentDocumentsButton");
-            this.recentDocumentsButton.ImageList = this.lookInImageList;
-            this.recentDocumentsButton.Name = "recentDocumentsButton";
-            this.recentDocumentsButton.UseVisualStyleBackColor = false;
-            this.recentDocumentsButton.Click += new System.EventHandler(this.recentDocumentsButton_Click);
             // 
             // OpenDataSourceDialog
             // 
@@ -337,7 +337,7 @@ namespace pwiz.Skyline.FileUI
         private System.Windows.Forms.ToolStripMenuItem listToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem detailsToolStripMenuItem;
         private System.Windows.Forms.FlowLayoutPanel flowLayoutPanel1;
-        private System.Windows.Forms.Button chorusButton;
+        private System.Windows.Forms.Button remoteAccountsButton;
         private System.Windows.Forms.Button desktopButton;
         private System.Windows.Forms.Button myDocumentsButton;
         private System.Windows.Forms.Button myComputerButton;

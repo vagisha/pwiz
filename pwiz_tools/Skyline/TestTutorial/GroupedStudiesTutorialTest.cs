@@ -37,17 +37,25 @@ namespace pwiz.SkylineTestTutorial
     [TestClass]
     public class GroupedStudiesTutorialTest : AbstractFunctionalTestEx
     {
+        protected override bool UseRawFiles
+        {
+            get { return !ForceMzml && ExtensionTestContext.CanImportAbWiff; }
+        }
+
         [TestMethod]
-        public void TestGroupedStudiesTutorial()
+        [Timeout(60*60*1000)]  // These can take a long time in code coverage mode (1 hour)
+        public void TestGroupedStudiesTutorialDraft()
         {
             // Set true to look at tutorial screenshots.
             //IsPauseForScreenShots = true;
+ForceMzml = (DateTime.Now.DayOfYear % 2) == 0;   // TODO(bspratt) remove this once we're convinced that WIFF isn't the source of leaks and hangs
+
 
             TestFilesZipPaths = new[]
                 {
                     UseRawFiles
                                ? @"https://skyline.gs.washington.edu/tutorials/GroupedStudies.zip"
-                               : @"https://skyline.gs.washington.edu/tutorials/GroupedStudiesMzml.zip",
+                               : @"https://skyline.gs.washington.edu/tutorials/GroupedStudiesMzmlV2.zip", // V2 has updated WIFF->mzML including machine serial #
                     @"TestTutorial\GroupedStudiesViews.zip"
                 };
             RunFunctionalTest();
@@ -72,8 +80,6 @@ namespace pwiz.SkylineTestTutorial
                        : dirPath;
         }
 
-        private bool IsFullData { get { return IsPauseForScreenShots; } }
-
         protected override void DoTest()
         {
             // Configuring Peptide settings p. 4
@@ -94,9 +100,9 @@ namespace pwiz.SkylineTestTutorial
 
             SetTransitionClipboardText(new[] {0, 1, 7, 8});
 
+            PasteTransitionListSkipColumnSelect();
             RunUI(() =>
             {
-                SkylineWindow.Paste();
                 SkylineWindow.CollapsePeptides();
             });
             PauseForScreenShot();

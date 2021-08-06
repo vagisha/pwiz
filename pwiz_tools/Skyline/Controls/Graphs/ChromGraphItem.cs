@@ -21,10 +21,12 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Linq;
+using pwiz.Common.Chemistry;
 using pwiz.MSGraph;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.Results;
+using pwiz.Skyline.Model.Themes;
 using pwiz.Skyline.Properties;
 using ZedGraph;
 
@@ -32,7 +34,7 @@ namespace pwiz.Skyline.Controls.Graphs
 {
     public sealed class ChromGraphItem : AbstractChromGraphItem
     {
-        private const string FONT_FACE = "Arial"; // Not L10N
+        private const string FONT_FACE = "Arial";
 
         private static readonly Color COLOR_BEST_PEAK = Color.Black;
         private static readonly Color COLOR_RETENTION_TIME = Color.Gray;
@@ -40,13 +42,12 @@ namespace pwiz.Skyline.Controls.Graphs
         private static readonly Color COLOR_ALIGNED_MSMSID_TIME = Color.LightBlue;
         private static readonly Color COLOR_UNALIGNED_MSMSID_TIME = Color.Cyan;
         private static readonly Color COLOR_RETENTION_WINDOW = Color.LightGoldenrodYellow;
-        private static readonly Color COLOR_BOUNDARIES = Color.Gray;
+        private static readonly Color COLOR_BOUNDARIES = Color.LightGray;
         private static readonly Color COLOR_BOUNDARIES_BEST = Color.Black;
+        private static readonly Color COLOR_ORIGINAL_PEAK_SHADE = Color.BlueViolet;
 
         private const int MIN_BOUNDARY_DISPLAY_WIDTH = 7;
         private const int MIN_BEST_BOUNDARY_HEIGHT = 20;
-
-        public static Color ColorSelected { get { return Color.Red; } }
 
         private static FontSpec CreateFontSpec(Color color, float size)
         {
@@ -70,6 +71,7 @@ namespace pwiz.Skyline.Controls.Graphs
         private readonly double _bestProduct;
         private readonly bool _isFullScanMs;
         private readonly bool _isSummary;
+        private readonly RawTimesInfoItem? _displayRawTimes;
         private readonly int _step;
 
         private int _bestPeakTimeIndex = -1;
@@ -79,12 +81,13 @@ namespace pwiz.Skyline.Controls.Graphs
                               TransitionDocNode transition,
                               ChromatogramInfo chromatogram,
                               TransitionChromInfo tranPeakInfo,
-                              IRegressionFunction timeRegressionFunction,
+                              RegressionLine timeRegressionFunction,
                               bool[] annotatePeaks,
                               double[] dotProducts,
                               double bestProduct,
                               bool isFullScanMs,
                               bool isSummary,
+                              RawTimesInfoItem? displayRawTimes,
                               int step,
                               Color color,
                               float fontSize,
@@ -107,6 +110,7 @@ namespace pwiz.Skyline.Controls.Graphs
             _bestProduct = bestProduct;
             _isFullScanMs = isFullScanMs;
             _isSummary = isSummary;
+            _displayRawTimes = displayRawTimes;
 
             _arrayLabelIndexes = new int[annotatePeaks.Length];
 
@@ -158,7 +162,7 @@ namespace pwiz.Skyline.Controls.Graphs
         public TransitionDocNode TransitionNode { get; private set; }
         public ChromatogramInfo Chromatogram { get; private set; }
         public TransitionChromInfo TransitionChromInfo { get; private set; }
-        public IRegressionFunction TimeRegressionFunction { get; private set; }
+        public RegressionLine TimeRegressionFunction { get; private set; }
         public ScaledRetentionTime ScaleRetentionTime(double measuredTime)
         {
             return new ScaledRetentionTime(measuredTime, MeasuredTimeToDisplayTime(measuredTime));
@@ -183,6 +187,7 @@ namespace pwiz.Skyline.Controls.Graphs
         public string CurveAnnotation { get; set; }
         public PeptideGraphInfo GraphInfo { get; set; }
         public IdentityPath IdPath { get; set; }
+        public DashStyle? LineDashStyle { get; set; }
 
         internal PeakBoundsDragInfo DragInfo
         {
@@ -219,6 +224,10 @@ namespace pwiz.Skyline.Controls.Graphs
         public override void CustomizeCurve(CurveItem curveItem)
         {
             ((LineItem)curveItem).Line.Width = _width;
+            if (LineDashStyle.HasValue)
+            {
+                ((LineItem)curveItem).Line.Style = LineDashStyle.Value;
+            }
         }
 
         public static string GetTitle(TransitionGroupDocNode transitionGroup, TransitionDocNode transition)
@@ -227,20 +236,20 @@ namespace pwiz.Skyline.Controls.Graphs
             {
                 return GetTitle(transitionGroup);
             }
-            return string.Format("{0}{1} - {2:F04}{3}{4}", transition.FragmentIonName, // Not L10N
+            return string.Format(@"{0}{1} - {2:F04}{3}{4}", transition.FragmentIonName,
                                  Transition.GetMassIndexText(transition.Transition.MassIndex),
                                  transition.Mz,
-                                 Transition.GetChargeIndicator(transition.Transition.Charge),
+                                 Transition.GetChargeIndicator(transition.Transition.Adduct),
                                  transitionGroup.TransitionGroup.LabelTypeText);
         }
         
         public static string GetTitle(TransitionDocNode nodeTran)
         {
             var tran = nodeTran.Transition;
-            return string.Format("{0}{1} - {2:F04}{3}", nodeTran.FragmentIonName, // Not L10N
+            return string.Format(@"{0}{1} - {2:F04}{3}", nodeTran.FragmentIonName,
                                  Transition.GetMassIndexText(tran.MassIndex),
                                  nodeTran.Mz,
-                                 Transition.GetChargeIndicator(tran.Charge));
+                                 Transition.GetChargeIndicator(tran.Adduct));
         }
 
         public static string GetTitle(TransitionGroupDocNode nodeGroup)
@@ -248,19 +257,19 @@ namespace pwiz.Skyline.Controls.Graphs
             if (nodeGroup == null)
                 return string.Empty;
 
-            var seq = nodeGroup.TransitionGroup.Peptide.Sequence; // Not using Peptide.RawTextId, see comment below
+            var seq = nodeGroup.TransitionGroup.Peptide.Target.Sequence; // Not using Peptide.RawTextId, see comment below
             if (nodeGroup.TransitionGroup.IsCustomIon)
             {
                 // Showing precursor m/z, so avoid showing ion masses as in DisplayName
-                var customIon = nodeGroup.CustomIon;
+                var customIon = nodeGroup.CustomMolecule;
                 seq = customIon.Name ?? customIon.Formula;
             }
             string prefix = string.Empty;
             if (seq != null)
-                prefix = seq + " - ";   // Not L10N
+                prefix = seq + @" - ";
             
-            return string.Format("{0}{1:F04}{2}{3}", prefix, nodeGroup.PrecursorMz, // Not L10N
-                                 Transition.GetChargeIndicator(nodeGroup.TransitionGroup.PrecursorCharge),
+            return string.Format(@"{0}{1:F04}{2}{3}", prefix, nodeGroup.PrecursorMz,
+                                 Transition.GetChargeIndicator(nodeGroup.TransitionGroup.PrecursorAdduct),
                                  nodeGroup.TransitionGroup.LabelTypeText);            
         }
 
@@ -281,9 +290,11 @@ namespace pwiz.Skyline.Controls.Graphs
                 {
                     string title = Chromatogram.FilePath.GetSampleOrFileName();
                     var extractor = Chromatogram.Header.Extractor;
-                    return string.Format(extractor == ChromExtractor.base_peak
-                                             ? Resources.ChromGraphItem_Title__0____base_peak
-                                             : Resources.ChromGraphItem_Title__0____TIC, title);
+                    if (extractor == ChromExtractor.base_peak)
+                        return string.Format(Resources.ChromGraphItem_Title__0____base_peak, title);
+                    if (extractor == ChromExtractor.summed)
+                        return string.Format(Resources.ChromGraphItem_Title__0____TIC, title);
+                    return Chromatogram.GroupInfo.TextId ?? @"no summary text";
                 }
                 if (_step != 0)
                     return string.Format(Resources.ChromGraphItem_Title_Step__0_, _step);
@@ -350,7 +361,7 @@ namespace pwiz.Skyline.Controls.Graphs
                         }
                         else
                         {
-                            string label = FormatTimeLabel(timeBest.DisplayTime, massError, dotProduct);
+                            string label = FormatTimeLabel(timeBest.DisplayTime, massError, dotProduct, Chromatogram.GetIonMobilityFilter());
 
                             text = new TextObj(label, timeBest.DisplayTime, intensityLabel,
                                 CoordType.AxisXYScale, AlignH.Center, AlignV.Bottom)
@@ -402,7 +413,46 @@ namespace pwiz.Skyline.Controls.Graphs
                     AddPeakBoundaries(graphPane, annotations, true,
                         ScaleRetentionTime(startTime), ScaleRetentionTime(endTime), intensityBest);
                 }
+                if (Chromatogram.BestPeakIndex >= 0)
+                {
+                    // Only shade peak when user modified. Otherwise, shading can be added when an entire
+                    // precursor was force integrated because of another precursor (e.g. heavy) since that
+                    // leads to an empty peak, which will not match the best peak.
+                    if (Settings.Default.ShowOriginalPeak && TransitionChromInfo != null && TransitionChromInfo.IsUserModified)
+                    {
+                        var bestPeak = Chromatogram.GetPeak(Chromatogram.BestPeakIndex);
+                        if (bestPeak.StartTime != TransitionChromInfo.StartRetentionTime ||
+                            bestPeak.EndTime != TransitionChromInfo.EndRetentionTime)
+                        {
+                            AddOriginalPeakAnnotation(bestPeak, annotations, graphPane);
+                        }
+                    }
+                }
             }
+            if (_displayRawTimes.HasValue)
+            {
+                AddPeakRawTimes(graphPane, annotations,
+                    ScaleRetentionTime(_displayRawTimes.Value.StartBound),
+                    ScaleRetentionTime(_displayRawTimes.Value.EndBound),
+                    Chromatogram);
+            }
+        }
+
+        private void AddOriginalPeakAnnotation(ChromPeak bestPeak, GraphObjList annotations, GraphPane graphPane)
+        {
+            var start = ScaleRetentionTime(bestPeak.StartTime);
+            var end = ScaleRetentionTime(bestPeak.EndTime);
+            var width = end.DisplayTime - start.DisplayTime;
+            var height = graphPane.YAxis.Scale.Max;
+            var originalPeakShadingBox = new BoxObj(start.DisplayTime, graphPane.YAxis.Scale.Max, width, height)
+            {
+                Fill = new Fill(Color.FromArgb(30, COLOR_ORIGINAL_PEAK_SHADE)),
+                ZOrder = ZOrder.F_BehindGrid,
+                Border = new Border { IsVisible = false },
+                IsClippedToChartRect = true,
+                Tag = new GraphObjTag(this, GraphObjType.original_peak_shading, start, end)
+            };
+            annotations.Add(originalPeakShadingBox);
         }
 
         public override void AddAnnotations(MSGraphPane graphPane, Graphics g,
@@ -424,7 +474,7 @@ namespace pwiz.Skyline.Controls.Graphs
                         Color color = COLOR_MSMSID_TIME;
                         if (SelectedRetentionMsMs.HasValue && Equals((float) retentionTime, (float) SelectedRetentionMsMs))
                         {
-                            color = ColorSelected;
+                            color = ColorScheme.ChromGraphItemSelected;
                         }
                         AddRetentionTimeAnnotation(graphPane, g, annotations, ptTop,
                             Resources.ChromGraphItem_AddAnnotations_ID, GraphObjType.ms_ms_id, color,
@@ -436,7 +486,7 @@ namespace pwiz.Skyline.Controls.Graphs
                     foreach (var retentionTime in MidasRetentionMsMs)
                     {
                         var color = SelectedRetentionMsMs.HasValue && Equals((float) retentionTime, (float) SelectedRetentionMsMs)
-                            ? ColorSelected
+                            ? ColorScheme.ChromGraphItemSelected
                             : COLOR_MSMSID_TIME;
                         AddRetentionTimeAnnotation(graphPane, g, annotations, ptTop, string.Empty, GraphObjType.midas_spectrum, color, ScaleRetentionTime(retentionTime));
                     }
@@ -475,8 +525,41 @@ namespace pwiz.Skyline.Controls.Graphs
                 }
             }
 
+            // If explicit retention time is in use, show that instead of predicted since it overrides
+            if (RetentionExplicit != null)
+            {
+                var time = RetentionExplicit.RetentionTime;
+                if (GraphChromatogram.ShowRT != ShowRTChrom.none)
+                {
+                    // Create temporary label to calculate positions
+                    AddRetentionTimeAnnotation(graphPane,
+                        g,
+                        annotations,
+                        ptTop,
+                        Resources.ChromGraphItem_AddAnnotations_Explicit,
+                        GraphObjType.predicted_rt_window,
+                        COLOR_RETENTION_TIME,
+                        ScaleRetentionTime(time));
+                }
+                // Draw background for retention time window
+                if ((RetentionExplicit.RetentionTimeWindow??0) > 0.0)
+                {
+                    var halfwin = (RetentionExplicit.RetentionTimeWindow??0) / 2.0;
+                    double x1 = ScaleRetentionTime(time - halfwin).DisplayTime;
+                    double x2 = ScaleRetentionTime(time + halfwin).DisplayTime;
+                    BoxObj box = new BoxObj(x1, 0, x2 - x1, 1,
+                        COLOR_RETENTION_WINDOW, COLOR_RETENTION_WINDOW)
+                    {
+                        Location = { CoordinateFrame = CoordType.XScaleYChartFraction },
+                        IsClippedToChartRect = true,
+                        ZOrder = ZOrder.F_BehindGrid
+                    };
+                    annotations.Add(box);
+                }
+            }
+
             // Draw retention time indicator, if set
-            if (RetentionPrediction.HasValue)
+            else if (RetentionPrediction.HasValue)
             {
                 double time = RetentionPrediction.Value;
 
@@ -509,19 +592,6 @@ namespace pwiz.Skyline.Controls.Graphs
                 }
             }
 
-            if (RetentionExplicit != null && GraphChromatogram.ShowRT != ShowRTChrom.none)
-            {
-                // Create temporary label to calculate positions
-                AddRetentionTimeAnnotation(graphPane,
-                                            g,
-                                            annotations,
-                                            ptTop,
-                                            Resources.ChromGraphItem_AddAnnotations_Explicit,
-                                            GraphObjType.predicted_rt_window,
-                                            COLOR_RETENTION_TIME,
-                                            ScaleRetentionTime(RetentionExplicit.RetentionTime));
-            }
-
             for (int i = 0, len = Chromatogram.NumPeaks; i < len; i++)
             {
                 if (_arrayLabelIndexes[i] == -1)
@@ -539,7 +609,9 @@ namespace pwiz.Skyline.Controls.Graphs
         private void AddRetentionTimeAnnotation(MSGraphPane graphPane, Graphics g, GraphObjList annotations,
             PointF ptTop, string title, GraphObjType graphObjType, Color color, ScaledRetentionTime retentionTime)
         {
-            string label = string.Format("{0}\n{1:F01}", title, retentionTime.DisplayTime); // Not L10N
+            // ReSharper disable LocalizableElement
+            string label = string.Format("{0}\n{1:F01}", title, retentionTime.DisplayTime);
+            // ReSharper restore LocalizableElement
             FontSpec fontLabel = CreateFontSpec(color, _fontSpec.Size);
             SizeF sizeLabel = fontLabel.MeasureString(g, label, graphPane.CalcScaleFactor());
             PointF realTopPoint = ptTop;
@@ -596,6 +668,84 @@ namespace pwiz.Skyline.Controls.Graphs
                 }
             }
             return maxIndex;
+        }
+
+        private void AddPeakRawTimes(GraphPane graphPane, ICollection<GraphObj> annotations,
+            ScaledRetentionTime startTime, ScaledRetentionTime endTime, ChromatogramInfo info)
+        {
+            var hasTimes = info.RawTimes != null && info.RawTimes.Any(); // has measured points
+
+            var scaledHeight = graphPane.YAxis.Scale.Max / 20; // 5% of graph pane height
+            var rawtimes = new List<double>();
+
+            if (hasTimes)
+            {
+                rawtimes.AddRange(GetRawTimes(startTime, endTime, info));
+                if (rawtimes.Count == 0)
+                    return;
+                foreach (var time in rawtimes)
+                {
+                    LineObj stick = new LineObj(time, scaledHeight, time, 0)
+                    {
+                        IsClippedToChartRect = true,
+                        Location = { CoordinateFrame = CoordType.AxisXYScale },
+                        ZOrder = ZOrder.A_InFront,
+                        Line = { Width = 1, Style = DashStyle.Dash, Color = ColorScheme.ChromGraphItemSelected },
+                        Tag = new GraphObjTag(this, GraphObjType.raw_time, new ScaledRetentionTime(time)),
+                    };
+                    annotations.Add(stick);
+                }
+            }
+            
+            var countTxt = hasTimes ? @" " + rawtimes.Count : @" ?";
+            var isBold = !hasTimes; // Question mark if no times exist is visually clearer if bold
+            TextObj pointCount = new TextObj(countTxt, endTime.DisplayTime, scaledHeight)
+            {
+                FontSpec = new FontSpec(FontSpec.Family, FontSpec.Size, ColorScheme.ChromGraphItemSelected, isBold, false, false)
+                {
+                    Border = new Border { IsVisible = false },
+                    Fill = FontSpec.Fill
+                },
+                Location =
+                {
+                    AlignH = AlignH.Left,
+                    AlignV = AlignV.Bottom
+                }
+
+            };
+            annotations.Add(pointCount);
+        }
+
+        private IEnumerable<double> GetRawTimes(ScaledRetentionTime startTime, ScaledRetentionTime endTime, ChromatogramInfo info)
+        {
+            double end = endTime.DisplayTime;
+            double start = startTime.DisplayTime;
+            var times = info.RawTimes;
+            if (times != null)
+            {
+                for (int j = 0; j < times.Count; j++)
+                {
+                    if (start > times[j])
+                        continue;
+                    if (end < times[j])
+                        break;
+                    yield return times[j];
+                }
+            }
+        }
+
+        public int RawTimesCount
+        {
+            get
+            {
+                if (_displayRawTimes.HasValue && Chromatogram != null)
+                {
+                    return GetRawTimes(ScaleRetentionTime(_displayRawTimes.Value.StartBound),
+                        ScaleRetentionTime(_displayRawTimes.Value.EndBound),
+                        Chromatogram).Count();
+                }
+                return 0;
+            }
         }
 
         private void AddPeakBoundaries(GraphPane graphPane, ICollection<GraphObj> annotations,
@@ -667,7 +817,7 @@ namespace pwiz.Skyline.Controls.Graphs
                     float? massError = null;
                     if (Settings.Default.ShowMassError)
                         massError = Chromatogram.GetPeak(indexPeak).MassError;
-                    string label = FormatTimeLabel(point.X, massError, dotProduct);
+                    string label = FormatTimeLabel(point.X, massError, dotProduct, IonMobilityFilter.EMPTY);
                     return new PointAnnotation(label, FontSpec);
                 }
             }
@@ -675,14 +825,55 @@ namespace pwiz.Skyline.Controls.Graphs
             return null;
         }
 
-        public string FormatTimeLabel(double time, float? massError, double dotProduct)
+        public string FormatTimeLabel(double time, float? massError, double dotProduct, IonMobilityFilter ionMobilityfilter)
         {
-            string label = string.Format("{0:F01}", time); // Not L10N
+            // ReSharper disable LocalizableElement
+            var lines = new List<string> {string.Format("{0:F01}", time)};
             if (massError.HasValue && !_isSummary)
-                label += string.Format("\n{0}{1} ppm", (massError.Value > 0 ? "+" : string.Empty), massError.Value); // Not L10N
+                lines.Add(string.Format("{0}{1} ppm", (massError.Value > 0 ? "+" : string.Empty), massError.Value));
             if (dotProduct != 0)
-                label += string.Format("\n({0} {1:F02})", _isFullScanMs ? "idotp" : "dotp", dotProduct); // Not L10N
-            return label;
+                lines.Add(string.Format("({0} {1:F02})", _isFullScanMs ? "idotp" : "dotp", dotProduct));
+
+            // Ion mobility values
+            if (ionMobilityfilter.IonMobility.HasValue && !_isSummary && 
+                ionMobilityfilter.IonMobilityUnits != eIonMobilityUnits.waters_sonar && // SONAR data isn't really ion mobility, it just uses some of the same filter mechanisms
+                (Settings.Default.ShowCollisionCrossSection || Settings.Default.ShowIonMobility))
+            {
+                if (Settings.Default.ShowCollisionCrossSection && 
+                    ionMobilityfilter.IonMobilityUnits != eIonMobilityUnits.compensation_V) // CCS isn't measurable with FAIMS
+                {
+                    var ccsString = FormatCollisionCrossSectionValue(ionMobilityfilter);
+                    lines.Add(ccsString);
+                }
+                if (Settings.Default.ShowIonMobility)
+                {
+                    var imString = FormatIonMobilityValue(ionMobilityfilter);
+                    lines.Add(string.Format("IM {0}", imString));
+                }
+            }
+
+            // N.B.you might expect use of TextUtil.LineSeparate() here, but this string is parsed
+            // elsewhere with the expectation of \n as separator rather than \r\n
+            return string.Join("\n", lines); 
+
+            // ReSharper restore LocalizableElement
+        }
+
+        public static string FormatIonMobilityValue(IonMobilityFilter ionMobilityFilter)
+        {
+            var imString = ionMobilityFilter.IonMobility.HasValue
+                ? string.Format(@"{0:F02} {1}",
+                    ionMobilityFilter.IonMobility.Mobility, IonMobilityValue.GetUnitsString(ionMobilityFilter.IonMobilityUnits))
+                : @"IM unknown"; // Should never happen
+            return imString;
+        }
+
+        public static string FormatCollisionCrossSectionValue(IonMobilityFilter ionMobilityFilter)
+        {
+            var ccsString = ionMobilityFilter.CollisionalCrossSectionSqA.HasValue
+                ? string.Format(@"CCS {0:F02} Å²", ionMobilityFilter.CollisionalCrossSectionSqA.Value)
+                : @"CCS unknown"; // Should never happen, except for very old data
+            return ccsString;
         }
 
         public IdentityPath FindIdentityPath(TextObj label)
@@ -770,24 +961,20 @@ namespace pwiz.Skyline.Controls.Graphs
             return TimeRegressionFunction.GetY(time);
         }
 
-        public ScaledRetentionTime GetNearestDisplayTime(double displayTime)
+        public ScaledRetentionTime GetValidPeakBoundaryTime(double displayTime)
         {
-            int index = NearestIndex(_displayTimes, displayTime);
-            if (index < 0)
+            double measuredTime = TimeRegressionFunction == null
+                ? displayTime
+                : TimeRegressionFunction.GetX(displayTime);
+            var chromatogramInfo = Chromatogram;
+            if (chromatogramInfo.TimeIntervals != null)
             {
-                return ScaledRetentionTime.ZERO;
+                return ScaleRetentionTime(measuredTime);
             }
-            return new ScaledRetentionTime(_measuredTimes[index], _displayTimes[index]);
-        }
 
-        public ScaledRetentionTime GetNearestMeasuredTime(double measuredTime)
-        {
-            int index = GetNearestMeasuredIndex(measuredTime);
-            if (index < 0)
-            {
-                return ScaledRetentionTime.ZERO;
-            }
-            return new ScaledRetentionTime(_measuredTimes[index], _displayTimes[index]);
+            var interpolatedTimeIntensities = chromatogramInfo.GetInterpolatedTimeIntensities();
+            int index = interpolatedTimeIntensities.IndexOfNearestTime((float)measuredTime);
+            return ScaleRetentionTime(interpolatedTimeIntensities.Times[index]);
         }
 
         public int GetNearestMeasuredIndex(double measuredTime)
@@ -808,8 +995,8 @@ namespace pwiz.Skyline.Controls.Graphs
             }
             return index;
         }
-        
-        enum GraphObjType
+
+        public enum GraphObjType
         {
 // ReSharper disable UnusedMember.Local
             invalid,
@@ -820,10 +1007,12 @@ namespace pwiz.Skyline.Controls.Graphs
             aligned_ms_id,
             unaligned_ms_id,
             best_peak,
+            raw_time,
             peak,
+            original_peak_shading
         }
 
-        class GraphObjTag
+        public class GraphObjTag
         {
             public GraphObjTag(ChromGraphItem chromGraphItem, GraphObjType graphObjType, ScaledRetentionTime retentionTime)
             {
@@ -833,12 +1022,23 @@ namespace pwiz.Skyline.Controls.Graphs
                 
             }
 
+            public GraphObjTag(ChromGraphItem chromGraphItem, GraphObjType graphObjType, ScaledRetentionTime start, ScaledRetentionTime end)
+            {
+                ChromGraphItem = chromGraphItem;
+                GraphObjType = graphObjType;
+                StartTime = start;
+                EndTime = end;
+            }
+
             public ChromGraphItem ChromGraphItem { get; private set; }
             public GraphObjType GraphObjType { get; private set; }
             public ScaledRetentionTime RetentionTime { get; private set; }
+            public ScaledRetentionTime StartTime { get; private set; }
+            public ScaledRetentionTime EndTime { get; private set; }
+
             public override string ToString()
             {
-                return string.Format("{0}:{1}", GraphObjType, RetentionTime); // Not L10N
+                return string.Format(@"{0}:{1}", GraphObjType, RetentionTime);
             }
         }
     }
@@ -947,7 +1147,7 @@ namespace pwiz.Skyline.Controls.Graphs
 
         private static void CustomizeAxis(Axis axis, string title)
         {
-            axis.Title.FontSpec.Family = "Arial"; // Not L10N
+            axis.Title.FontSpec.Family = @"Arial";
             axis.Title.FontSpec.Size = 14;
             axis.Color = axis.Title.FontSpec.FontColor = Color.Black;
             axis.Title.FontSpec.Border.IsVisible = false;

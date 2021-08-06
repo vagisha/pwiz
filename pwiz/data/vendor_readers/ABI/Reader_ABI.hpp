@@ -41,9 +41,8 @@ namespace msdata {
 
 class PWIZ_API_DECL Reader_ABI : public Reader
 {
-    public:
 
-	virtual std::string identify(const std::string& filename,
+    virtual std::string identify(const std::string& filename,
                         const std::string& head) const;
 
     virtual void read(const std::string& filename,
@@ -62,7 +61,9 @@ class PWIZ_API_DECL Reader_ABI : public Reader
                       std::vector<std::string>& results,
                       const Config& config = Config()) const;
 
-    virtual const char * getType() const {return "ABSciex WIFF";}
+    virtual const char * getType() const {return "Sciex WIFF/WIFF2";}
+    virtual CVID getCvType() const {return MS_ABI_WIFF_format;}
+    virtual std::vector<std::string> getFileExtensions() const {return {".wiff", ".wiff2"};}
 };
 
 

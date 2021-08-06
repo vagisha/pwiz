@@ -21,10 +21,12 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using pwiz.Common.SystemUtil;
 using pwiz.ProteomeDatabase.API;
 using pwiz.Skyline.Controls.SeqNode;
 using pwiz.Skyline.Model.DocSettings;
 using pwiz.Skyline.Model.DocSettings.Extensions;
+using pwiz.Skyline.Model.Proteome;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
 
@@ -38,7 +40,7 @@ namespace pwiz.Skyline.Model
             : this(id, Annotations.EMPTY, name, description, children)
         {
         }
-
+        
         public PeptideGroupDocNode(PeptideGroup id, ProteinMetadata proteinMetadata, PeptideDocNode[] children)
             : this(id, Annotations.EMPTY, proteinMetadata, children, true)
         {
@@ -58,6 +60,12 @@ namespace pwiz.Skyline.Model
 
         public PeptideGroupDocNode(PeptideGroup id, Annotations annotations, ProteinMetadata proteinMetadata,
             PeptideDocNode[] children, bool autoManageChildren)
+            : this(id, annotations, proteinMetadata, children, autoManageChildren, null)
+        {
+        }
+
+        public PeptideGroupDocNode(PeptideGroup id, Annotations annotations, ProteinMetadata proteinMetadata,
+            PeptideDocNode[] children, bool autoManageChildren, double? proportionDecoysMatch)
             : base(id, annotations, children, autoManageChildren)
         {
             if (Equals(id.Name, proteinMetadata.Name))
@@ -65,8 +73,10 @@ namespace pwiz.Skyline.Model
             if (Equals(id.Description, proteinMetadata.Description))
                 proteinMetadata = proteinMetadata.ChangeDescription(null);  // Make it clear that the description hasn't been altered
             _proteinMetadata = proteinMetadata;
+            ProportionDecoysMatch = proportionDecoysMatch;
         }
 
+        public override string AuditLogText { get { return Name; } }
         public PeptideGroup PeptideGroup { get { return (PeptideGroup)Id; } }
 
         public override AnnotationDef.AnnotationTarget AnnotationTarget
@@ -77,11 +87,20 @@ namespace pwiz.Skyline.Model
         public bool IsProtein { get { return PeptideGroup is FastaSequence; } }
         public bool IsPeptideList { get { return !(PeptideGroup is FastaSequence); } }
         public bool IsDecoy { get { return PeptideGroup.IsDecoy; } }
+        public double? ProportionDecoysMatch { get; private set; }
 
         public string Name { get { return _proteinMetadata.Name ?? PeptideGroup.Name ?? string.Empty; } } // prefer ours over peptidegroup, if set
         public string OriginalName { get { return PeptideGroup.Name; } }
         public string Description { get { return _proteinMetadata.Description ?? PeptideGroup.Description; } } // prefer ours over peptidegroup, if set
-        public string OriginalDescription { get { return PeptideGroup.Description; } } 
+        public string OriginalDescription { get { return PeptideGroup.Description; } }
+
+        [Track(defaultValues:typeof(DefaultValuesNull))]
+        public string Sequence
+        {
+            get { return PeptideGroup.Sequence; }
+        }
+
+        [TrackChildren(ignoreName: true)]
         public ProteinMetadata ProteinMetadata { get { return _proteinMetadata.Merge(new ProteinMetadata(PeptideGroup.Name, PeptideGroup.Description)); } } // prefer our name and description over peptidegroup
 
         /// <summary>
@@ -107,7 +126,7 @@ namespace pwiz.Skyline.Model
         public bool IsProteomic
         {
             // Default assumption for an empty PeptideGroupDocNode is that it's proteomic (probably undergoing population from a protein)
-            get { return IsEmpty || !((PeptideDocNode)Children[0]).Peptide.IsCustomIon; }
+            get { return IsEmpty || !((PeptideDocNode)Children[0]).Peptide.IsCustomMolecule; }
         }
 
         public bool IsNonProteomic
@@ -115,9 +134,10 @@ namespace pwiz.Skyline.Model
             get { return !IsProteomic; }
         }
 
+        [TrackChildren(ignoreName:true, defaultValues:typeof(DefaultValuesNullOrEmpty))]
         public IEnumerable<PeptideDocNode> Molecules { get { return Children.Cast<PeptideDocNode>(); } }
-        public IEnumerable<PeptideDocNode> SmallMolecules { get { return Molecules.Where(p => p.Peptide.IsCustomIon); } }
-        public IEnumerable<PeptideDocNode> Peptides { get { return Molecules.Where(p => !p.Peptide.IsCustomIon); } }
+        public IEnumerable<PeptideDocNode> SmallMolecules { get { return Molecules.Where(p => p.Peptide.IsCustomMolecule); } }
+        public IEnumerable<PeptideDocNode> Peptides { get { return Molecules.Where(p => !p.Peptide.IsCustomMolecule); } }
 
         public PeptideGroupDocNode ChangeName(string name)
         {
@@ -141,6 +161,11 @@ namespace pwiz.Skyline.Model
             return ChangeProp(ImClone(this), im => im._proteinMetadata = newMetadata);
         }
 
+        public PeptideGroupDocNode ChangeProportionDecoysMatch(double proportion)
+        {
+            return ChangeProp(ImClone(this), im => im.ProportionDecoysMatch = proportion);
+        }
+
         public PeptideGroupDocNode ChangeSettings(SrmSettings settingsNew, SrmSettingsDiff diff,
             DocumentSettingsContext context = null)
         {
@@ -162,7 +187,7 @@ namespace pwiz.Skyline.Model
                     settingsNew.PeptideSettings.Filter.PeptideUniqueness == PeptideFilter.PeptideUniquenessConstraint.none ||
                                         settingsNew.PeptideSettings.NeedsBackgroundProteomeUniquenessCheckProcessing)
                 {
-                    peptideDocNodes = GetPeptideNodes(settingsNew, true).ToList();
+                    peptideDocNodes = GetPeptideNodes(settingsNew, true, diff.Monitor).ToList();
                 }
                 else
                 {
@@ -185,8 +210,8 @@ namespace pwiz.Skyline.Model
                         // will already have those cached for uniqueness checks.
                         var settingsNoUniquenessFilter =
                             settingsNew.ChangePeptideFilter(f => f.ChangePeptideUniqueness(PeptideFilter.PeptideUniquenessConstraint.none));
-                        var nodes = GetPeptideNodes(settingsNoUniquenessFilter, true).ToList();
-                        var sequences = new List<string>(from p in nodes select p.Peptide.Sequence);
+                        var nodes = GetPeptideNodes(settingsNoUniquenessFilter, true, diff.Monitor).ToList();
+                        var sequences = new List<Target>(from p in nodes select p.Peptide.Target);
                         peptideDocNodesUnique = nodes;  // Avoid ReSharper multiple enumeration warning
                         uniquenessDict = settingsNew.PeptideSettings.Filter.CheckPeptideUniqueness(settingsNew, sequences, diff.Monitor);
                     }
@@ -196,12 +221,15 @@ namespace pwiz.Skyline.Model
                         // It's possible during document load for uniqueness dict to get out of synch, so be 
                         // cautious with lookup and just return false of not found. Final document change will clean that up.
                         bool isUnique;
-                        return IsNonProteomic || (uniquenessDict.TryGetValue(p.Peptide.Sequence, out isUnique) && isUnique);
+                        return IsNonProteomic || (uniquenessDict.TryGetValue(p.Peptide.Target, out isUnique) && isUnique);
                     });
                 }
                 
                 foreach(var nodePep in peptideDocNodes)
                 {
+                    if (diff.Monitor != null && diff.Monitor.IsCanceled())
+                        throw new OperationCanceledException();
+
                     PeptideDocNode nodePepResult = nodePep;
                     SrmSettingsDiff diffNode = SrmSettingsDiff.ALL;
 
@@ -220,16 +248,18 @@ namespace pwiz.Skyline.Model
                     {
                         // Materialize children of the peptide.
                         nodePepResult = nodePepResult.ChangeSettings(settingsNew, diffNode);
+                        if (settingsNew.TransitionSettings.Libraries.MinIonCount > 0 && nodePepResult.TransitionGroupCount == 0)
+                            continue;
 
                         childrenNew.Add(nodePepResult);
 
                         // Make sure a single peptide group does not exceed document limits.
                         countPeptides++;
                         countIons += nodePepResult.TransitionCount;
-                        if (countIons > SrmDocument.MAX_TRANSITION_COUNT)
+                        if (countIons > SrmDocument.MaxTransitionCount)
                             throw new InvalidDataException(String.Format(
                                 Resources.PeptideGroupDocNode_ChangeSettings_The_current_document_settings_would_cause_the_number_of_targeted_transitions_to_exceed__0_n0___The_document_settings_must_be_more_restrictive_or_add_fewer_proteins_,
-                                SrmDocument.MAX_TRANSITION_COUNT));
+                                SrmDocument.MaxTransitionCount));
                         if (countPeptides > SrmDocument.MAX_PEPTIDE_COUNT)
                             throw new InvalidDataException(String.Format(
                                 Resources.PeptideGroupDocNode_ChangeSettings_The_current_document_settings_would_cause_the_number_of_peptides_to_exceed__0_n0___The_document_settings_must_be_more_restrictive_or_add_fewer_proteins_,
@@ -274,7 +304,7 @@ namespace pwiz.Skyline.Model
                     diff.DiffTransitions || diff.DiffTransitionProps ||
                     diff.DiffResults)
                 {
-                    IList<DocNode> childrenNew = new List<DocNode>();
+                    IList<DocNode> childrenNew = new List<DocNode>(nodeResult.Children.Count);
 
                     // Enumerate the nodes making necessary changes.
                     foreach (PeptideDocNode nodePeptide in nodeResult.Children)
@@ -357,20 +387,26 @@ namespace pwiz.Skyline.Model
         }
 
 
-        public IEnumerable<PeptideDocNode> GetPeptideNodes(SrmSettings settings, bool useFilter)
+        public IEnumerable<PeptideDocNode> GetPeptideNodes(SrmSettings settings, bool useFilter, SrmSettingsChangeMonitor monitor = null)
         {
             // FASTA sequences can generate a comprehensive list of available peptides.
             FastaSequence fastaSeq = Id as FastaSequence;
             if (fastaSeq != null)
             {
                 foreach (PeptideDocNode nodePep in fastaSeq.CreatePeptideDocNodes(settings, useFilter, null))
+                {
+                    if (monitor != null && monitor.IsCanceled())
+                        throw new OperationCanceledException();
                     yield return nodePep;
+                }
             }
             // Peptide lists without variable modifications just return their existing children.
             else if (!settings.PeptideSettings.Modifications.HasVariableModifications)
             {
                 foreach (PeptideDocNode nodePep in Children)
                 {
+                    if (monitor != null && monitor.IsCanceled())
+                        throw new OperationCanceledException();
                     if (!nodePep.HasVariableMods)
                         yield return nodePep;
                 }
@@ -380,9 +416,13 @@ namespace pwiz.Skyline.Model
             {
                 var setNonExplicit = new HashSet<Peptide>();
                 IPeptideFilter filter = (useFilter ? settings : PeptideFilter.UNFILTERED);
+                var explicitKeys = Peptides.Where(nodePep => nodePep.HasExplicitMods && !nodePep.HasVariableMods)
+                    .Select(nodePep => nodePep.Key).ToHashSet();
                 foreach (PeptideDocNode nodePep in Children)
                 {
-                    if (nodePep.Peptide.IsCustomIon) // Modifications mean nothing to custom ions
+                    if (monitor != null && monitor.IsCanceled())
+                        throw new OperationCanceledException();
+                    if (nodePep.Peptide.IsCustomMolecule) // Modifications mean nothing to custom ions // TODO(bspratt) but static isotope labels do?
                         yield return nodePep;
                     else if (nodePep.HasExplicitMods && !nodePep.HasVariableMods)
                         yield return nodePep;
@@ -397,8 +437,11 @@ namespace pwiz.Skyline.Model
                             peptide = (Peptide) peptide.Copy();
                         foreach (PeptideDocNode nodePepResult in peptide.CreateDocNodes(settings, filter))
                         {
-                            yield return nodePepResult;
-                            returnedResult = true;
+                            if (!explicitKeys.Contains(nodePepResult.Key))
+                            {
+                                yield return nodePepResult;
+                                returnedResult = true;
+                            }
                         }
                         // Make sure the peptide is not removed due to filtering
                         if (!returnedResult)
@@ -407,6 +450,29 @@ namespace pwiz.Skyline.Model
                     }
                 }
             }
+        }
+
+        public void CheckDecoys(SrmDocument document, out int decoysNoSource, out int decoysWrongTransitionCount, out double proportionDecoysMatch)
+        {
+            var targets = document.Peptides.Where(pep => !pep.IsDecoy).ToArray();
+            var targetMap = new TargetMap<HashSet<int>>(targets.Select(target =>
+                new KeyValuePair<Target, HashSet<int>>(target.ModifiedTarget, new HashSet<int>())));
+            foreach (var target in targets)
+            foreach (var nodeTranGroup in target.TransitionGroups)
+                targetMap[target.ModifiedTarget].Add(nodeTranGroup.TransitionCount);
+
+            decoysNoSource = 0;
+            decoysWrongTransitionCount = 0;
+
+            var decoys = Peptides.Where(pep => pep.IsDecoy).ToArray();
+            foreach (var decoy in decoys)
+            {
+                if (!targetMap.TryGetValue(decoy.SourceModifiedTarget, out var transitionCounts))
+                    decoysNoSource++;
+                else if (decoy.TransitionGroups.All(nodeTranGroup => !transitionCounts.Contains(nodeTranGroup.TransitionCount)))
+                    decoysWrongTransitionCount++;
+            }
+            proportionDecoysMatch = 1 - (double) (decoysNoSource + decoysWrongTransitionCount) / decoys.Length;
         }
 
         private Dictionary<PeptideModKey, DocNode> CreatePeptideModToChildMap()
@@ -430,7 +496,7 @@ namespace pwiz.Skyline.Model
 
         public override string GetDisplayText(DisplaySettings settings)
         {
-            return PeptideGroupTreeNode.ProteinModalDisplayText(this);
+            return ProteinMetadataManager.ProteinModalDisplayText(this);
         }
 
         public static int CompareNames(PeptideGroupDocNode p1, PeptideGroupDocNode p2)
@@ -508,7 +574,7 @@ namespace pwiz.Skyline.Model
                     newChildren.Add(peptideDocNode);
                 else
                 {
-                    var color = ColorGenerator.GetColor(peptideDocNode.RawTextId, colorList);
+                    var color = ColorGenerator.GetColor(peptideDocNode.ModifiedTarget.ToString(), colorList);
                     newChildren.Add(peptideDocNode.ChangeColor(color));
                     colorList.Add(color);
                 }
