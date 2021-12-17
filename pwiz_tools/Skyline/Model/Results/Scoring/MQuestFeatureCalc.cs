@@ -272,10 +272,8 @@ namespace pwiz.Skyline.Model.Results.Scoring
             return context.Document.Settings.TransitionSettings.FullScan.GetPrecursorFilterWindow(precursorMz) / 2.0;
         }
 
-        public static float CalculateIdotp(PeakScoringContext context, IPeptidePeakData<ISummaryPeakData> summaryPeakData)
+        public static float CalculateIdotp(PeakScoringContext context, IPeptidePeakData<ISummaryPeakData> summaryPeakData, IList<ITransitionGroupPeakData<ISummaryPeakData>> tranGroupPeakDatas)
         {
-            var tranGroupPeakDatas = GetAnalyteGroups(summaryPeakData);
-
             if (tranGroupPeakDatas.Count == 0)
                 return float.NaN;
 
@@ -513,7 +511,7 @@ namespace pwiz.Skyline.Model.Results.Scoring
             var tranGroupPeakDatas = GetTransitionGroups(summaryPeakData);
             return MQuestHelpers.GetMs2IonTypes(tranGroupPeakDatas).Any() ? 
                 base.Calculate(context, summaryPeakData) : 
-                MQuestHelpers.CalculateIdotp(context, summaryPeakData);
+                MQuestHelpers.CalculateIdotp(context, summaryPeakData, tranGroupPeakDatas);
         }
 
         protected override IList<ITransitionPeakData<TData>> GetIonTypes<TData>(IList<ITransitionGroupPeakData<TData>> tranGroupPeakDatas)

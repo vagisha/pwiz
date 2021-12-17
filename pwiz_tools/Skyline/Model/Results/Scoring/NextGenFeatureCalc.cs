@@ -246,7 +246,7 @@ namespace pwiz.Skyline.Model.Results.Scoring
 
         protected override float Calculate(PeakScoringContext context, IPeptidePeakData<ISummaryPeakData> summaryPeakData)
         {
-            return MQuestHelpers.CalculateIdotp(context, summaryPeakData);
+            return MQuestHelpers.CalculateIdotp(context, summaryPeakData, summaryPeakData.AnalyteGroupPeakData);
         }
 
         public override bool IsReversedScore { get { return false; } }
