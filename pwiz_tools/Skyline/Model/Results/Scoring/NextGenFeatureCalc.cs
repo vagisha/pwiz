@@ -214,7 +214,7 @@ namespace pwiz.Skyline.Model.Results.Scoring
         protected override IList<ITransitionGroupPeakData<TData>> GetTransitionGroups<TData>(
             IPeptidePeakData<TData> summaryPeakData)
         {
-            return MQuestHelpers.GetAnalyteGroups(summaryPeakData);
+            return MQuestHelpers.GetBestAvailableGroups(summaryPeakData);
         }
 
         protected override IList<ITransitionPeakData<TData>> GetIonTypes<TData>(IList<ITransitionGroupPeakData<TData>> tranGroupPeakDatas)
@@ -246,7 +246,7 @@ namespace pwiz.Skyline.Model.Results.Scoring
 
         protected override float Calculate(PeakScoringContext context, IPeptidePeakData<ISummaryPeakData> summaryPeakData)
         {
-            return MQuestHelpers.CalculateIdotp(context, summaryPeakData, summaryPeakData.AnalyteGroupPeakData);
+            return MQuestHelpers.CalculateIdotp(context, summaryPeakData, summaryPeakData.BestAvailableGroupPeakData);
         }
 
         public override bool IsReversedScore { get { return false; } }
