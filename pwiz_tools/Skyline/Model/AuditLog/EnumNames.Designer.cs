@@ -19,7 +19,7 @@ namespace pwiz.Skyline.Model.AuditLog {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class EnumNames {
@@ -1204,6 +1204,24 @@ namespace pwiz.Skyline.Model.AuditLog {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Keep all proteins.
+        /// </summary>
+        public static string ProteinParsimony_KeepAllProteins {
+            get {
+                return ResourceManager.GetString("ProteinParsimony_KeepAllProteins", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Minimal protein list that explains all peptides.
+        /// </summary>
+        public static string ProteinParsimony_MinimalProteinList {
+            get {
+                return ResourceManager.GetString("ProteinParsimony_MinimalProteinList", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to DIA-Umpire.
         /// </summary>
         public static string Protocol_dia_umpire {
@@ -1425,6 +1443,42 @@ namespace pwiz.Skyline.Model.AuditLog {
         public static string SequenceTerminus_N {
             get {
                 return ResourceManager.GetString("SequenceTerminus_N", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Assigned to the protein with the most unique peptides.
+        /// </summary>
+        public static string SharedPeptides_AssignedToBestProtein {
+            get {
+                return ResourceManager.GetString("SharedPeptides_AssignedToBestProtein", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Assigned to first protein.
+        /// </summary>
+        public static string SharedPeptides_AssignedToFirstProtein {
+            get {
+                return ResourceManager.GetString("SharedPeptides_AssignedToFirstProtein", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Duplicated between proteins.
+        /// </summary>
+        public static string SharedPeptides_DuplicatedBetweenProteins {
+            get {
+                return ResourceManager.GetString("SharedPeptides_DuplicatedBetweenProteins", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Removed (peptides must be unique to a single protein).
+        /// </summary>
+        public static string SharedPeptides_Removed {
+            get {
+                return ResourceManager.GetString("SharedPeptides_Removed", resourceCulture);
             }
         }
         

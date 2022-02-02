@@ -11639,36 +11639,51 @@ If you do not have the original file, you may build the library with embedded sp
     <value>{0} cutoff value must be greater or equal than 0. and lesser or equal than 1.</value>
   </data>
   <data name="AssociateProteinsDlg_FindProteinMatchesWithFasta_Finding_peptides_in_FASTA_file" xml:space="preserve">
-	  <value>Finding peptides in FASTA file</value>
+      <value>Finding peptides in FASTA file</value>
   </data>
   <data name="SmallMoleculeTransitionListReader_Precursor_mz_does_not_agree_with_calculated_value_" xml:space="preserve">
-	  <value>Precursor m/z {0} does not agree with value {1} as calculated from ion formula and charge state (delta = {2}, Transition Settings | Instrument | Method match tolerance m/z = {3}).  Correct the m/z value in the table, or leave it blank and Skyline will calculate it for you.</value>
+      <value>Precursor m/z {0} does not agree with value {1} as calculated from ion formula and charge state (delta = {2}, Transition Settings | Instrument | Method match tolerance m/z = {3}).  Correct the m/z value in the table, or leave it blank and Skyline will calculate it for you.</value>
   </data>
   <data name="SmallMoleculeTransitionListReader_Product_mz_does_not_agree_with_calculated_value_" xml:space="preserve">
-	  <value>Product m/z {0} does not agree with value {1} as calculated from ion formula and charge state (delta = {2}, Transition Settings | Instrument | Method match tolerance m/z = {3}).  Correct the m/z value in the table, or leave it blank and Skyline will calculate it for you.</value>
+      <value>Product m/z {0} does not agree with value {1} as calculated from ion formula and charge state (delta = {2}, Transition Settings | Instrument | Method match tolerance m/z = {3}).  Correct the m/z value in the table, or leave it blank and Skyline will calculate it for you.</value>
   </data>
   <data name="SmallMoleculeTransitionListReader_ReadPrecursorOrProductColumns_Precursor_formula_and_m_z_value_do_not_agree_for_any_charge_state_" xml:space="preserve">
-	  <value>Precursor formula and m/z value do not agree for any charge state.</value>
+      <value>Precursor formula and m/z value do not agree for any charge state.</value>
   </data>
   <data name="SmallMoleculeTransitionListReader_ReadPrecursorOrProductColumns_Product_formula_and_m_z_value_do_not_agree_for_any_charge_state_" xml:space="preserve">
-	  <value>Product formula and m/z value do not agree for any charge state.</value>
+      <value>Product formula and m/z value do not agree for any charge state.</value>
   </data>
   <data name="SmallMoleculeTransitionListReader_ReadPrecursorOrProductColumns_Precursor_needs_values_for_any_two_of__Formula__m_z_or_Charge_" xml:space="preserve">
-	  <value>Precursor needs values for any two of: Formula, m/z or Charge.</value>
+      <value>Precursor needs values for any two of: Formula, m/z or Charge.</value>
   </data>
   <data name="SmallMoleculeTransitionListReader_ReadPrecursorOrProductColumns_Product_needs_values_for_any_two_of__Formula__m_z_or_Charge_" xml:space="preserve">
-	  <value>Product needs values for any two of: Formula, m/z or Charge.</value>
+      <value>Product needs values for any two of: Formula, m/z or Charge.</value>
   </data>
   <data name="PersistedViews_GetDefaults_Molecule_Quantification" xml:space="preserve">
-	  <value>Molecule Quantification</value>
+      <value>Molecule Quantification</value>
   </data>
   <data name="PersistedViews_GetDefaults_Molecule_Ratio_Results" xml:space="preserve">
-	  <value>Molecule Ratio Results</value>
+      <value>Molecule Ratio Results</value>
   </data>
   <data name="ImportTransitionListColumnSelectDlg_ResolveMatchedProteins_Associate_Proteins" xml:space="preserve">
-	  <value>Associate Proteins</value>
+      <value>Associate Proteins</value>
   </data>
   <data name="SkylineVersion_V21_2_Skyline_21_2" xml:space="preserve">
-	  <value>Skyline 21.2</value>
+    <value>Skyline 21.2</value>
+  </data>
+  <data name="OpenFileDialog_FASTA_files" xml:space="preserve">
+    <value>FASTA files</value>
+  </data>
+  <data name="AssociateProteinsDlg_UpdateParsimonyResults_Applying_parsimony_options" xml:space="preserve">
+    <value>Applying parsimony options</value>
+  </data>
+  <data name="ProteinAssociation_CreateDocTree_Creating_protein_targets_and_assigning_their_peptides" xml:space="preserve">
+    <value>Creating protein targets and assigning their peptides</value>
+  </data>
+  <data name="ProteinAssociation_ListPeptidesForMatching_Building_peptide_prefix_tree" xml:space="preserve">
+    <value>Building peptide prefix tree</value>
+  </data>
+  <data name="ProteinAssociation_CalculateProteinGroups_Calculating_protein_groups" xml:space="preserve">
+    <value>Calculating protein groups</value>
   </data>
 </root>

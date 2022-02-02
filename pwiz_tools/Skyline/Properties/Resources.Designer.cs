@@ -19,7 +19,7 @@ namespace pwiz.Skyline.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class Resources {
@@ -1938,6 +1938,15 @@ namespace pwiz.Skyline.Properties {
             get {
                 return ResourceManager.GetString("AssociateProteinsDlg_FindProteinMatchesWithFasta_No_matches_were_found_using_the_" +
                         "imported_fasta_file_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Applying parsimony options.
+        /// </summary>
+        public static string AssociateProteinsDlg_UpdateParsimonyResults_Applying_parsimony_options {
+            get {
+                return ResourceManager.GetString("AssociateProteinsDlg_UpdateParsimonyResults_Applying_parsimony_options", resourceCulture);
             }
         }
         
@@ -20850,6 +20859,15 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to FASTA files.
+        /// </summary>
+        public static string OpenFileDialog_FASTA_files {
+            get {
+                return ResourceManager.GetString("OpenFileDialog_FASTA_files", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
         public static System.Drawing.Bitmap OpenFolder {
@@ -24011,6 +24029,43 @@ namespace pwiz.Skyline.Properties {
             get {
                 return ResourceManager.GetString("Protein_GetDeleteConfirmation_Are_you_sure_you_want_to_delete_these__0__proteins_" +
                         "", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Calculating protein groups.
+        /// </summary>
+        public static string ProteinAssociation_CalculateProteinGroups_Calculating_protein_groups {
+            get {
+                return ResourceManager.GetString("ProteinAssociation_CalculateProteinGroups_Calculating_protein_groups", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Group of {0} proteins.
+        /// </summary>
+        public static string ProteinAssociation_CalculateProteinGroups_Group_of__0__proteins {
+            get {
+                return ResourceManager.GetString("ProteinAssociation_CalculateProteinGroups_Group_of__0__proteins", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Creating protein targets and assigning their peptides.
+        /// </summary>
+        public static string ProteinAssociation_CreateDocTree_Creating_protein_targets_and_assigning_their_peptides {
+            get {
+                return ResourceManager.GetString("ProteinAssociation_CreateDocTree_Creating_protein_targets_and_assigning_their_pep" +
+                        "tides", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Building peptide prefix tree.
+        /// </summary>
+        public static string ProteinAssociation_ListPeptidesForMatching_Building_peptide_prefix_tree {
+            get {
+                return ResourceManager.GetString("ProteinAssociation_ListPeptidesForMatching_Building_peptide_prefix_tree", resourceCulture);
             }
         }
         
