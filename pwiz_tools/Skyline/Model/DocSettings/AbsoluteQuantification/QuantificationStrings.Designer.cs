@@ -19,7 +19,7 @@ namespace pwiz.Skyline.Model.DocSettings.AbsoluteQuantification {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "15.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "17.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     public class QuantificationStrings {
@@ -271,6 +271,16 @@ namespace pwiz.Skyline.Model.DocSettings.AbsoluteQuantification {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to All of the isotype label types have been marked as internal standard types..
+        /// </summary>
+        public static string CalibrationForm_DisplayCalibrationCurve_All_of_the_isotype_label_types_have_been_marked_as_internal_standard_types_ {
+            get {
+                return ResourceManager.GetString("CalibrationForm_DisplayCalibrationCurve_All_of_the_isotype_label_types_have_been_" +
+                        "marked_as_internal_standard_types_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to No results available.
         /// </summary>
         public static string CalibrationForm_DisplayCalibrationCurve_No_results_available {
@@ -286,6 +296,16 @@ namespace pwiz.Skyline.Model.DocSettings.AbsoluteQuantification {
             get {
                 return ResourceManager.GetString("CalibrationForm_DisplayCalibrationCurve_Select_a_peptide_to_see_its_calibration_c" +
                         "urve", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The normalization method is {0} and all of the other isotope label types have been marked as internal standard types..
+        /// </summary>
+        public static string CalibrationForm_DisplayCalibrationCurve_The_normalization_method_is__0__and_all_of_the_other_isotope_label_types_have_been_marked_as_internal_standard_types_ {
+            get {
+                return ResourceManager.GetString("CalibrationForm_DisplayCalibrationCurve_The_normalization_method_is__0__and_all_o" +
+                        "f_the_other_isotope_label_types_have_been_marked_as_internal_standard_types_", resourceCulture);
             }
         }
         

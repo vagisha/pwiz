@@ -330,4 +330,10 @@
     <value>Default ({0})</value>
     <comment>Example: Default (Global Standards)</comment>
   </data>
+	<data name="CalibrationForm_DisplayCalibrationCurve_All_of_the_isotype_label_types_have_been_marked_as_internal_standard_types_" xml:space="preserve">
+		<value>All of the isotype label types have been marked as internal standard types.</value>
+	</data>
+	<data name="CalibrationForm_DisplayCalibrationCurve_The_normalization_method_is__0__and_all_of_the_other_isotope_label_types_have_been_marked_as_internal_standard_types_" xml:space="preserve">
+		<value>The normalization method is {0} and all of the other isotope label types have been marked as internal standard types.</value>
+	</data>
 </root>

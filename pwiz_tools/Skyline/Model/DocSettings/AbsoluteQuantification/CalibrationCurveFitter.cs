@@ -339,10 +339,34 @@ namespace pwiz.Skyline.Model.DocSettings.AbsoluteQuantification
             }
             if (weightedPoints.Count == 0)
             {
-                return new CalibrationCurve()
-                    .ChangeErrorMessage(QuantificationStrings.CalibrationCurveFitter_GetCalibrationCurve_All_of_the_external_standards_are_missing_one_or_more_peaks_);
+                return new CalibrationCurve().ChangeErrorMessage(GetEmptyCalibrationCurveErrorMessage());
             }
             return FindBestLodForPoints(weightedPoints);
+        }
+
+        /// <summary>
+        /// Returns a message which explains why the calibration curve has zero points in it.
+        /// </summary>
+        private string GetEmptyCalibrationCurveErrorMessage()
+        {
+            var peptideModifications = SrmSettings.PeptideSettings.Modifications;
+            var quantifiableModificationTypes = peptideModifications.GetModificationTypes()
+                .Except(peptideModifications.InternalStandardTypes).ToList();
+            var ratioToLabel = PeptideQuantifier.NormalizationMethod as NormalizationMethod.RatioToLabel;
+            if (quantifiableModificationTypes.Count == 0)
+            {
+                return QuantificationStrings
+                    .CalibrationForm_DisplayCalibrationCurve_All_of_the_isotype_label_types_have_been_marked_as_internal_standard_types_;
+            }
+            if (ratioToLabel != null && quantifiableModificationTypes.All(ratioToLabel.Matches))
+            {
+                return string.Format(
+                    QuantificationStrings.CalibrationForm_DisplayCalibrationCurve_The_normalization_method_is__0__and_all_of_the_other_isotope_label_types_have_been_marked_as_internal_standard_types_,
+                    ratioToLabel);
+            }
+
+            return QuantificationStrings
+                .CalibrationCurveFitter_GetCalibrationCurve_All_of_the_external_standards_are_missing_one_or_more_peaks_;
         }
 
         public FiguresOfMerit GetFiguresOfMerit(CalibrationCurve calibrationCurve)
