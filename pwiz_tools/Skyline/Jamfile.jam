@@ -21,7 +21,7 @@
 import modules generate-version ;
 if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek : ARGV ]
 {
-    import path feature errors ;
+    import path feature errors notfile ;
     path-constant SKYLINE_PATH : $(PWIZ_ROOT_PATH)/pwiz_tools/Skyline ;
     path-constant PWIZ_WRAPPER_PATH : $(PWIZ_ROOT_PATH)/pwiz_tools/Shared/ProteowizardWrapper ;
     path-constant BIBLIO_SPEC_PATH :  $(PWIZ_ROOT_PATH)/pwiz_tools/Shared/BiblioSpec ;
@@ -72,6 +72,17 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
     if --teamcity-test-decoration in [ modules.peek : ARGV ]
     {
         .teamcity-test-decoration = "offscreen=0 teamcitytestdecoration=1" ;
+    }
+
+    rule do_nuget_restore ( targets + : source * : properties * )
+    {
+        MSVC_CURRENT_SETUP_SCRIPT on $(targets) = [ get-current-msvc-setup-script "<toolset-msvc:version>14.3" ] ;
+    }
+
+    actions do_nuget_restore
+    {
+        $(MSVC_CURRENT_SETUP_SCRIPT)
+        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
     }
 
     rule build-properties ( targets + : sources * : properties * )
@@ -131,7 +142,6 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
 
         echo Building Skyline in $(CONFIGURATION:L) configuration...
-        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:Skyline /t:TestRunner /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
         
@@ -197,7 +207,6 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline Test in $(CONFIGURATION:L) configuration...
-        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:Test /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -217,7 +226,6 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline Test Data in $(CONFIGURATION:L) configuration...
-        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestData /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -237,7 +245,6 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline Test Data in $(CONFIGURATION:L) configuration...
-        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestData /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -257,7 +264,6 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline TestFunctional in $(CONFIGURATION:L) configuration...
-        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestFunctional /t:TestConnected /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -280,7 +286,6 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline TestConnected, TestTutorial, TestPerf, SkylineTester, SkylineNightly in $(CONFIGURATION:L) configuration...
-        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestTutorial /t:TestPerf /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
     }
@@ -368,6 +373,8 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
     }
     
 
+    notfile NugetRestore : @do_nuget_restore ;
+
     # this is really the main action for building Skyline and leaving Skyline.exe intact, but it is explicit 
     make Skyline.exe
         : # sources
@@ -383,6 +390,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
             <assembly>TestDiagnostics//TestDiagnostics
             <conditional>@build-location
             <conditional>@install-vendor-api-dependencies
+            <dependency>NugetRestore
             <dependency>../../pwiz/utility/bindings/CLI//pwiz_data_cli/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
             <dependency>../../pwiz/utility/bindings/CLI//pwiz_data_cli.xml/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
             <dependency>../../pwiz/utility/bindings/CLI/timstof_prm_scheduler//PrmPasefScheduler/<location>$(PWIZ_WRAPPER_PATH)/obj/$(PLATFORM)
