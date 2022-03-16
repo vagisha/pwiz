@@ -26,6 +26,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
     path-constant PWIZ_WRAPPER_PATH : $(PWIZ_ROOT_PATH)/pwiz_tools/Shared/ProteowizardWrapper ;
     path-constant BIBLIO_SPEC_PATH :  $(PWIZ_ROOT_PATH)/pwiz_tools/Shared/BiblioSpec ;
     path-constant PFX_PATH : "$(SKYLINE_PATH)/University of Washington (MacCoss Lab).pfx" ;
+    path-constant NUGET_PATH : "$(SKYLINE_PATH)/Executables/LocalizationHelper/L10N/L10N/nuget/NuGet.exe" ;
 
     local ymd = [ MATCH "([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])" : [ modules.peek : JAMDATE ] ] ;
     local year_2digit = [ MATCH "[0-9][0-9]([0-9][0-9])" : $(ymd) ] ;
@@ -195,6 +196,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline Test in $(CONFIGURATION:L) configuration...
+        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:Test /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -214,6 +216,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline Test Data in $(CONFIGURATION:L) configuration...
+        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestData /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -233,6 +236,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline Test Data in $(CONFIGURATION:L) configuration...
+        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestData /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -252,6 +256,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline TestFunctional in $(CONFIGURATION:L) configuration...
+        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestFunctional /t:TestConnected /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
 
@@ -274,6 +279,7 @@ if [ modules.peek : NT ] && --i-agree-to-the-vendor-licenses in [ modules.peek :
         $(MSVC_CURRENT_SETUP_SCRIPT)
         chcp 437
         echo Building Skyline TestConnected, TestTutorial, TestPerf, SkylineTester, SkylineNightly in $(CONFIGURATION:L) configuration...
+        "$(NUGET_PATH)" restore $(SKYLINE_PATH)/Skyline.sln
         msbuild $(SKYLINE_PATH)/Skyline.sln /p:Configuration=$(CONFIGURATION);Platform=$(PLATFORM);OutDir=$(OUTPUT_PATH);MSBuildAssemblyName=$(TARGET_NAME) /t:TestTutorial /t:TestPerf /nologo /verbosity:minimal
         IF ERRORLEVEL 1 exit %ERRORLEVEL%
     }
