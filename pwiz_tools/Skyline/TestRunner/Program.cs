@@ -482,7 +482,6 @@ namespace TestRunner
             var testQueue = new ConcurrentQueue<TestInfo>(testList);
             var tasks = new List<Task>();
             var timer = new Stopwatch();
-            timer.Start();
 
             bool isCanceling = false;
             Console.CancelKeyPress += (sender, args) =>
@@ -526,6 +525,7 @@ namespace TestRunner
                                 //Console.WriteLine(testInfo.TestMethod.Name);
                                 if (!workerSender.TrySendFrame(TimeSpan.FromSeconds(5), testInfo.TestMethod.Name))
                                     continue;
+                                lock(timer) timer.Start();
                                 string result = string.Empty;
                                 while (!isCanceling && !workerReceiver.TryReceiveFrameString(out result)) { }
                                 result = result.Trim(' ', '\t', '\r', '\n');
