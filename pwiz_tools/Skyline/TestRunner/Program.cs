@@ -37,6 +37,8 @@ using System.Windows.Forms;
 using NetMQ;
 using NetMQ.Sockets;
 using pwiz.Common.Collections;
+using pwiz.Skyline.Model.Tools;
+using pwiz.Skyline.Util;
 //WARNING: Including TestUtil in this project causes a strange build problem, where the first
 //         build from Visual Studio after a full bjam build removes all of the Skyline project
 //         root files from the Skyline bin directory, leaving it un-runnable until a full
@@ -409,6 +411,10 @@ namespace TestRunner
             if (commandLineArgs.ArgAsBool("wait"))
                 Console.ReadKey();
 
+            // delete per-process tools directory
+            if (Path.GetDirectoryName(ToolDescriptionHelpers.GetToolsDirectory()) != "Tools")
+                DirectoryEx.SafeDelete(ToolDescriptionHelpers.GetToolsDirectory());
+
             return allTestsPassed ? 0 : 1;
         }
 
@@ -528,7 +534,7 @@ namespace TestRunner
                                 lock(timer) timer.Start();
                                 string result = string.Empty;
                                 while (!isCanceling && !workerReceiver.TryReceiveFrameString(out result)) { }
-                                result = result.Trim(' ', '\t', '\r', '\n');
+                                result = result?.Trim(' ', '\t', '\r', '\n');
                                 if (!result.IsNullOrEmpty())
                                     Console.WriteLine(result);
                             }

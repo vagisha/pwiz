@@ -114,6 +114,10 @@
       <Project>{13BF2FFB-50A1-4AB1-83A4-5733E36905CE}</Project>
       <Name>CommonUtil</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Skyline.csproj">
+      <Project>{DDA2EA4C-B632-4FDF-94BA-F71E4C152056}</Project>
+      <Name>Skyline</Name>
+    </ProjectReference>
     <ProjectReference Include="..\TestRunnerLib\TestRunnerLib.csproj">
       <Project>{E3F0E34F-F9E6-4360-996F-E2054E4FA1AE}</Project>
       <Name>TestRunnerLib</Name>

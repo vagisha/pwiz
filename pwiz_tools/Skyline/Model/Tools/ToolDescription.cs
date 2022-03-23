@@ -887,15 +887,25 @@ namespace pwiz.Skyline.Model.Tools
             }
         }
 
+        private static string _toolsDirectory;
         public static string GetToolsDirectory()
         {
+            if (_toolsDirectory != null)
+                return _toolsDirectory;
+
             string skylinePath = Assembly.GetExecutingAssembly().Location;
             if (string.IsNullOrEmpty(skylinePath))
                 return null;
             string skylineDirPath = Path.GetDirectoryName(skylinePath);
             if (string.IsNullOrEmpty(skylineDirPath))
                 return null;
-            return Path.Combine(skylineDirPath, @"Tools");
+
+            // use a random tools path when running tests to allow tests to run in parallel
+            if (Program.FunctionalTest)
+                _toolsDirectory = Path.Combine(skylineDirPath, "Tools-" + Path.GetRandomFileName());
+            else
+                _toolsDirectory = Path.Combine(skylineDirPath, @"Tools");
+            return _toolsDirectory;
         }
     }
 }

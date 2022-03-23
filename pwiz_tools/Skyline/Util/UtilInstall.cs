@@ -24,6 +24,7 @@ using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using Ionic.Zip;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.Tools;
 using pwiz.Skyline.Properties;
 
@@ -163,6 +164,7 @@ namespace pwiz.Skyline.Util
     public static class SimpleFileDownloader
     {
         private static readonly string SKYLINE_TOOL_TESTING_MIRROR_URL = @"https://pwiz-upload.s3.us-west-2.amazonaws.com/skyline_tool_testing_mirror";
+        private static string SKYLINE_TOOL_DOWNLOADS_LOCAL_CACHE => Path.Combine(PathEx.GetDownloadsPath(), @"ToolDownloadCache");
 
         public static bool FileAlreadyDownloaded(FileDownloadInfo requiredFile)
         {
@@ -189,42 +191,69 @@ namespace pwiz.Skyline.Util
 
                 foreach (var requiredFile in filesNotAlreadyDownloaded)
                 {
+                    Func<Uri, string> downloadAction = (downloadUrl) =>
+                    {
+                        if (downloadTimer != null)
+                        {
+                            Console.Write($@"# Downloading test data file {downloadUrl}...");
+                            downloadTimer.Start();
+                        }
+
+                        string downloadFilename = requiredFile.Unzip ? Path.GetTempFileName() : Path.Combine(requiredFile.InstallPath, requiredFile.Filename);
+                        using (var fileSaver = new FileSaver(downloadFilename))
+                        {
+                            if (!client.DownloadFileAsync(downloadUrl, fileSaver.SafeName))
+                                throw new Exception(Resources.PythonInstaller_DownloadPip_Download_failed__Check_your_network_connection_or_contact_Skyline_developers_);
+                            fileSaver.Commit();
+                        }
+
+                        if (downloadTimer != null)
+                        {
+                            downloadTimer.Stop();
+                            Console.WriteLine(@" done.");
+                        }
+
+                        return downloadFilename;
+                    };
+
                     // for functional testing, replace the hostname with the Skyline tool testing mirror path on AWS
-                    var downloadUrl = requiredFile.DownloadUrl;
+                    var downloadUrl2 = requiredFile.DownloadUrl;
+                    string downloadFilename2;
                     if (Program.FunctionalTest && !Program.UseOriginalURLs)
-                        downloadUrl = new Uri(Regex.Replace(downloadUrl.OriginalString, ".*/(.*)", $"{SKYLINE_TOOL_TESTING_MIRROR_URL}/$1"));
-
-                    if (downloadTimer != null)
                     {
-                        Console.Write($@"# Downloading test data file {downloadUrl}...");
-                        downloadTimer.Start();
+                        string filepathInCache = Path.Combine(SKYLINE_TOOL_DOWNLOADS_LOCAL_CACHE, requiredFile.Filename);
+                        if (File.Exists(filepathInCache))
+                        {
+                            if (!requiredFile.Unzip)
+                            {
+                                downloadFilename2 = Path.Combine(requiredFile.InstallPath, requiredFile.Filename);
+                                File.Copy(filepathInCache, downloadFilename2);
+                            }
+                            else
+                                downloadFilename2 = filepathInCache;
+                        }
+                        else
+                        {
+                            downloadUrl2 = new Uri(Regex.Replace(downloadUrl2.OriginalString, ".*/(.*)", $"{SKYLINE_TOOL_TESTING_MIRROR_URL}/$1"));
+                            downloadFilename2 = downloadAction(downloadUrl2);
+                            Directory.CreateDirectory(SKYLINE_TOOL_DOWNLOADS_LOCAL_CACHE);
+                            File.Copy(downloadFilename2, filepathInCache);
+                        }
                     }
-
-                    string downloadFilename = requiredFile.Unzip ? Path.GetTempFileName() : Path.Combine(requiredFile.InstallPath, requiredFile.Filename);
-                    using (var fileSaver = new FileSaver(downloadFilename))
-                    {
-                        if (!client.DownloadFileAsync(downloadUrl, fileSaver.SafeName))
-                            throw new Exception(Resources.PythonInstaller_DownloadPip_Download_failed__Check_your_network_connection_or_contact_Skyline_developers_);
-                        fileSaver.Commit();
-                    }
-
-                    if (downloadTimer != null)
-                    {
-                        downloadTimer.Stop();
-                        Console.WriteLine(@" done.");
-                    }
+                    else
+                        downloadFilename2 = downloadAction(downloadUrl2);
 
                     if (!requiredFile.Unzip)
                         continue;
 
                     if (unzipTimer != null)
                     {
-                        Console.Write($@"# Unzipping test data file {Path.GetFileName(downloadFilename)} to {requiredFile.InstallPath}...");
+                        Console.Write($@"# Unzipping test data file {Path.GetFileName(downloadFilename2)} to {requiredFile.InstallPath}...");
                         unzipTimer.Start();
                     }
 
                     Directory.CreateDirectory(requiredFile.InstallPath);
-                    using (var zipFile = new ZipFile(downloadFilename))
+                    using (var zipFile = new ZipFile(downloadFilename2))
                     {
                         zipFile.ExtractAll(requiredFile.InstallPath, requiredFile.OverwriteExisting ? ExtractExistingFileAction.OverwriteSilently : ExtractExistingFileAction.DoNotOverwrite);
                     }
@@ -235,7 +264,9 @@ namespace pwiz.Skyline.Util
                         Console.WriteLine(@" done.");
                     }
 
-                    FileEx.SafeDelete(downloadFilename);
+                    // delete temporary zip file for normal execution but not local cached zip file for testing
+                    if (!Program.FunctionalTest)
+                        FileEx.SafeDelete(downloadFilename2);
                 }
 
                 if (downloadTimer != null)
