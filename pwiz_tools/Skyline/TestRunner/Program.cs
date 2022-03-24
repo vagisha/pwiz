@@ -26,6 +26,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -37,8 +38,10 @@ using System.Windows.Forms;
 using NetMQ;
 using NetMQ.Sockets;
 using pwiz.Common.Collections;
+using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Model.Tools;
 using pwiz.Skyline.Util;
+using pwiz.Skyline.Util.Extensions;
 //WARNING: Including TestUtil in this project causes a strange build problem, where the first
 //         build from Visual Studio after a full bjam build removes all of the Skyline project
 //         root files from the Skyline bin directory, leaving it un-runnable until a full
@@ -216,7 +219,7 @@ namespace TestRunner
             "?;/?;-?;help;skylinetester;debug;results;" +
             "test;skip;filter;form;" +
             "loop=0;repeat=1;pause=0;startingpage=1;random=off;offscreen=on;multi=1;wait=off;internet=off;originalurls=off;" +
-            "parallelmode=off;queuehost;" +
+            "parallelmode=off;workercount=0;queuehost;" +
             "maxsecondspertest=-1;" +
             "demo=off;showformnames=off;showpages=off;status=off;buildcheck=0;screenshotlist;" +
             "quality=off;pass0=off;pass1=off;pass2=on;" +
@@ -412,19 +415,37 @@ namespace TestRunner
                 Console.ReadKey();
 
             // delete per-process tools directory
-            if (Path.GetDirectoryName(ToolDescriptionHelpers.GetToolsDirectory()) != "Tools")
+            if (Path.GetFileName(ToolDescriptionHelpers.GetToolsDirectory()) != "Tools")
                 DirectoryEx.SafeDelete(ToolDescriptionHelpers.GetToolsDirectory());
 
             return allTestsPassed ? 0 : 1;
         }
 
+        // from https://stackoverflow.com/questions/13634868/get-the-default-gateway
+        public static IPAddress GetDefaultGateway()
+        {
+            return NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up)
+                .Where(n => n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .SelectMany(n => n.GetIPProperties()?.GatewayAddresses)
+                .Select(g => g?.Address)
+                .Where(a => a != null)
+                .Where(a => a.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+                // .Where(a => Array.FindIndex(a.GetAddressBytes(), b => b != 0) >= 0)
+                .FirstOrDefault();
+        }
+
         private static int ListenToTestQueue(StreamWriter log, CommandLineArgs commandLineArgs)
         {
             bool allTestsPassed = true;
+            int CLIENT_WAIT_TIMEOUT = 10; // time to wait for a message from server before exiting, in seconds
 
-            string host = "localhost";
+            string host;
             if (commandLineArgs.HasArg("queuehost"))
                 host = commandLineArgs.ArgAsString("queuehost");
+            else
+                host = GetDefaultGateway()?.ToString() ?? "localhost";
 
             using (var sender = new PushSocket($">tcp://{host}:5557"))
             using (var receiver = new PullSocket("@tcp://*:5558"))
@@ -452,14 +473,15 @@ namespace TestRunner
                     var cargs = new CommandLineArgs(new[] { "test=" + testName }, commandLineOptions);
                     var testList = LoadTestList(cargs);
                     using (var testLogStream = new MemoryStream())
-                    using (var testLog = new StreamWriter(testLogStream))
+                    using (var testLog = new StreamWriter(testLogStream, new UTF8Encoding(false)))
                     {
                         bool passed = RunTestPasses(testList, testList, commandLineArgs, testLog, 1, 1);
                         allTestsPassed &= passed;
                         log.Write(testLog);
-                        if (!sender2.TrySendFrame(TimeSpan.FromSeconds(10), testLogStream.GetBuffer()))
+                        var resultBuffer = testLogStream.GetBuffer().Prepend(Convert.ToByte(passed));
+                        if (!sender2.TrySendFrame(TimeSpan.FromSeconds(CLIENT_WAIT_TIMEOUT), resultBuffer.ToArray(), (int) testLogStream.Length+1))
                         {
-                            Console.Error.WriteLine("Exiting due to no response from server in 10 seconds.");
+                            Console.Error.WriteLine($"Exiting due to no response from server in {CLIENT_WAIT_TIMEOUT} seconds.");
                             done = true;
                         }
                     }
@@ -467,27 +489,34 @@ namespace TestRunner
                     //sender.SendFrame(passed.ToString());
                 };
 
+                Thread.Sleep(1000);
+
                 while (!done)
                 {
                     Console.WriteLine("Waiting for message");
                     if (!sender2.TrySignalOK())
                     {
-                        Thread.Sleep(1000);
+                        Thread.Sleep(2000);
                         continue;
                     }
 
-                    receiver.Poll();
+                    if (!receiver.Poll(TimeSpan.FromSeconds(CLIENT_WAIT_TIMEOUT)))
+                    {
+                        Console.Error.WriteLine($"Exiting due to no response from server in {CLIENT_WAIT_TIMEOUT} seconds.");
+                        done = true;
+                    }
                 }
             }
             return allTestsPassed ? 0 : 1;
         }
 
-        private static void PushToTestQueue(List<TestInfo> testList)
+        private static bool PushToTestQueue(List<TestInfo> testList, int workerCount)
         {
             var factory = new TaskFactory();
             var testQueue = new ConcurrentQueue<TestInfo>(testList);
             var tasks = new List<Task>();
             var timer = new Stopwatch();
+            int testsFailed = 0;
 
             bool isCanceling = false;
             Console.CancelKeyPress += (sender, args) =>
@@ -496,6 +525,22 @@ namespace TestRunner
                 args.Cancel = true;
                 isCanceling = true;
             };
+
+            string workerNames = null;
+            if (workerCount > 0)
+            {
+                var pwizRoot = Path.GetDirectoryName(Path.GetDirectoryName(GetSkylineDirectory().FullName));
+                for(int i=0; i < workerCount; ++i)
+                {
+                    workerNames = (workerNames ?? "") + $"docker_worker_{i} ";
+                    var testRunnerCmd = $@"c:\pwiz\pwiz_tools\Skyline\bin\x64\Release\TestRunner.exe language=en parallelmode=client showheader=0 perftests=on results=c:\AlwaysUpCLT\TestResults log=c:\AlwaysUpCLT\TestRunner.log";
+                    var psi = new ProcessStartInfo("docker", $@"run --name docker_worker_{i} -it --rm -m 2gb -v {PathEx.GetDownloadsPath()}:c:\downloads -v {pwizRoot}:c:\pwiz chambm/always_up_runner {testRunnerCmd.Quote()}");
+                    psi.WindowStyle = ProcessWindowStyle.Normal;
+                    psi.CreateNoWindow = false;
+                    psi.UseShellExecute = true;
+                    Process.Start(psi);
+                }
+            }
 
             using (var receiver = new PullSocket("@tcp://*:5557"))
             {
@@ -532,20 +577,37 @@ namespace TestRunner
                                 if (!workerSender.TrySendFrame(TimeSpan.FromSeconds(5), testInfo.TestMethod.Name))
                                     continue;
                                 lock(timer) timer.Start();
-                                string result = string.Empty;
-                                while (!isCanceling && !workerReceiver.TryReceiveFrameString(out result)) { }
-                                result = result?.Trim(' ', '\t', '\r', '\n');
-                                if (!result.IsNullOrEmpty())
-                                    Console.WriteLine(result);
+                                byte[] result = null;
+                                while (!isCanceling && !workerReceiver.TryReceiveFrameBytes(TimeSpan.FromSeconds(5), out result)) { }
+                                if (result == null)
+                                    continue;
+                                bool testPassed = Convert.ToBoolean(result[0]);
+                                if (!testPassed)
+                                    Interlocked.Increment(ref testsFailed);
+                                string testOutput = Encoding.UTF8.GetString(result, 1, result.Length - 1);
+                                testOutput = testOutput.Trim(' ', '\t', '\r', '\n');
+                                testOutput = Regex.Replace(testOutput, @"\d+ failures", $"{testsFailed} failures");
+                                if (!testOutput.IsNullOrEmpty())
+                                    Console.WriteLine(testOutput);
                             }
                         }
                     }));
                 }
 
+                if (isCanceling && workerNames != null)
+                {
+                    var psi = new ProcessStartInfo("docker", $@"kill {workerNames}");
+                    psi.CreateNoWindow = true;
+                    psi.UseShellExecute = false;
+                    Process.Start(psi).WaitForExit();
+                }
+
                 foreach (var task in tasks)
                     task.Wait();
             }
+
             Console.WriteLine($"Parallel server mode finished in {timer.Elapsed} ({timer.Elapsed.TotalSeconds}s)");
+            return testsFailed == 0;
         }
 
         private static DirectoryInfo GetSkylineDirectory()
@@ -621,6 +683,7 @@ namespace TestRunner
             bool teamcityTestDecoration = commandLineArgs.ArgAsBool("teamcitytestdecoration");
             bool verbose = commandLineArgs.ArgAsBool("verbose");
             bool serverMode = commandLineArgs.ArgAsString("parallelmode") == "server";
+            int workerCount = (int) commandLineArgs.ArgAsLong("workercount");
             bool asNightly = offscreen && qualityMode;  // While it is possible to run quality off screen from the Quality tab, this is what we use to distinguish for treatment of perf tests
 
             // If we haven't been told to run perf tests, remove any from the list
@@ -659,9 +722,7 @@ namespace TestRunner
 
             if (serverMode)
             {
-                PushToTestQueue(testList);
-
-                return true;
+                return PushToTestQueue(testList, workerCount);
             }
 
             var runTests = new RunTests(
