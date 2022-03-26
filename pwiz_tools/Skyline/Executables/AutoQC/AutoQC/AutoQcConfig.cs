@@ -94,6 +94,11 @@ namespace AutoQC
             return Path.Combine(GetConfigDir(), file);
         }
 
+        public bool IsWatersInstrument()
+        {
+            return MainSettings.WATERS.Equals(MainSettings.InstrumentType);
+        }
+
         private enum Attr
         {
             name,

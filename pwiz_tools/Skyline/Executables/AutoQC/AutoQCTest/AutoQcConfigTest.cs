@@ -173,7 +173,104 @@ namespace AutoQCTest
             Assert.IsFalse(Equals(testMainSettings, null));
             Assert.IsFalse(Equals(testMainSettings, differentMainSettings));
         }
-        
+
+        [TestMethod]
+        public void TestWatersImportArgs()
+        {
+            var mainSettings = TestUtils.GetTestMainSettings();
+            mainSettings = mainSettings.ChangeInstrument(MainSettings.WATERS);
+            TestLockMassParams(mainSettings);
+
+
+            var lockMassParams = new LockMassParameters(null, null, null);
+            mainSettings = mainSettings.ChangeWatersLockmassParams(lockMassParams);
+            TestLockMassParams(mainSettings);
+
+            lockMassParams = new LockMassParameters(null, null, 10);
+            mainSettings = mainSettings.ChangeWatersLockmassParams(lockMassParams);
+            TestLockMassParams(mainSettings);
+
+            lockMassParams = new LockMassParameters(1.23, null, null);
+            mainSettings = mainSettings.ChangeWatersLockmassParams(lockMassParams);
+            TestLockMassParams(mainSettings);
+
+            lockMassParams = new LockMassParameters(null, 2.5, null);
+            mainSettings = mainSettings.ChangeWatersLockmassParams(lockMassParams);
+            TestLockMassParams(mainSettings);
+
+            lockMassParams = new LockMassParameters(1.23, 4.56, 7);
+            mainSettings = mainSettings.ChangeWatersLockmassParams(lockMassParams);
+            TestLockMassParams(mainSettings);
+        }
+
+        public void TestLockMassParams(MainSettings mainSettings)
+        {
+            var panoramaSettings = TestUtils.GetNoPublishPanoramaSettings();
+            var skylineSettings = TestUtils.GetTestSkylineSettings();
+            var config = new AutoQcConfig("Test Config", false, DateTime.MinValue, DateTime.MinValue,
+                mainSettings, panoramaSettings, skylineSettings);
+            var configRunner = new ConfigRunner(config, TestUtils.GetTestLogger(config), null);
+            var ctx = new ImportContext(@"C:\Dummy\path\Test_file.raw");
+            var importArgs = configRunner.ImportResultsFileArgs(ctx);
+
+            var instrument = mainSettings.InstrumentType;
+            if (!MainSettings.WATERS.Equals(mainSettings.InstrumentType))
+            {
+                Assert.IsFalse(importArgs.Contains(LockMassParameters.POSITIVE_CMD_ARG),
+                    string.Format("Unexpected lockmass param {0} for instrument {1}", LockMassParameters.POSITIVE_CMD_ARG, instrument));
+                Assert.IsFalse(importArgs.Contains(LockMassParameters.NEGATIVE_CMD_ARG),
+                    string.Format("Unexpected lockmass param {0} for instrument {1}", LockMassParameters.NEGATIVE_CMD_ARG, instrument));
+                Assert.IsFalse(importArgs.Contains(LockMassParameters.TOLERANCE_CMD_ARG),
+                    string.Format("Unexpected lockmass param {0} for instrument {1}", LockMassParameters.TOLERANCE_CMD_ARG, instrument));
+            }
+            else
+            {
+                var lockmassParams = mainSettings.LockMassParameters;
+                if (lockmassParams == null || lockmassParams.IsEmpty)
+                {
+                    Assert.IsFalse(importArgs.Contains(LockMassParameters.POSITIVE_CMD_ARG),
+                        string.Format("Unexpected lockmass param {0}", LockMassParameters.POSITIVE_CMD_ARG));
+                    Assert.IsFalse(importArgs.Contains(LockMassParameters.NEGATIVE_CMD_ARG),
+                        string.Format("Unexpected lockmass param {0}", LockMassParameters.NEGATIVE_CMD_ARG));
+                    Assert.IsFalse(importArgs.Contains(LockMassParameters.TOLERANCE_CMD_ARG),
+                        string.Format("Unexpected lockmass param {0}", LockMassParameters.TOLERANCE_CMD_ARG));
+                }
+                else
+                {
+                    if (lockmassParams.LockmassPositive.HasValue)
+                    {
+                        Assert.IsTrue(importArgs.Contains(LockMassParameters.POSITIVE_CMD_ARG),
+                            string.Format("Expected lockmass param {0}={1}", LockMassParameters.POSITIVE_CMD_ARG, lockmassParams.LockmassPositive));
+                    }
+                    else
+                    {
+                        Assert.IsFalse(importArgs.Contains(LockMassParameters.POSITIVE_CMD_ARG),
+                            string.Format("Unexpected lockmass param {0}", LockMassParameters.POSITIVE_CMD_ARG));
+                    }
+                    if (lockmassParams.LockmassNegative.HasValue)
+                    {
+                        Assert.IsTrue(importArgs.Contains(LockMassParameters.NEGATIVE_CMD_ARG),
+                            string.Format("Expected lockmass param {0}={1}", LockMassParameters.NEGATIVE_CMD_ARG, lockmassParams.LockmassNegative));
+                    }
+                    else
+                    {
+                        Assert.IsFalse(importArgs.Contains(LockMassParameters.NEGATIVE_CMD_ARG),
+                            string.Format("Unexpected lockmass param {0}", LockMassParameters.NEGATIVE_CMD_ARG));
+                    }
+                    if (lockmassParams.LockmassTolerance.HasValue)
+                    {
+                        Assert.IsTrue(importArgs.Contains(LockMassParameters.TOLERANCE_CMD_ARG),
+                            string.Format("Expected lockmass param {0}={1}", LockMassParameters.TOLERANCE_CMD_ARG, lockmassParams.LockmassTolerance));
+                    }
+                    else
+                    {
+                        Assert.IsFalse(importArgs.Contains(LockMassParameters.TOLERANCE_CMD_ARG),
+                            string.Format("Unexpected lockmass param {0}", LockMassParameters.TOLERANCE_CMD_ARG));
+                    }
+                }
+            }
+        }
+
         [TestMethod]
         public void TestPanoramaSettingsEquals()
         {

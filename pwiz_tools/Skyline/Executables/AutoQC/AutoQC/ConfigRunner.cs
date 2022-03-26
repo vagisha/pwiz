@@ -966,8 +966,18 @@ namespace AutoQC
                 }
             }
 
+            var watersLockmassParams = string.Empty;
+            if (Config.IsWatersInstrument())
+            {
+                var lockMassParams = Config.MainSettings.LockMassParameters;
+                if (lockMassParams != null)
+                {
+                    watersLockmassParams = lockMassParams.GetCommandLineParams();
+                }
+            }
+
             // Add arguments to import the results file
-            args.Append(string.Format(" --import-file=\"{0}\"{1}", importContext.GetCurrentFile(), importOnOrAfter));
+            args.Append(string.Format(" --import-file=\"{0}\"{1}{2}", importContext.GetCurrentFile(), importOnOrAfter, watersLockmassParams));
 
             // Save the Skyline file
             args.Append(" --save");
