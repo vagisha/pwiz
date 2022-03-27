@@ -38,6 +38,7 @@ namespace AutoQC
         private string _lastEnteredPath;
         private TabPage _lastSelectedTab;
         private SkylineSettings _currentSkylineSettings;
+        private LockMassParameters _lockMassParameters;
 
         public AutoQcConfigForm(IMainUiControl mainControl, AutoQcConfig config, ConfigAction action, AutoQcConfigManagerState state, RunnerStatus status = RunnerStatus.Stopped)
         {
@@ -95,6 +96,11 @@ namespace AutoQC
             textConfigName.Text = config.Name;
             SetInitialMainSettings(config.MainSettings);
             SetInitialPanoramaSettings(config.PanoramaSettings);
+            if (config.IsWatersInstrument())
+            {
+                _lockMassParameters = config.MainSettings.LockMassParameters;
+                lblLockmassCorrection.Show();
+            }
         }
 
         public void DisableUserInputs(Control parentControl = null)
@@ -130,6 +136,7 @@ namespace AutoQC
             textAquisitionTime.Text = mainSettings.AcquisitionTime.ToString();
             comboBoxInstrumentType.SelectedItem = mainSettings.InstrumentType;
             comboBoxInstrumentType.SelectedIndex = comboBoxInstrumentType.FindStringExact(mainSettings.InstrumentType);
+            _lockMassParameters = mainSettings.LockMassParameters;
         }
 
         private void SetDefaultMainSettings()
@@ -153,7 +160,8 @@ namespace AutoQC
             var resultsWindow = textResultsTimeWindow.Text;
             var instrumentType = comboBoxInstrumentType.SelectedItem.ToString();
             var acquisitionTime = textAquisitionTime.Text;
-            var mainSettings = new MainSettings(skylineFilePath, folderToWatch, includeSubfolders, qcFileFilter, removeResults, resultsWindow, instrumentType, acquisitionTime);
+            var mainSettings = new MainSettings(skylineFilePath, folderToWatch, includeSubfolders, qcFileFilter,
+                removeResults, resultsWindow, instrumentType, acquisitionTime, _lockMassParameters);
             return mainSettings;
         }
 
@@ -337,5 +345,32 @@ namespace AutoQC
         }
 
         #endregion
+
+        private void lblLockmassSettings_click(object sender, EventArgs e)
+        {
+            using (var dlgLockMass = new WatersLockmassDlg(_lockMassParameters))
+            {
+                var result = dlgLockMass.ShowDialog(this);
+                if (result != DialogResult.OK)
+                {
+                    return; // Cancelled
+                }
+                _lockMassParameters = dlgLockMass.LockMassParameters.IsEmpty ? null : dlgLockMass.LockMassParameters;
+            }
+        }
+
+        private void cbInstrumentType_SelectionChangeCommitted(object sender, EventArgs e)
+        {
+            var instrumentTypeCb = (ComboBox)sender;
+            if (MainSettings.WATERS.Equals(instrumentTypeCb.SelectedItem.ToString()))
+            {
+                lblLockmassCorrection.Show();
+            }
+            else
+            {
+                lblLockmassCorrection.Hide();
+                _lockMassParameters = null;
+            }
+        }
     }
 }

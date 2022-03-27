@@ -26,11 +26,12 @@ using System.Xml.Schema;
 using System.Xml.Serialization;
 using AutoQC.Properties;
 using SharedBatch;
+using pwiz.Common.SystemUtil;
 
 namespace AutoQC
 {
     [XmlRoot("main_settings")]
-    public class MainSettings
+    public class MainSettings : Immutable
     {
         public const string XML_EL = "main_settings";
 
@@ -57,12 +58,14 @@ namespace AutoQC
         public readonly FileFilter QcFileFilter;
         public readonly bool RemoveResults;
         public readonly int ResultsWindow;
-        public readonly string InstrumentType;
+        public string InstrumentType { get; private set; }
         public readonly int AcquisitionTime;
+        public LockMassParameters LockMassParameters { get; private set; }
 
 
         public MainSettings(string skylineFilePath, string folderToWatch, bool includeSubFolders, FileFilter qcFileFilter, 
-            bool removeResults, string resultsWindowString, string instrumentType, string acquisitionTimeString)
+            bool removeResults, string resultsWindowString, string instrumentType, string acquisitionTimeString,
+            LockMassParameters lockMassParameters = null)
         {
             SkylineFilePath = skylineFilePath;
             FolderToWatch = folderToWatch;
@@ -72,6 +75,7 @@ namespace AutoQC
             ResultsWindow = ValidateIntTextField(resultsWindowString, Resources.MainSettings_MainSettings_results_window);
             InstrumentType = instrumentType;
             AcquisitionTime = ValidateIntTextField(acquisitionTimeString, Resources.MainSettings_MainSettings_acquisition_time);
+            LockMassParameters = lockMassParameters;
         }
 
         public virtual bool IsSelected()
@@ -96,6 +100,10 @@ namespace AutoQC
                 sb.AppendLine("Remove older results: No");
             }
             sb.Append("Acquisition time: ").Append(AcquisitionTime.ToString()).AppendLine(" minutes");
+            if (LockMassParameters != null)
+            {
+                sb.Append(LockMassParameters);
+            }
             return sb.ToString();
         }
 
@@ -185,6 +193,16 @@ namespace AutoQC
             ValidateSettings();
         }
 
+        public MainSettings ChangeInstrument(string instrumentType)
+        {
+            return ChangeProp(ImClone(this), im => im.InstrumentType = instrumentType);
+        }
+
+        public MainSettings ChangeWatersLockmassParams(LockMassParameters lockmassParams)
+        {
+            return ChangeProp(ImClone(this), im => im.LockMassParameters = lockmassParams);
+        }
+
 
         #region Implementation of IXmlSerializable interface
 
@@ -198,7 +216,10 @@ namespace AutoQC
             remove_results,
             results_window,
             instrument_type,
-            acquisition_time
+            acquisition_time,
+            lockmass_positive,
+            lockmass_negative,
+            lockmass_tolerance
         };
 
         public XmlSchema GetSchema()
@@ -224,11 +245,17 @@ namespace AutoQC
             var instrumentType = reader.GetAttribute(Attr.instrument_type);
             var acquisitionTime = reader.GetAttribute(Attr.acquisition_time);
 
+            // Waters lockmass correction parameters
+            var lockmassPositive = reader.GetDoubleAttribute(Attr.lockmass_positive);
+            var lockmassNegative = reader.GetDoubleAttribute(Attr.lockmass_negative);
+            var lockmassTolerance = reader.GetDoubleAttribute(Attr.lockmass_tolerance);
+            var lockmassParams = new LockMassParameters(lockmassPositive, lockmassNegative, lockmassTolerance);
+
             // Return unvalidated settings. Validation can throw an exception that will cause the config to not get read fully and it will not be added to the config list
             // We want the user to be able to fix invalid configs.
             return new MainSettings(skylineFilePath, folderToWatch, includeSubfolders, 
                 qcFileFilter, removeResults, resultsWindow, instrumentType, 
-                acquisitionTime);
+                acquisitionTime, lockmassParams.IsEmpty ? null : lockmassParams);
         }
 
         public void WriteXml(XmlWriter writer)
@@ -243,6 +270,12 @@ namespace AutoQC
             writer.WriteAttributeNullable(Attr.results_window, ResultsWindow);
             writer.WriteAttributeIfString(Attr.instrument_type, InstrumentType);
             writer.WriteAttributeNullable(Attr.acquisition_time, AcquisitionTime);
+            if (LockMassParameters != null && !LockMassParameters.IsEmpty)
+            {
+                writer.WriteAttributeNullable(Attr.lockmass_positive, LockMassParameters.LockmassPositive);
+                writer.WriteAttributeNullable(Attr.lockmass_negative, LockMassParameters.LockmassNegative);
+                writer.WriteAttributeNullable(Attr.lockmass_tolerance, LockMassParameters.LockmassTolerance);
+            }
             writer.WriteEndElement();
         }
         #endregion
@@ -254,7 +287,8 @@ namespace AutoQC
             return SkylineFilePath == other.SkylineFilePath && FolderToWatch == other.FolderToWatch &&
                    IncludeSubfolders == other.IncludeSubfolders && Equals(QcFileFilter, other.QcFileFilter) &&
                    RemoveResults == other.RemoveResults && ResultsWindow == other.ResultsWindow &&
-                   InstrumentType == other.InstrumentType && AcquisitionTime == other.AcquisitionTime;
+                   InstrumentType == other.InstrumentType && AcquisitionTime == other.AcquisitionTime &&
+                   Equals(LockMassParameters, other.LockMassParameters);
         }
 
         public override bool Equals(object obj)
@@ -275,8 +309,9 @@ namespace AutoQC
                 hashCode = (hashCode * 397) ^ (QcFileFilter != null ? QcFileFilter.GetHashCode() : 0);
                 hashCode = (hashCode * 397) ^ RemoveResults.GetHashCode();
                 hashCode = (hashCode * 397) ^ ResultsWindow;
-                hashCode = (hashCode * 397) ^ (InstrumentType != null ? InstrumentType.GetHashCode() : 0);
                 hashCode = (hashCode * 397) ^ AcquisitionTime;
+                hashCode = (hashCode * 397) ^ (InstrumentType != null ? InstrumentType.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ (LockMassParameters != null ? LockMassParameters.GetHashCode() : 0);
                 return hashCode;
             }
         }
@@ -528,6 +563,143 @@ namespace AutoQC
         public DateTime LastWriteTime(string filePath)
         {
             return File.GetLastWriteTime(filePath);
+        }
+    }
+
+    /// <summary>
+    /// For Waters lockmass correction
+    /// </summary>
+    public sealed class LockMassParameters : IComparable
+    {
+        public LockMassParameters(double? lockmassPositve, double? lockmassNegative, double? lockmassTolerance)
+        {
+            LockmassPositive = lockmassPositve;
+            LockmassNegative = lockmassNegative;
+            if (LockmassPositive.HasValue || LockmassNegative.HasValue)
+            {
+                LockmassTolerance = lockmassTolerance ?? LOCKMASS_TOLERANCE_DEFAULT;
+            }
+            else
+            {
+                LockmassTolerance = null;  // Means nothing when no mz is given
+            }
+        }
+
+        public double? LockmassPositive { get; private set; }
+        public double? LockmassNegative { get; private set; }
+        public double? LockmassTolerance { get; private set; }
+
+        public static readonly double LOCKMASS_TOLERANCE_DEFAULT = 0.1; // Per Will T
+        public static readonly double LOCKMASS_TOLERANCE_MAX = 10.0;
+        public static readonly double LOCKMASS_TOLERANCE_MIN = 0;
+
+        public static readonly string POSITIVE = "ESI+";
+        public static readonly string NEGATIVE = "ESI-";
+        public static readonly string TOLERANCE = "Tolerance";
+
+        public static readonly string POSITIVE_CMD_ARG = "import-lockmass-positive";
+        public static readonly string NEGATIVE_CMD_ARG = "import-lockmass-negative";
+        public static readonly string TOLERANCE_CMD_ARG = "import-lockmass-tolerance";
+
+        public static readonly LockMassParameters EMPTY = new LockMassParameters(null, null, null);
+
+        public bool IsEmpty
+        {
+            get
+            {
+                return (0 == (LockmassNegative ?? 0)) &&
+                       (0 == (LockmassPositive ?? 0));
+                // Ignoring tolerance here, which means nothing when no mz is given
+            }
+        }
+
+        private bool Equals(LockMassParameters other)
+        {
+            return LockmassPositive.Equals(other.LockmassPositive) &&
+                   LockmassNegative.Equals(other.LockmassNegative) &&
+                   LockmassTolerance.Equals(other.LockmassTolerance);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj is LockMassParameters && Equals((LockMassParameters)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var result = LockmassPositive.GetHashCode();
+                result = (result * 397) ^ LockmassNegative.GetHashCode();
+                result = (result * 397) ^ LockmassTolerance.GetHashCode();
+                return result;
+            }
+        }
+
+        public int CompareTo(LockMassParameters other)
+        {
+            if (ReferenceEquals(null, other))
+                return -1;
+            var result = Nullable.Compare(LockmassPositive, other.LockmassPositive);
+            if (result != 0)
+                return result;
+            result = Nullable.Compare(LockmassNegative, other.LockmassNegative);
+            if (result != 0)
+                return result;
+            return Nullable.Compare(LockmassTolerance, other.LockmassTolerance);
+        }
+
+        public int CompareTo(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return -1;
+            if (ReferenceEquals(this, obj)) return 0;
+            if (obj.GetType() != GetType()) return -1;
+            return CompareTo((LockMassParameters)obj);
+        }
+
+        public override string ToString()
+        {
+            if (IsEmpty) return "";
+            var sb = new StringBuilder();
+            sb.AppendLine("Waters lockmass correction parameters:");
+            if (LockmassPositive.HasValue)
+            {
+                sb.Append(POSITIVE).Append(": ").Append(LockmassPositive);
+            }
+            if (LockmassNegative.HasValue)
+            {
+                sb.Append(NEGATIVE).Append(": ").Append(LockmassNegative);
+            }
+            if (LockmassTolerance.HasValue)
+            {
+                sb.Append(TOLERANCE).Append(": ").Append(LockmassTolerance);
+            }
+            
+            return sb.ToString();
+        }
+
+        public string GetCommandLineParams()
+        {
+            var args = new StringBuilder();
+            if (!IsEmpty)
+            {
+                if (LockmassPositive.HasValue)
+                {
+                    args.Append(string.Format(" --{0}={1}", POSITIVE_CMD_ARG, LockmassPositive));
+                }
+                if (LockmassNegative.HasValue)
+                {
+                    args.Append(string.Format(" --{0}={1}", NEGATIVE_CMD_ARG, LockmassNegative));
+                }
+                if (LockmassTolerance.HasValue)
+                {
+                    args.Append(string.Format(" --{0}={1}", TOLERANCE_CMD_ARG, LockmassTolerance));
+                }
+            }
+
+            return args.ToString();
         }
     }
 }

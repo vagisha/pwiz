@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -780,14 +779,14 @@ namespace AutoQC
         private void ListViewSizeChanged()
         {
             listViewConfigs.ColumnWidthChanged -= listViewConfigs_ColumnWidthChanged;
-            _listViewColumnWidths.ListViewContainerResize();
+            _listViewColumnWidths?.ListViewContainerResize();
             listViewConfigs.ColumnWidthChanged += listViewConfigs_ColumnWidthChanged;
         }
 
         private void listViewConfigs_ColumnWidthChanged(object sender, ColumnWidthChangedEventArgs e)
         {
             listViewConfigs.ColumnWidthChanged -= listViewConfigs_ColumnWidthChanged;
-            _listViewColumnWidths.WidthsChangedByUser();
+            _listViewColumnWidths?.WidthsChangedByUser();
             listViewConfigs.ColumnWidthChanged += listViewConfigs_ColumnWidthChanged;
         }
 

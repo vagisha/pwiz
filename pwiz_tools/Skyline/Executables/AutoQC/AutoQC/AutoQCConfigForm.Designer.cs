@@ -35,9 +35,9 @@ namespace AutoQC
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.tabControl = new System.Windows.Forms.TabControl();
             this.tabSettings = new System.Windows.Forms.TabPage();
+            this.groupBoxMain = new System.Windows.Forms.GroupBox();
             this.textConfigName = new System.Windows.Forms.TextBox();
             this.labelConfigName = new System.Windows.Forms.Label();
-            this.groupBoxMain = new System.Windows.Forms.GroupBox();
             this.checkBoxRemoveResults = new System.Windows.Forms.CheckBox();
             this.labelQcFilePattern = new System.Windows.Forms.Label();
             this.comboBoxFileFilter = new System.Windows.Forms.ComboBox();
@@ -77,6 +77,7 @@ namespace AutoQC
             this.btnSaveConfig = new System.Windows.Forms.Button();
             this.btnOkConfig = new System.Windows.Forms.Button();
             this.toolTip1 = new System.Windows.Forms.ToolTip(this.components);
+            this.lblLockmassCorrection = new System.Windows.Forms.LinkLabel();
             ((System.ComponentModel.ISupportInitialize)(this.splitContainer1)).BeginInit();
             this.splitContainer1.Panel1.SuspendLayout();
             this.splitContainer1.Panel2.SuspendLayout();
@@ -120,19 +121,10 @@ namespace AutoQC
             this.tabSettings.Name = "tabSettings";
             this.tabSettings.Enter += new System.EventHandler(this.TabEnter);
             // 
-            // textConfigName
-            // 
-            resources.ApplyResources(this.textConfigName, "textConfigName");
-            this.textConfigName.Name = "textConfigName";
-            // 
-            // labelConfigName
-            // 
-            resources.ApplyResources(this.labelConfigName, "labelConfigName");
-            this.labelConfigName.Name = "labelConfigName";
-            // 
             // groupBoxMain
             // 
             resources.ApplyResources(this.groupBoxMain, "groupBoxMain");
+            this.groupBoxMain.Controls.Add(this.lblLockmassCorrection);
             this.groupBoxMain.Controls.Add(this.textConfigName);
             this.groupBoxMain.Controls.Add(this.labelConfigName);
             this.groupBoxMain.Controls.Add(this.checkBoxRemoveResults);
@@ -157,6 +149,16 @@ namespace AutoQC
             this.groupBoxMain.Controls.Add(this.textSkylinePath);
             this.groupBoxMain.Name = "groupBoxMain";
             this.groupBoxMain.TabStop = false;
+            // 
+            // textConfigName
+            // 
+            resources.ApplyResources(this.textConfigName, "textConfigName");
+            this.textConfigName.Name = "textConfigName";
+            // 
+            // labelConfigName
+            // 
+            resources.ApplyResources(this.labelConfigName, "labelConfigName");
+            this.labelConfigName.Name = "labelConfigName";
             // 
             // checkBoxRemoveResults
             // 
@@ -249,6 +251,7 @@ namespace AutoQC
             resources.GetString("comboBoxInstrumentType.Items5")});
             resources.ApplyResources(this.comboBoxInstrumentType, "comboBoxInstrumentType");
             this.comboBoxInstrumentType.Name = "comboBoxInstrumentType";
+            this.comboBoxInstrumentType.SelectionChangeCommitted += new System.EventHandler(this.cbInstrumentType_SelectionChangeCommitted);
             // 
             // btnFolderToWatch
             // 
@@ -408,6 +411,13 @@ namespace AutoQC
             this.btnOkConfig.UseVisualStyleBackColor = true;
             this.btnOkConfig.Click += new System.EventHandler(this.btnOkConfig_Click);
             // 
+            // lblLockmassCorrection
+            // 
+            resources.ApplyResources(this.lblLockmassCorrection, "lblLockmassCorrection");
+            this.lblLockmassCorrection.Name = "lblLockmassCorrection";
+            this.lblLockmassCorrection.TabStop = true;
+            this.lblLockmassCorrection.Click += new System.EventHandler(this.lblLockmassSettings_click);
+            // 
             // AutoQcConfigForm
             // 
             this.AcceptButton = this.btnSaveConfig;
@@ -485,5 +495,6 @@ namespace AutoQC
         private System.Windows.Forms.TextBox textAquisitionTime;
         private System.Windows.Forms.TabPage tabSkylineSettings;
         private System.Windows.Forms.Panel panelSkylineSettings;
+        private System.Windows.Forms.LinkLabel lblLockmassCorrection;
     }
 }
