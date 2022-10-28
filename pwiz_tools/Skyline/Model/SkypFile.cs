@@ -19,6 +19,10 @@ namespace pwiz.Skyline.Model
         public string SkypPath { get; private set; }
         public Uri SkylineDocUri { get; private set; }
         public Server Server { get; private set; }
+
+        public string User { get; private set; }
+
+        public long? Size { get; private set; }
         public string DownloadPath { get; private set; }
         
         public static SkypFile Create(string skypPath, IEnumerable<Server> servers)
@@ -29,9 +33,10 @@ namespace pwiz.Skyline.Model
             }
             var skyp = new SkypFile
             {
-                SkypPath = skypPath,
-                SkylineDocUri = GetSkyFileUrl(skypPath),
+                SkypPath = skypPath
             };
+            ReadSkyp(skyp);
+
             skyp.Server = servers?.FirstOrDefault(server => server.URI.Host.Equals(skyp.SkylineDocUri.Host));
 
             var downloadDir = Path.GetDirectoryName(skyp.SkypPath);
@@ -39,47 +44,77 @@ namespace pwiz.Skyline.Model
 
             return skyp;
         }
-    
-        private static Uri GetSkyFileUrl(string skypPath)
+
+        private static void ReadSkyp(SkypFile skyp)
         {
-            using (var reader = new StreamReader(skypPath))
+            using (var reader = new StreamReader(skyp.SkypPath))
             {
-                return GetSkyFileUrl(reader);
+                string line;
+                bool first = true;
+                while ((line = reader.ReadLine()) != null)
+                {
+                    if (!string.IsNullOrEmpty(line))
+                    {
+                        if (first)
+                        {
+                            skyp.SkylineDocUri = GetSkyFileUrl(line);
+                            first = false;
+                        }
+                        else
+                        {
+                            // The remaining lines should contain colon separated key value pairs, e.g. FileSize:475831
+                            var parts = line.Split(':');
+                            if (parts.Length == 2)
+                            {
+                                var key = parts[0].Trim();
+                                var value = parts[1].Trim();
+                                if (@"FileSize".Equals(key) && value.Length > 0)
+                                {
+                                    long size;
+                                    if (long.TryParse(value, out size))
+                                    {
+                                        skyp.Size = size;
+                                    }
+                                }
+                                else if (@"DownloadingUser".Equals(key) && value.Length > 0)
+                                {
+                                    skyp.User = parts[1].Trim();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (skyp.SkylineDocUri == null)
+            {
+                throw new InvalidDataException(string.Format(
+                    Resources
+                        .SkypFile_GetSkyFileUrl_File_does_not_contain_the_URL_of_a_shared_Skyline_archive_file___0___on_a_Panorama_server_,
+                    SrmDocumentSharing.EXT_SKY_ZIP));
             }
         }
 
-        public static Uri GetSkyFileUrl(TextReader reader)
+        private static Uri GetSkyFileUrl(string line)
         {
-            string line;
-            while ((line = reader.ReadLine()) != null)
+            var urlString = line;
+            if (!urlString.EndsWith(SrmDocumentSharing.EXT))
             {
-                if (!string.IsNullOrEmpty(line))
-                {
-                    var urlString = line;
-                    if (!urlString.EndsWith(SrmDocumentSharing.EXT))
-                    {
-                        // This is not a shared Skyline zip.
-                        throw new InvalidDataException(string.Format(
-                            Resources
-                                .SkypFile_GetSkyFileUrl_Expected_the_URL_of_a_shared_Skyline_document_archive___0___in_the_skyp_file__Found__1__instead_,
-                            SrmDocumentSharing.EXT_SKY_ZIP, urlString));
-                    }
-
-                    var validUrl = Uri.TryCreate(urlString, UriKind.Absolute, out var skyFileUri)
-                                   && (skyFileUri.Scheme == Uri.UriSchemeHttp || skyFileUri.Scheme == Uri.UriSchemeHttps);
-                    if (!validUrl)
-                    {
-                        throw new InvalidDataException(string.Format(
-                            Resources.SkypFile_GetSkyFileUrl__0__is_not_a_valid_URL_on_a_Panorama_server_, urlString));
-                    }
-
-                    return skyFileUri;
-                }
+                // This is not a shared Skyline zip.
+                throw new InvalidDataException(string.Format(
+                    Resources
+                        .SkypFile_GetSkyFileUrl_Expected_the_URL_of_a_shared_Skyline_document_archive___0___in_the_skyp_file__Found__1__instead_,
+                    SrmDocumentSharing.EXT_SKY_ZIP, urlString));
             }
 
-            throw new InvalidDataException(string.Format(
-                Resources.SkypFile_GetSkyFileUrl_File_does_not_contain_the_URL_of_a_shared_Skyline_archive_file___0___on_a_Panorama_server_,
-                SrmDocumentSharing.EXT_SKY_ZIP));
+            var validUrl = Uri.TryCreate(urlString, UriKind.Absolute, out var skyFileUri)
+                           && (skyFileUri.Scheme == Uri.UriSchemeHttp || skyFileUri.Scheme == Uri.UriSchemeHttps);
+            if (!validUrl)
+            {
+                throw new InvalidDataException(string.Format(
+                    Resources.SkypFile_GetSkyFileUrl__0__is_not_a_valid_URL_on_a_Panorama_server_, urlString));
+            }
+
+            return skyFileUri;
         }
 
         public string GetSkylineDocName()

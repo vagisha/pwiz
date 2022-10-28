@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Net;
 using System.Windows.Forms;
 using pwiz.Common.SystemUtil;
@@ -8,7 +9,6 @@ using pwiz.Skyline.Alerts;
 using pwiz.Skyline.Controls;
 using pwiz.Skyline.Model;
 using pwiz.Skyline.Properties;
-using pwiz.Skyline.ToolsUI;
 using pwiz.Skyline.Util;
 using pwiz.Skyline.Util.Extensions;
 
@@ -33,9 +33,10 @@ namespace pwiz.Skyline.FileUI
         public bool Open(string skypPath, IEnumerable<Server> servers, FormEx parentWindow = null)
         {
             SkypFile skyp = null;
+            var existingServers = servers.ToList();
             try
             {
-                skyp = SkypFile.Create(skypPath, servers);
+                skyp = SkypFile.Create(skypPath, existingServers);
                 
                 using (var longWaitDlg = new LongWaitDlg
                 {
@@ -52,7 +53,7 @@ namespace pwiz.Skyline.FileUI
             {
                 if (_retryRemaining-- > 0 && skyp != null && e.Message.Contains(AddPanoramaServerMessage(skyp)))
                 {
-                    return AddServerAndOpen(skypPath, e.Message, parentWindow);
+                    return AddServerAndOpen(skyp, existingServers, e.Message, parentWindow);
                 }
                 else
                 {
@@ -63,24 +64,23 @@ namespace pwiz.Skyline.FileUI
             }
         }
 
-        private bool AddServerAndOpen(string skypPath, String message, FormEx parentWindow)
+        private bool AddServerAndOpen(SkypFile skypFile, IEnumerable<Server> existingServers, string message, FormEx parentWindow)
         {
             using (var alertDlg = new AlertDlg(message, MessageBoxButtons.OKCancel))
             {
                 alertDlg.ShowDialog(parentWindow ?? _skyline);
                 if (alertDlg.DialogResult == DialogResult.OK)
                 {
-                    using (var dlg = new ToolOptionsUI(_skyline.Document.Settings))
-                    {
-                        // Let the user add a Panorama server.
-                        dlg.NavigateToTab(ToolOptionsUI.TABS.Panorama);
-                        dlg.ShowDialog(alertDlg);
-                        if (dlg.DialogResult != DialogResult.OK)
-                        {
-                            return false;
-                        }
-                    }
-                    return Open(skypPath, Settings.Default.ServerList /*get the updated server list*/, parentWindow);
+                    var servers = Settings.Default.ServerList;
+                    Server server = new Server(skypFile.SkylineDocUri.GetLeftPart(UriPartial.Authority), 
+                        skypFile.User != null ? skypFile.User : string.Empty, string.Empty);
+                    var newServer = servers.EditItem(parentWindow, server, existingServers, true);
+                    if (newServer == null)
+                        return false;
+
+                    servers.Add(newServer);
+
+                    return Open(skypFile.SkypPath, Settings.Default.ServerList /*get the updated server list*/, parentWindow);
                 }
 
                 return false;
@@ -95,7 +95,7 @@ namespace pwiz.Skyline.FileUI
 
             var downloadClient = DownloadClientCreator.Create(progressMonitor, progressStatus);
 
-            downloadClient.Download(skyp.SkylineDocUri, skyp.DownloadPath, skyp.Server?.Username, skyp.Server?.Password);
+            downloadClient.Download(skyp.SkylineDocUri, skyp.DownloadPath, skyp.Server?.Username, skyp.Server?.Password, skyp.Size);
 
             if (progressMonitor.IsCanceled || downloadClient.IsError)
             {
@@ -136,7 +136,7 @@ namespace pwiz.Skyline.FileUI
             return string.Format(
                 Resources
                     .SkypSupport_Download_You_may_have_to_add__0__as_a_Panorama_server_from_the_Tools___Options_menu_in_Skyline_,
-                skyp.SkylineDocUri.Host);
+                skyp.SkylineDocUri.Authority);
         }
     }
 
@@ -156,7 +156,7 @@ namespace pwiz.Skyline.FileUI
             ProgressStatus = progressStatus;
         }
 
-        public void Download(Uri remoteUri, string downloadPath, string username, string password)
+        public void Download(Uri remoteUri, string downloadPath, string username, string password, long? fileSize)
         {
             using (var wc = new UTF8WebClient())
             {
@@ -165,7 +165,15 @@ namespace pwiz.Skyline.FileUI
                     wc.Headers.Add(HttpRequestHeader.Authorization, Server.GetBasicAuthHeader(username, password));
                 }
 
-                wc.DownloadProgressChanged += wc_DownloadProgressChanged;
+                wc.DownloadProgressChanged += (s,e) =>
+                {
+                    int progressPercent = e.ProgressPercentage > 0 ? e.ProgressPercentage : -1;
+                    if (progressPercent == -1 && fileSize.HasValue && fileSize > 0)
+                    {
+                        progressPercent = Math.Min((int)(e.BytesReceived * 100 / fileSize), 100);
+                    }
+                    ProgressMonitor.UpdateProgress(ProgressStatus = ProgressStatus.ChangePercentComplete(progressPercent));
+                };
                 wc.DownloadFileCompleted += wc_DownloadFileCompleted;
 
                 wc.DownloadFileAsync(remoteUri, downloadPath);
@@ -192,13 +200,13 @@ namespace pwiz.Skyline.FileUI
 
         private void wc_DownloadProgressChanged(object sender, DownloadProgressChangedEventArgs e)
         {
-            ProgressMonitor.UpdateProgress(ProgressStatus = ProgressStatus.ChangePercentComplete(e.ProgressPercentage));
+            ProgressMonitor.UpdateProgress(ProgressStatus = ProgressStatus.ChangePercentComplete(e.ProgressPercentage > 0 ? e.ProgressPercentage : -1));
         }
     }
 
     public interface IDownloadClient
     {
-        void Download(Uri remoteUri, string downloadPath, string username, string password);
+        void Download(Uri remoteUri, string downloadPath, string username, string password, long? fileSize);
 
         bool IsCancelled { get; }
         bool IsError { get; }
