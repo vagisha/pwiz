@@ -249,20 +249,33 @@ namespace pwiz.Skyline.FileUI
             {
                 if (skyp.Server == null)
                 {
-                    message = TextUtil.LineSeparate(message, @"", string.Format("Would you like to add {0} as a Panorama server in Skyline?", serverName));
+                    message = TextUtil.LineSeparate(message, @"", 
+                        string.Format(Resources.SkypDownloadException_GetMessage_Would_you_like_to_add__0__as_a_Panorama_server_in_Skyline_, serverName));
                 }
                 else if (skyp.UsernameMismatch())
                 {
+                    // User that downloaded the .skyp file is not the same as the username in the saved server credentials.
                     message = TextUtil.LineSeparate(message, @"",
-                        string.Format(
-                            "Credentials saved in Skyline for the Panorama server {0} are invalid. The .skyp file was downloaded by {1}. " +
-                            "Credentials saved in Skyline for this server are for the user {2}. Would you like to update the credentials?",
-                            serverName, skyp.User, skyp.Server.Username));
+                        TextUtil.SpaceSeparate(
+                            string.Format(
+                                Resources
+                                    .SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_invalid_,
+                                serverName),
+                            string.Format(
+                                Resources.SkypDownloadException_GetMessage_The_skyp_file_was_downloaded_by_the_user__0___Credentials_saved_in_Skyline_for_this_server_are_for_the_user__1__,
+                                skyp.User, skyp.Server.Username),
+                            Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_));
                 }
                 else
                 {
+                    // The .skyp file either does not have a DownloadingUser, or the username in the .skyp is the same as the username in the saved server credentials.
                     message = TextUtil.LineSeparate(message, @"",
-                        string.Format("Credentials saved in Skyline for the Panorama server {0} are invalid. Would you like to update the credentials?", serverName));
+                        TextUtil.SpaceSeparate(
+                            string.Format(
+                                Resources
+                                    .SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_invalid_,
+                                serverName),
+                            Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_));
                 }
             }
             else if (Forbidden(statusCode)) // 403 - Valid credentials but not enough permissions
@@ -270,10 +283,11 @@ namespace pwiz.Skyline.FileUI
                 if (skyp.UsernameMismatch() && skyp.Server != null)
                 {
                     message = TextUtil.LineSeparate(message, @"",
-                        string.Format(
-                            "Credentials saved in Skyline for the Panorama server {0} are for the user {1}. This user does not have permissions to download the file." +
-                            " The .skyp file was downloaded by {2}. Would you like to update the credentials saved in Skyline?",
-                            serverName, skyp.Server.Username, skyp.User));
+                        TextUtil.SpaceSeparate(
+                            string.Format(
+                                Resources.SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_the_file__The__skyp_file_was_downloaded_by__2__,
+                                serverName, skyp.Server.Username, skyp.User),
+                    Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_));
                 }
                 else
                 {

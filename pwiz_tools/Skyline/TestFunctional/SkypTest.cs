@@ -10,6 +10,7 @@ using pwiz.Skyline.Model;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.ToolsUI;
 using pwiz.Skyline.Util;
+using pwiz.Skyline.Util.Extensions;
 using pwiz.SkylineTestUtil;
 
 namespace pwiz.SkylineTestFunctional
@@ -17,6 +18,17 @@ namespace pwiz.SkylineTestFunctional
     [TestClass]
     public class SkypTest : AbstractFunctionalTest
     {
+        private const string _serverInSkyp = "http://fakepanoramalabkeyserver.org";
+        private const string _userInSkyp = "no-name@no-name.org";
+        private const string _password = "password";
+        private static readonly Server _matchingServer = new Server(_serverInSkyp, _userInSkyp, _password);
+
+        // Server with the same URL as the server in the skyp file but different username
+        private const string _altUser = "another-" + _userInSkyp; 
+        private static readonly Server _altServer = new Server("http://fakepanoramalabkeyserver.org", _altUser, _password);
+
+        private static readonly Server _anotherServer = new Server("http://anotherserver.org", null, null);
+
         [TestMethod]
         public void TestSkyp()
         {
@@ -26,9 +38,9 @@ namespace pwiz.SkylineTestFunctional
 
         protected override void DoTest()
         {
-            TestSkypValid();
+            //TestSkypValid();
 
-            TestSkypGetNonExistentPath();
+            //TestSkypGetNonExistentPath();
 
             TestSkypOpen();  
         }
@@ -37,16 +49,11 @@ namespace pwiz.SkylineTestFunctional
         {
             var skyZipPath = TestContext.GetProjectDirectory(@"TestFunctional\LibraryShareTest.zip"); // Reusing ShareDocumentTest test file
 
-            var userName = "no-name@no-name.org";
-            var password = "password";
-            var server = new Server("http://fakepanoramalabkeyserver.org", userName, password); // This is the server in test.skyp and test-extended.skyp
-            var anotherServer = new Server("http://anotherserver.org", null, null);
-
             // ---------------------- .skyp file with only a URL -----------------------------
-            TestOpenErrorsSimpleSkyp(server, anotherServer);
+            TestOpenErrorsSimpleSkyp();
 
             // ---------------------- .skyp file with URL, FileSize and DownloadingUser ------
-            TestOpenErrorsExtendedSkyp(server, anotherServer);
+            TestOpenErrorsExtendedSkyp();
 
 
 
@@ -66,56 +73,79 @@ namespace pwiz.SkylineTestFunctional
             Assert.AreEqual(Path.Combine(explodedDir, skyZipNoExt + SrmDocument.EXT), SkylineWindow.DocumentFilePath);
         }
 
-        private void TestOpenErrorsExtendedSkyp(Server server, Server anotherServer)
+        private void TestOpenErrorsExtendedSkyp()
         {
             // Contents of test-extended.skyp
             // http://fakepanoramalabkeyserver.org/LibraryShareTest.zip
             // FileSize: 100
-            // DownloadingUser: no - name@no - name.org
+            // DownloadingUser: no-name@no-name.org
             var skypPath2 = TestFilesDir.GetTestPath("test-extended.skyp");
             var skyp = SkypFile.Create(skypPath2, new List<Server>());
             Assert.IsNull(skyp.Server);
 
+            Uri matchingServerUri = new Uri(_serverInSkyp);
 
             // 1. Server in the .skyp file does not match a saved Panorama server. Expect to see an error about adding a new Panorama 
             //    server in Skyline. Username in the EditServerDlg should be the username from the .skyp file
-            TestSkypOpenWithError(skypPath2, null, new[] { anotherServer },
+            TestSkypOpenWithError(skypPath2, _matchingServer,  new[] { _anotherServer },
+                false, // No match in existing servers
+                false, // no username mismatch since there is no match in existing servers
                 TestDownloadClient.ERROR401,
-                skyp.GetSkylineDocServer().URI,  skyp.User  /* Expect username from the .skyp file */, string.Empty,
+                matchingServerUri, skyp.User  /* Expect username from the .skyp file */, string.Empty,
+                true, // Expect to see EditServerDlg 
                 false);
-
-
+        
+        
             // 2. Server in the .skyp file matches a saved Panorama server. If we get a 401 (Unauthorized) error it means that the saved
             //    credentials are invalid. Expect a message about updating the credentials of the saved Panorama server.
-            TestSkypOpenWithError(skypPath2, server, new[] { server, anotherServer },
+            TestSkypOpenWithError(skypPath2, _matchingServer, new[] { _matchingServer, _anotherServer },
+                true, // Has match in existing servers
+                false, // username in .skyp matches the username in saved credentials for the server
                 TestDownloadClient.ERROR401,
-                server.URI, server.Username, server.Password,
-                false); // Username in test-extended.skyp matches the saved username for server
+                matchingServerUri, _userInSkyp, _password,
+                true, // Expect to see EditServerDlg 
+                false);
 
 
             // 3. Server in the .skyp file matches a saved Panorama server. If we get a 403 (Forbidden) error it means that the saved
             //    credentials are invalid. The username in the skyp file is the same as the saved username for the server. 
             //    EditServerDlg should not be shown in this case
-            TestSkypOpenWithError(skypPath2, server, new[] { server, anotherServer },
+            TestSkypOpenWithError(skypPath2, _matchingServer, new[] { _matchingServer, _anotherServer },
+                true, // Has match in existing servers
+                false, // username in .skyp matches the username in saved credentials for the server
                 TestDownloadClient.ERROR403,
                 null, null, null,
-                false,
-                false); // Do not expect to see the EditServerDlg
+                false, // Do not expect to see the EditServerDlg
+                false);
 
 
-            // 4. Server in the .skyp file matches a saved Panorama server. If we get a 403 (Forbidden) error it means that the saved
-            //    credentials are invalid. Expect a message about updating the credentials of the saved Panorama server.
-            //    Username in the .skyp file is not the same as the username saved for the server. Username displayed in the EditServerDlg
-            //    should be the username from the .skyp file.
-            var userName2 = "another-" + skyp.User;
-            var server2 = new Server("http://fakepanoramalabkeyserver.org", userName2, server.Password);
-            TestSkypOpenWithError(skypPath2, server2, new[] { server2, anotherServer },
+            // 4. Server in the .skyp file matches a saved Panorama server. If we get a 403 (Forbidden) error it means that the
+            //    user in the saved credentials does not have enough permissions. Username in the .skyp file is different from
+            //    the username in the saved credentials.
+            //    Expect a message about updating the credentials of the saved Panorama server.
+            //    Username displayed in the EditServerDlg should be the username from the .skyp file.
+            TestSkypOpenWithError(skypPath2, _altServer, new[] { _altServer, _anotherServer },
+                true, // Has match in existing servers
+                true, // username in .skyp does not match the username in saved credentials for the server
                 TestDownloadClient.ERROR403,
-                server2.URI, skyp.User /* username from the .skyp file */, string.Empty,
-                true); // Username in test2.skyp does not match the saved username for server2
+                matchingServerUri, skyp.User /* username from the .skyp file */, string.Empty,
+                true, // Expect to see EditServerDlg 
+                false);
+
+            // 5. Server in the .skyp file matches a saved Panorama server. If we get a 401 (Unauthorized) error it means that the saved
+            //    credentials are invalid. Username in the .skyp file is not the same as the username saved for the server.
+            //    Expect a message about updating the credentials of the saved Panorama server.
+            //    Username displayed in the EditServerDlg should be the username from the .skyp file.
+            TestSkypOpenWithError(skypPath2, _altServer, new[] { _altServer, _anotherServer },
+                true, // Has match in existing servers
+                true, // username in .skyp does not match the username in saved credentials for the server
+                TestDownloadClient.ERROR401,
+                matchingServerUri, skyp.User /* username from the .skyp file */, string.Empty,
+                true, // Expect to see EditServerDlg 
+                false);
         }
 
-        private void TestOpenErrorsSimpleSkyp(Server server, Server anotherServer)
+        private void TestOpenErrorsSimpleSkyp()
         {
             // Contents of test.skyp:
             // http://fakepanoramalabkeyserver.org/LibraryShareTest.zip
@@ -124,43 +154,52 @@ namespace pwiz.SkylineTestFunctional
             var skyp = SkypFile.Create(skypPath, new List<Server>());
             Assert.IsNull(skyp.Server);
 
-
+            Uri matchingServerUri = new Uri(_serverInSkyp);
             // 1. Server in the .skyp file does not match a saved Panorama server. Expect to see an error about adding a new Panorama 
             //    server in Skyline.
-            TestSkypOpenWithError(skypPath, null, new[] { anotherServer },
+            TestSkypOpenWithError(skypPath, _matchingServer, new[] { _anotherServer },
+                false, // No match in existing servers
+                false, // no username mismatch since .skyp does not have a DownloadingUser
                 TestDownloadClient.ERROR401,
-                server.URI, string.Empty, string.Empty,
-                false); // No matching server, don't expect a username mismatch
+                matchingServerUri, string.Empty, string.Empty,
+                true, // Expect to see EditServerDlg 
+                false); 
 
 
             // 2. Server in the .skyp file matches a saved Panorama server. If we get a 401 (Unauthorized) error it means that the saved
             //    credentials are invalid. Expect a message about updating the credentials of a saved Panorama server.
-            TestSkypOpenWithError(skypPath, server, new[] { server, anotherServer },
+            TestSkypOpenWithError(skypPath, _matchingServer, new[] { _matchingServer, _anotherServer },
+                true, // Has match in existing servers
+                false, // no username mismatch since .skyp does not have a DownloadingUser
                 TestDownloadClient.ERROR401,
-                server.URI, server.Username, server.Password,
-                false); // test.skyp does not have the "DownloadingUser"
+                matchingServerUri, _userInSkyp, _password,
+                true, // Expect to see EditServerDlg 
+                false);
 
 
             // 3. Server in the .skyp file matches a saved Panorama server. If we get a 403 (Forbidden) error it means that the saved user does
             //    not have adequate permissions for the requested resource on the Panorama server. EditServerDlg should not be shown.
-            TestSkypOpenWithError(skypPath, server, new[] { server, anotherServer },
+            TestSkypOpenWithError(skypPath, _matchingServer, new[] { _matchingServer, _anotherServer },
+                true, // Has match in existing servers
+                false, // no username mismatch since .skyp does not have a DownloadingUser
                 TestDownloadClient.ERROR403,
                 null, null, null,
-                false, // test.skyp does not have the "DownloadingUser"
-                false); // Don't expect to see the EditServerDlg
+                false, // Don't expect to see EditServerDlg
+                false);
         }
 
-        private void TestSkypOpenWithError (string skypPath, Server matchingServer, Server[] savedServers, string errorCode,
-            Uri expectedUrlInEditServerDlg, string expectedUserNameInEditServerDlg, string expectedPasswordInEditServerDlg,
-            bool usernameMismatch,
-            bool expectEditServerDlg = true)
+        private void TestSkypOpenWithError (string skypPath, Server matchingServer, Server[] existingServers, 
+            bool hasServerMatch, bool usernameMismatch, 
+            string errorCode,
+            Uri expectedUriInEditServerDlg, string expectedUserNameInEditServerDlg, string expectedPasswordInEditServerDlg,
+            bool expectEditServerDlg, bool expectServerExistsError)
         {
             Settings.Default.ServerList.Clear();
-            Settings.Default.ServerList.AddRange(savedServers);
+            Settings.Default.ServerList.AddRange(existingServers);
 
-            var skyp = SkypFile.Create(skypPath, savedServers);
-            if (matchingServer == null) Assert.IsNull(skyp.Server); // No matching saved server found
-            else Assert.AreEqual(skyp.Server, matchingServer); // Matching saved server found
+            var skyp = SkypFile.Create(skypPath, existingServers);
+            if (hasServerMatch) Assert.AreEqual(skyp.Server, matchingServer); // Match found in existing servers 
+            else Assert.IsNull(skyp.Server); // No match found in existing servers
             Assert.AreEqual(usernameMismatch, skyp.UsernameMismatch());
 
 
@@ -172,29 +211,57 @@ namespace pwiz.SkylineTestFunctional
                 DownloadClientCreator =
                     new TestDownloadClientCreator(null, skyp, err401, err403)
             };
-            var errDlg = ShowDialog<AlertDlg>(() => skypSupport.Open(skypPath, savedServers));
+            var errDlg = ShowDialog<AlertDlg>(() => skypSupport.Open(skypPath, existingServers));
             string expectedErr = null;
             if (err401)
             {
-                expectedErr = matchingServer == null
-                    ? string.Format(
-                        "You may have to add {0} as a Panorama server in Skyline.",
-                        skyp.GetServerName())
-                    : string.Format(
-                        "You may have to update the credentials saved in Skyline for the Panorama server {0}.",
-                        skyp.GetServerName());
+                if (!hasServerMatch)
+                {
+                    expectedErr =
+                        string.Format(
+                            Resources
+                                .SkypDownloadException_GetMessage_Would_you_like_to_add__0__as_a_Panorama_server_in_Skyline_,
+                            skyp.GetServerName());
+                }
+                else if (skyp.UsernameMismatch())
+                {
+                    expectedErr = TextUtil.SpaceSeparate(
+                        string.Format(
+                            Resources
+                                .SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_invalid_,
+                            skyp.GetServerName()),
+                        string.Format(
+                            Resources
+                                .SkypDownloadException_GetMessage_The_skyp_file_was_downloaded_by_the_user__0___Credentials_saved_in_Skyline_for_this_server_are_for_the_user__1__,
+                            skyp.User, _altUser),
+                        Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_);
+                }
+                else
+                {
+                    expectedErr = TextUtil.SpaceSeparate(
+                        string.Format(
+                            Resources
+                                .SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_invalid_,
+                            skyp.GetServerName()),
+                        Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_);
+                }
             }
             else if (err403)
             {
-                expectedErr = usernameMismatch?
-                    string.Format(
-                        "Username {0} saved with the server {1} in Skyline does not have permissions to download this file. " +
-                        "The .skyp file was downloaded by {2}. Would you like to update the credentials saved in Skyline for {3}?",
-                        skyp.Server.Username, skyp.GetServerName(), skyp.User, skyp.GetServerName())
-                    : 
-                    string.Format(
+                if (skyp.UsernameMismatch())
+                {
+                    expectedErr = TextUtil.SpaceSeparate(
+                            string.Format(
+                                Resources.SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_the_file__The__skyp_file_was_downloaded_by__2__,
+                                skyp.GetServerName(), _altUser, skyp.User),
+                            Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_);
+                }
+                else
+                {
+                    expectedErr = string.Format(
                         Resources.SkypSupport_Download_You_do_not_have_permissions_to_download_this_file_from__0__,
                         skyp.GetServerName());
+                }
             }
 
             Assert.IsNotNull(expectedErr);
@@ -206,7 +273,7 @@ namespace pwiz.SkylineTestFunctional
                 var editServerDlg = ShowDialog<EditServerDlg>(errDlg.ClickOk);
                 RunUI(() =>
                 {
-                    Assert.AreEqual(editServerDlg.URL, expectedUrlInEditServerDlg.ToString());
+                    Assert.AreEqual(editServerDlg.URL, expectedUriInEditServerDlg.ToString());
                     Assert.AreEqual(editServerDlg.Username, expectedUserNameInEditServerDlg);
                     Assert.AreEqual(editServerDlg.Password , expectedPasswordInEditServerDlg);
                     editServerDlg.CancelButton.PerformClick();
