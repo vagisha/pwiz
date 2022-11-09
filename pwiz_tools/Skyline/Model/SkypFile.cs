@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using JetBrains.Annotations;
 using pwiz.Common.SystemUtil;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util;
@@ -24,13 +25,10 @@ namespace pwiz.Skyline.Model
 
         public long? Size { get; private set; }
         public string DownloadPath { get; private set; }
-        
-        public static SkypFile Create(string skypPath, IEnumerable<Server> servers)
+
+        [NotNull]
+        public static SkypFile Create([NotNull] string skypPath, IEnumerable<Server> servers)
         {
-            if (string.IsNullOrEmpty(skypPath))
-            {
-                return null;
-            }
             var skyp = new SkypFile
             {
                 SkypPath = skypPath
@@ -49,37 +47,41 @@ namespace pwiz.Skyline.Model
         {
             using (var reader = new StreamReader(skyp.SkypPath))
             {
-                string line;
-                bool first = true;
-                while ((line = reader.ReadLine()) != null)
+                ReadSkyp(skyp, reader);
+            }
+        }
+
+        public static void ReadSkyp(SkypFile skyp, TextReader reader)
+        {
+            string line;
+            bool first = true;
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (!string.IsNullOrEmpty(line))
                 {
-                    if (!string.IsNullOrEmpty(line))
+                    if (first)
                     {
-                        if (first)
+                        skyp.SkylineDocUri = GetSkyFileUrl(line);
+                        first = false;
+                    }
+                    else
+                    {
+                        // The remaining lines should contain colon separated key value pairs, e.g. FileSize:475831
+                        var parts = line.Split(':');
+                        if (parts.Length == 2)
                         {
-                            skyp.SkylineDocUri = GetSkyFileUrl(line);
-                            first = false;
-                        }
-                        else
-                        {
-                            // The remaining lines should contain colon separated key value pairs, e.g. FileSize:475831
-                            var parts = line.Split(':');
-                            if (parts.Length == 2)
+                            var key = parts[0].Trim();
+                            var value = parts[1].Trim();
+                            if (@"FileSize".Equals(key) && value.Length > 0)
                             {
-                                var key = parts[0].Trim();
-                                var value = parts[1].Trim();
-                                if (@"FileSize".Equals(key) && value.Length > 0)
+                                if (long.TryParse(value, out var size) && size > 0)
                                 {
-                                    long size;
-                                    if (long.TryParse(value, out size))
-                                    {
-                                        skyp.Size = size;
-                                    }
+                                    skyp.Size = size;
                                 }
-                                else if (@"DownloadingUser".Equals(key) && value.Length > 0)
-                                {
-                                    skyp.User = parts[1].Trim();
-                                }
+                            }
+                            else if (@"DownloadingUser".Equals(key) && value.Length > 0)
+                            {
+                                skyp.User = parts[1].Trim();
                             }
                         }
                     }
@@ -147,6 +149,26 @@ namespace pwiz.Skyline.Model
                 count++;
             }
             return Path.Combine(dir, sharedSkyFile);
+        }
+
+        public bool HasCredentials()
+        {
+            return Server != null && !string.IsNullOrEmpty(Server.Username) && !string.IsNullOrEmpty(Server.Password);
+        }
+        public bool UsernameMismatch()
+        {
+            return Server != null && User != null && !Equals(User, Server.Username);
+        }
+
+        public Server GetSkylineDocServer()
+        {
+            return new Server(SkylineDocUri.GetLeftPart(UriPartial.Authority), // get the host name and port number
+                User != null ? User : string.Empty, string.Empty);
+        }
+
+        public string GetServerName()
+        {
+            return Server != null ? Server.URI.ToString() : GetSkylineDocServer().URI.ToString();
         }
     }
 }

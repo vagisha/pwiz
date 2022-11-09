@@ -30966,16 +30966,6 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to You may have to add {0} as a Panorama server from the Tools &gt; Options menu in Skyline..
-        /// </summary>
-        public static string SkypSupport_Download_You_may_have_to_add__0__as_a_Panorama_server_from_the_Tools___Options_menu_in_Skyline_ {
-            get {
-                return ResourceManager.GetString("SkypSupport_Download_You_may_have_to_add__0__as_a_Panorama_server_from_the_Tools_" +
-                        "__Options_menu_in_Skyline_", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Downloading Skyline Document Archive.
         /// </summary>
         public static string SkypSupport_Open_Downloading_Skyline_Document_Archive {
@@ -30990,6 +30980,15 @@ namespace pwiz.Skyline.Properties {
         public static string SkypSupport_Open_Failure_opening_skyp_file_ {
             get {
                 return ResourceManager.GetString("SkypSupport_Open_Failure_opening_skyp_file_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Path to .skyp file cannot be empty..
+        /// </summary>
+        public static string SkypSupport_Open_Path_to__skyp_file_cannot_be_empty_ {
+            get {
+                return ResourceManager.GetString("SkypSupport_Open_Path_to__skyp_file_cannot_be_empty_", resourceCulture);
             }
         }
         
