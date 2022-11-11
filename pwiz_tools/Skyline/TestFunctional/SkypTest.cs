@@ -91,7 +91,7 @@ namespace pwiz.SkylineTestFunctional
                 false, // No match in existing servers
                 false, // no username mismatch since there is no match in existing servers
                 TestDownloadClient.ERROR401,
-                _serverUrlInSkyp, skyp.User  /* Expect username from the .skyp file */, string.Empty,
+                _serverUrlInSkyp, skyp.DownloadingUser  /* Expect username from the .skyp file */, string.Empty,
                 true // Expect to see EditServerDlg 
             );
         
@@ -128,7 +128,7 @@ namespace pwiz.SkylineTestFunctional
                 true, // Has match in existing servers
                 true, // username in .skyp does not match the username in saved credentials for the server
                 TestDownloadClient.ERROR403,
-                _serverUrlInSkyp, skyp.User /* username from the .skyp file */, string.Empty,
+                _serverUrlInSkyp, skyp.DownloadingUser /* username from the .skyp file */, string.Empty,
                 true // Expect to see EditServerDlg 
             );
 
@@ -140,7 +140,7 @@ namespace pwiz.SkylineTestFunctional
                 true, // Has match in existing servers
                 true, // username in .skyp does not match the username in saved credentials for the server
                 TestDownloadClient.ERROR401,
-                _serverUrlInSkyp, skyp.User /* username from the .skyp file */, string.Empty,
+                _serverUrlInSkyp, skyp.DownloadingUser /* username from the .skyp file */, string.Empty,
                 true // Expect to see EditServerDlg 
             );
         }
@@ -288,7 +288,7 @@ namespace pwiz.SkylineTestFunctional
                         string.Format(
                             Resources
                                 .SkypDownloadException_GetMessage_The_skyp_file_was_downloaded_by_the_user__0___Credentials_saved_in_Skyline_for_this_server_are_for_the_user__1__,
-                            skyp.User, _altUser),
+                            skyp.DownloadingUser, _altUser),
                         Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_);
                 }
                 else
@@ -308,7 +308,7 @@ namespace pwiz.SkylineTestFunctional
                     expectedErr = TextUtil.SpaceSeparate(
                             string.Format(
                                 Resources.SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_the_file__The__skyp_file_was_downloaded_by__2__,
-                                skyp.GetServerName(), _altUser, skyp.User),
+                                skyp.GetServerName(), _altUser, skyp.DownloadingUser),
                             Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_);
                 }
                 else
@@ -393,7 +393,7 @@ namespace pwiz.SkylineTestFunctional
             AssertEx.NoExceptionThrown<Exception>(() => SkypFile.ReadSkyp(skyp1, new StringReader(STR_VALID_SKYP)));
             Assert.AreEqual(new Uri(STR_VALID_SKYP), skyp1.SkylineDocUri);
             Assert.IsNull(skyp1.Size);
-            Assert.IsNull(skyp1.User);
+            Assert.IsNull(skyp1.DownloadingUser);
 
 
             var skyp2 = new SkypFile();
@@ -401,13 +401,13 @@ namespace pwiz.SkylineTestFunctional
             Assert.AreEqual(new Uri(STR_VALID_SKYP_LOCALHOST), skyp2.SkylineDocUri);
             Assert.AreEqual(LOCALHOST, skyp2.GetServerName());
             Assert.AreEqual(skyp2.Size, 100);
-            Assert.AreEqual(skyp2.User, "no-name@no-name.edu");
+            Assert.AreEqual(skyp2.DownloadingUser, "no-name@no-name.edu");
 
             var skyp3 = new SkypFile();
             SkypFile.ReadSkyp(skyp3, new StringReader(STR_INVALID_SIZE_SKYP3));
             Assert.AreEqual(new Uri(STR_VALID_SKYP_LOCALHOST), skyp3.SkylineDocUri);
             Assert.IsFalse(skyp3.Size.HasValue);
-            Assert.AreEqual(skyp3.User, "no-name@no-name.edu");
+            Assert.AreEqual(skyp3.DownloadingUser, "no-name@no-name.edu");
 
         }
 
@@ -444,12 +444,11 @@ namespace pwiz.SkylineTestFunctional
             ProgressStatus = progressStatus;
         }
     
-        public void Download(SkypFile skyp /*Uri remoteFile, string downloadPath, string username, string password*/)
+        public void Download(SkypFile skyp)
         {
-            var downloadException = GetDownloadException();
-            if (downloadException != null)
+            if (Error != null)
             {
-                ProgressMonitor.UpdateProgress(ProgressStatus = ProgressStatus.ChangeErrorException(downloadException));
+                ProgressMonitor.UpdateProgress(ProgressStatus = ProgressStatus.ChangeErrorException(Error));
                 return;
             }
             Assert.AreEqual(_skyp.DownloadPath, skyp.DownloadPath);
@@ -459,8 +458,6 @@ namespace pwiz.SkylineTestFunctional
         public bool IsCancelled { get; }
         public bool IsError => Error != null;
         public Exception Error { get; set; }
-
-        public abstract SkypDownloadException GetDownloadException();
     }
 
     public class TestDownloadClientError401 : TestDownloadClient
@@ -468,11 +465,7 @@ namespace pwiz.SkylineTestFunctional
         public TestDownloadClientError401(SkypFile skyp, IProgressMonitor progressMonitor, IProgressStatus progressStatus) : 
             base(null, skyp, progressMonitor, progressStatus)
         {
-        }
-
-        public override SkypDownloadException GetDownloadException()
-        {
-            return new SkypDownloadException(SkypDownloadException.GetMessage(_skyp, new Exception(ERROR401), HttpStatusCode.Unauthorized), HttpStatusCode.Unauthorized, null);
+            Error = new SkypDownloadException(SkypDownloadException.GetMessage(_skyp, new Exception(ERROR401), HttpStatusCode.Unauthorized), HttpStatusCode.Unauthorized, null);
         }
     }
 
@@ -481,11 +474,7 @@ namespace pwiz.SkylineTestFunctional
         public TestDownloadClientError403(SkypFile skyp, IProgressMonitor progressMonitor, IProgressStatus progressStatus) :
             base(null, skyp, progressMonitor, progressStatus)
         {
-        }
-
-        public override SkypDownloadException GetDownloadException()
-        {
-            return new SkypDownloadException(SkypDownloadException.GetMessage(_skyp, new Exception(ERROR403), HttpStatusCode.Forbidden), HttpStatusCode.Forbidden, null);
+            Error = new SkypDownloadException(SkypDownloadException.GetMessage(_skyp, new Exception(ERROR403), HttpStatusCode.Forbidden), HttpStatusCode.Forbidden, null);
         }
     }
 
@@ -494,11 +483,6 @@ namespace pwiz.SkylineTestFunctional
         public TestDownloadClientNoError(string srcFile, SkypFile skyp, IProgressMonitor progressMonitor, IProgressStatus progressStatus) :
             base(srcFile, skyp, progressMonitor, progressStatus)
         {
-        }
-
-        public override SkypDownloadException GetDownloadException()
-        {
-            return null;
         }
     }
 

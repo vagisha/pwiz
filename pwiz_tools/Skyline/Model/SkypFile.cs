@@ -20,9 +20,7 @@ namespace pwiz.Skyline.Model
         public string SkypPath { get; private set; }
         public Uri SkylineDocUri { get; private set; }
         public Server Server { get; private set; }
-
-        public string User { get; private set; }
-
+        public string DownloadingUser { get; private set; }
         public long? Size { get; private set; }
         public string DownloadPath { get; private set; }
 
@@ -54,7 +52,7 @@ namespace pwiz.Skyline.Model
         public static void ReadSkyp(SkypFile skyp, TextReader reader)
         {
             string line;
-            bool first = true;
+            var first = true;
             while ((line = reader.ReadLine()) != null)
             {
                 if (!string.IsNullOrEmpty(line))
@@ -81,7 +79,7 @@ namespace pwiz.Skyline.Model
                             }
                             else if (@"DownloadingUser".Equals(key) && value.Length > 0)
                             {
-                                skyp.User = parts[1].Trim();
+                                skyp.DownloadingUser = value;
                             }
                         }
                     }
@@ -157,13 +155,13 @@ namespace pwiz.Skyline.Model
         }
         public bool UsernameMismatch()
         {
-            return Server != null && User != null && !Equals(User, Server.Username);
+            return Server != null && DownloadingUser != null && !Equals(DownloadingUser, Server.Username);
         }
 
         public Server GetSkylineDocServer()
         {
             return new Server(SkylineDocUri.GetLeftPart(UriPartial.Authority), // get the host name and port number
-                User != null ? User : string.Empty, string.Empty);
+                DownloadingUser != null ? DownloadingUser : string.Empty, string.Empty);
         }
 
         public string GetServerName()
