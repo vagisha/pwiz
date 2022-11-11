@@ -76,7 +76,7 @@ namespace pwiz.SkylineTestFunctional
 
         private void TestOpenErrorsExtendedSkyp()
         {
-            // Contents of test-extended.skyp
+            // Contents of test-extended.skyp:
             // http://fakepanoramalabkeyserver.org/LibraryShareTest.zip
             // FileSize: 100
             // DownloadingUser: no-name@no-name.org
@@ -425,7 +425,7 @@ namespace pwiz.SkylineTestFunctional
             STR_VALID_SKYP_LOCALHOST + "\n\rFileSize:invalid\n\rDownloadingUser:no-name@no-name.edu";
     }
 
-    public abstract class TestDownloadClient : IDownloadClient
+    public class TestDownloadClient : IDownloadClient
     {
         private readonly string _srcPath;
         protected readonly SkypFile _skyp;
@@ -478,14 +478,6 @@ namespace pwiz.SkylineTestFunctional
         }
     }
 
-    public class TestDownloadClientNoError : TestDownloadClient
-    {
-        public TestDownloadClientNoError(string srcFile, SkypFile skyp, IProgressMonitor progressMonitor, IProgressStatus progressStatus) :
-            base(srcFile, skyp, progressMonitor, progressStatus)
-        {
-        }
-    }
-
     internal class TestDownloadClientCreator : DownloadClientCreator
     {
         private string _skyZipPath;
@@ -514,7 +506,7 @@ namespace pwiz.SkylineTestFunctional
             }
             else
             {
-                return new TestDownloadClientNoError(_skyZipPath, _skyp, progressMonitor, progressStatus);
+                return new TestDownloadClient(_skyZipPath, _skyp, progressMonitor, progressStatus);
             }
         }
     }
@@ -540,7 +532,7 @@ namespace pwiz.SkylineTestFunctional
 
         public FolderState IsValidFolder(string folderPath, string username, string password)
         {
-            return FolderState.valid;
+            throw new NotImplementedException();
         }
 
         public FolderOperationStatus CreateFolder(string parentPath, string folderName, string username, string password)

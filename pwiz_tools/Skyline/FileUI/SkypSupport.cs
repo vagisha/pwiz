@@ -134,13 +134,15 @@ namespace pwiz.Skyline.FileUI
                 {
                     var allServers = Settings.Default.ServerList;
                     var serverInSkyp = skyp.Server;
-                    var servers = allServers.Where(s => !Equals(serverInSkyp.URI.Host, s.URI.Host)).ToList();
 
                     var serverToEdit = skyp.UsernameMismatch()
-                        ? new Server(serverInSkyp.URI, skyp.DownloadingUser, null) // Use the username from the .skyp
+                        ? new Server(serverInSkyp.URI, skyp.DownloadingUser, null) // Use the username from the skyp
                         : serverInSkyp;
 
-                    var editedServer = allServers.EditItem(parentWindow, serverToEdit, servers, false);
+                    // From the list of all existing servers, remove the one that matches the server in the skyp file.  Pass this filtered 
+                    // list to the EditServerDlg. Otherwise, we will get an error that the server already exists.
+                    var serversForEditServerDlg = allServers.Where(s => !Equals(serverInSkyp.URI.Host, s.URI.Host)).ToList();
+                    var editedServer = allServers.EditItem(parentWindow, serverToEdit, serversForEditServerDlg, false);
                     if (editedServer == null)
                         return false;
 
