@@ -29,7 +29,7 @@ namespace pwiz.Skyline.FileUI
         {
             if (string.IsNullOrEmpty(skypPath))
             {
-                MessageDlg.Show(parentWindow ?? _skyline, Resources.SkypSupport_Open_Path_to__skyp_file_cannot_be_empty_);
+                MessageDlg.Show(parentWindow ?? _skyline, Resources.SkypSupport_Open_Path_to_skyp_file_cannot_be_empty_);
                 return false;
             }
 
@@ -37,7 +37,7 @@ namespace pwiz.Skyline.FileUI
 
             try
             {
-                skyp = SkypFile.Create(skypPath, servers); // Read the .skyp file
+                skyp = SkypFile.Create(skypPath, servers); // Read the skyp file
             }
             catch (Exception e)
             {
@@ -72,7 +72,7 @@ namespace pwiz.Skyline.FileUI
                             else if (skypEx.Forbidden() && skyp.UsernameMismatch())
                             {
                                 // Server is saved in Skyline but the user in the saved credentials does not have enough permissions. 
-                                // The downloading user in the .skyp file is different from saved user.  Offer to edit server credentials. 
+                                // The downloading user in the skyp file is different from saved user.  Offer to edit server credentials. 
                                 return EditServerAndOpen(skyp, skypEx.Message, parentWindow);
                             }
                             
@@ -258,7 +258,7 @@ namespace pwiz.Skyline.FileUI
                 }
                 else if (skyp.UsernameMismatch())
                 {
-                    // User that downloaded the .skyp file is not the same as the username in the saved server credentials.
+                    // User that downloaded the skyp file is not the same as the username in the saved server credentials.
                     message = TextUtil.LineSeparate(message, @"",
                         TextUtil.SpaceSeparate(
                             string.Format(
@@ -272,7 +272,7 @@ namespace pwiz.Skyline.FileUI
                 }
                 else
                 {
-                    // The .skyp file either does not have a DownloadingUser, or the username in the .skyp is the same as the username in the saved server credentials.
+                    // The skyp file either does not have a DownloadingUser, or the username in the skyp is the same as the username in the saved server credentials.
                     message = TextUtil.LineSeparate(message, @"",
                         TextUtil.SpaceSeparate(
                             string.Format(
@@ -289,7 +289,7 @@ namespace pwiz.Skyline.FileUI
                     message = TextUtil.LineSeparate(message, @"",
                         TextUtil.SpaceSeparate(
                             string.Format(
-                                Resources.SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_the_file__The__skyp_file_was_downloaded_by__2__,
+                                Resources.SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_the_file__The_skyp_file_was_downloaded_by__2__,
                                 serverName, skyp.Server.Username, skyp.DownloadingUser),
                     Resources.SkypDownloadException_GetMessage_Would_you_like_to_update_the_credentials_));
                 }
@@ -334,7 +334,7 @@ namespace pwiz.Skyline.FileUI
                 wc.DownloadProgressChanged += (s,e) =>
                 {
                     // The Content-Length header is not set in the response from PanoramaWeb, so the ProgressPercentage remains 0
-                    // during the download. If the .skyp includes the file size, use that to calculate progress percentage.
+                    // during the download. If the skyp includes the file size, use that to calculate progress percentage.
                     int progressPercent = e.ProgressPercentage > 0 ? e.ProgressPercentage : -1;
                     var fileSize = skyp.Size;
                     if (progressPercent == -1 && fileSize.HasValue && fileSize > 0)

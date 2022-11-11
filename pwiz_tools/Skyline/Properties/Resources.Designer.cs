@@ -30890,13 +30890,13 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Credentials saved in Skyline for the Panorama server {0} are for the user {1}. This user does not have permissions to download the file. The .skyp file was downloaded by {2}..
+        ///   Looks up a localized string similar to Credentials saved in Skyline for the Panorama server {0} are for the user {1}. This user does not have permissions to download the file. The skyp file was downloaded by {2}..
         /// </summary>
-        public static string SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_the_file__The__skyp_file_was_downloaded_by__2__ {
+        public static string SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_server__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_the_file__The_skyp_file_was_downloaded_by__2__ {
             get {
                 return ResourceManager.GetString("SkypDownloadException_GetMessage_Credentials_saved_in_Skyline_for_the_Panorama_se" +
                         "rver__0__are_for_the_user__1___This_user_does_not_have_permissions_to_download_t" +
-                        "he_file__The__skyp_file_was_downloaded_by__2__", resourceCulture);
+                        "he_file__The_skyp_file_was_downloaded_by__2__", resourceCulture);
             }
         }
         
@@ -31034,11 +31034,11 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Path to .skyp file cannot be empty..
+        ///   Looks up a localized string similar to Path to skyp file cannot be empty..
         /// </summary>
-        public static string SkypSupport_Open_Path_to__skyp_file_cannot_be_empty_ {
+        public static string SkypSupport_Open_Path_to_skyp_file_cannot_be_empty_ {
             get {
-                return ResourceManager.GetString("SkypSupport_Open_Path_to__skyp_file_cannot_be_empty_", resourceCulture);
+                return ResourceManager.GetString("SkypSupport_Open_Path_to_skyp_file_cannot_be_empty_", resourceCulture);
             }
         }
         

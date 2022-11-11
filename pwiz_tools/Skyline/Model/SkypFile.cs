@@ -59,6 +59,7 @@ namespace pwiz.Skyline.Model
                 {
                     if (first)
                     {
+                        // First line in the skyp file is the URL of the skyp.zip file on a Panorama server
                         skyp.SkylineDocUri = GetSkyFileUrl(line);
                         first = false;
                     }
