@@ -355,19 +355,19 @@ namespace pwiz.SkylineTestFunctional
             {
                 if (Server.Contains(VALID_PANORAMA_SERVER) ||
                     string.Equals(Server, VALID_NON_PANORAMA_SERVER))
-                    return ServerState.available;
+                    return ServerState.VALID;
 
                 else if (string.Equals(Server, UNKNOWN_STATE_SERVER))
-                    return ServerState.unknown;
+                    return new ServerState(ServerStateEnum.unknown, "Test WebException", ServerUri);
 
-                return ServerState.missing;
+                return new ServerState(ServerStateEnum.missing, "Test WebException - NameResolutionFailure", ServerUri);
             }
 
             public PanoramaState IsPanorama()
             {
                 if (Server.Contains(VALID_PANORAMA_SERVER))
-                    return PanoramaState.panorama;
-                return PanoramaState.other;
+                    return PanoramaState.VALID;
+                return new PanoramaState(PanoramaStateEnum.other, "Test WebException", ServerUri);
             }
 
             public UserState IsValidUser(string username, string password)
@@ -375,9 +375,9 @@ namespace pwiz.SkylineTestFunctional
                 if (string.Equals(username, VALID_USER_NAME) &&
                     string.Equals(password, VALID_PASSWORD))
                 {
-                    return UserState.valid;
+                    return UserState.VALID;
                 }
-                return UserState.nonvalid;
+                return new UserState(UserStateEnum.nonvalid, "Test WebException", ServerUri);
             }
 
             public FolderState IsValidFolder(string folderPath, string username, string password)

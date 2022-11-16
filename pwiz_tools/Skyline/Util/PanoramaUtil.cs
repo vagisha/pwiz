@@ -83,39 +83,23 @@ namespace pwiz.Skyline.Util
         {
             var uriServer = panoramaClient.ServerUri;
 
-            switch (panoramaClient.GetServerState())
+            var serverState = panoramaClient.GetServerState();
+            if (!serverState.IsValid())
             {
-                case ServerState.missing:
-                    throw new PanoramaServerException(string.Format(
-                        Resources.EditServerDlg_VerifyServerInformation_The_server__0__does_not_exist,
-                        uriServer.AbsoluteUri));
-                case ServerState.unknown:
-                    throw new PanoramaServerException(string.Format(
-                        Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__,
-                        uriServer.AbsoluteUri));
+                throw new PanoramaServerException(serverState.GetErrorMessage(uriServer));
             }
 
-            switch (panoramaClient.IsValidUser(username, password))
+            var userState = panoramaClient.IsValidUser(username, password);
+            if (!userState.IsValid())
             {
-                case UserState.nonvalid:
-                    throw new PanoramaServerException(Resources
-                        .EditServerDlg_OkDialog_The_username_and_password_could_not_be_authenticated_with_the_panorama_server);
-                case UserState.unknown:
-                    throw new PanoramaServerException(string.Format(
-                        Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__,
-                        uriServer.AbsoluteUri));
+                throw new PanoramaServerException(userState.getErrorMessage(uriServer));
             }
+            
 
-            switch (panoramaClient.IsPanorama())
+            var panoramaState = panoramaClient.IsPanorama();
+            if (!panoramaState.IsValid())
             {
-                case PanoramaState.other:
-                    throw new PanoramaServerException(string.Format(
-                        Resources.EditServerDlg_OkDialog_The_server__0__is_not_a_Panorama_server,
-                        uriServer.AbsoluteUri));
-                case PanoramaState.unknown:
-                    throw new PanoramaServerException(string.Format(
-                        Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__,
-                        uriServer.AbsoluteUri));
+                throw new PanoramaServerException(panoramaState.getErrorMessage(uriServer));
             }
         }
 
@@ -151,13 +135,13 @@ namespace pwiz.Skyline.Util
                     }
                 }
 
-                return UserState.unknown;
+                return new UserState(UserStateEnum.unknown, ex.Message, GetEnsureLoginUri(pServer));
             }
         }
 
         private static UserState EnsureLogin(PanoramaServer pServer)
         {
-            var requestUri = new Uri(pServer.ServerUri, ENSURE_LOGIN_PATH);
+            var requestUri = GetEnsureLoginUri(pServer);
             var request = (HttpWebRequest) WebRequest.Create(requestUri);
             request.Headers.Add(HttpRequestHeader.Authorization,
                 Server.GetBasicAuthHeader(pServer.Username, pServer.Password));
@@ -165,7 +149,12 @@ namespace pwiz.Skyline.Util
             {
                 using (var response = (HttpWebResponse) request.GetResponse())
                 {
-                    return response.StatusCode == HttpStatusCode.OK ? UserState.valid : UserState.unknown;
+                    return response.StatusCode == HttpStatusCode.OK
+                        ? UserState.VALID
+                        : new UserState(UserStateEnum.nonvalid,
+                            string.Format("Could not validate user. Response received from server: {0} {1}.",
+                                response.StatusCode, response.StatusDescription),
+                            requestUri);
                 }
             }
             catch (WebException ex)
@@ -185,11 +174,16 @@ namespace pwiz.Skyline.Util
                         }
                     }
 
-                    return UserState.nonvalid; // User cannot be authenticated
+                    return new UserState(UserStateEnum.nonvalid, ex.Message, requestUri); // User cannot be authenticated
                 }
 
                 throw;
             }
+        }
+
+        private static Uri GetEnsureLoginUri(PanoramaServer pServer)
+        {
+            return new Uri(pServer.ServerUri, ENSURE_LOGIN_PATH);
         }
 
         private static UserState TryEnsureLogin(PanoramaServer pServer, ref Uri serverUri)
@@ -200,10 +194,10 @@ namespace pwiz.Skyline.Util
                 serverUri = pServer.ServerUri;
                 return userState;
             }
-            catch (WebException)
+            catch (WebException e)
             {
                 // Due to anything other than 401 (Unauthorized), which is handled in EnsureLogin.
-                return UserState.unknown;
+                return new UserState(UserStateEnum.unknown, e.Message, GetEnsureLoginUri(pServer));
             }
         }
 
@@ -466,9 +460,144 @@ namespace pwiz.Skyline.Util
         #endregion
     }
 
-    public enum ServerState { unknown, missing, available }
-    public enum PanoramaState { panorama, other, unknown }
-    public enum UserState { valid, nonvalid, unknown }
+    public abstract class GenericState<T>
+    { 
+        public T State { get; }
+        public string Error { get; }
+        public Uri Uri { get; }
+
+        public abstract bool IsValid();
+
+        public virtual string GetErrorMessage()
+        {
+            var sb = new StringBuilder();
+
+            if (Uri != null)
+            {
+                sb.AppendLine(string.Format("URL: {0}", Uri));
+            }
+
+            if (Error != null)
+            {
+                sb.AppendLine(string.Format("Error: {0}", Error));
+            }
+
+            return sb.ToString();
+        }
+
+        public GenericState(T state, string error, Uri uri)
+        {
+            State = state;
+            Error = error;
+            Uri = uri;
+        }
+    }
+
+    public class ServerState : GenericState<ServerStateEnum>
+    {
+        public static ServerState VALID = new ServerState(ServerStateEnum.available, null, null);
+
+        public ServerState(ServerStateEnum state, string error, Uri uri) : base(state, error, uri)
+        {
+        }
+
+        public override bool IsValid()
+        {
+            return State == ServerStateEnum.available;
+        }
+
+        public string GetErrorMessage(Uri serverUri)
+        {
+            var error = string.Empty;
+            switch (State)
+            {
+                case ServerStateEnum.missing:
+                    error = string.Format(
+                        Resources.EditServerDlg_VerifyServerInformation_The_server__0__does_not_exist,
+                        serverUri.AbsoluteUri);
+                    break;
+                case ServerStateEnum.unknown:
+                    error = string.Format(
+                        Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__,
+                        serverUri.AbsoluteUri);
+                    break;
+            }
+
+            return Error == null ? error : TextUtil.LineSeparate(error, base.GetErrorMessage());
+        }
+    }
+
+    public class PanoramaState : GenericState<PanoramaStateEnum>
+    {
+
+        public static PanoramaState VALID = new PanoramaState(PanoramaStateEnum.panorama, null, null);
+
+        public PanoramaState(PanoramaStateEnum state, string error, Uri uri) : base(state, error, uri)
+        {
+        }
+
+        public override bool IsValid()
+        {
+            return State == PanoramaStateEnum.panorama;
+        }
+
+        public string getErrorMessage(Uri serverUri)
+        {
+            var error = string.Empty;
+            switch (State)
+            {
+                case PanoramaStateEnum.other:
+                    error = string.Format(
+                        Resources.EditServerDlg_OkDialog_The_server__0__is_not_a_Panorama_server,
+                        serverUri.AbsoluteUri);
+                    break;
+                case PanoramaStateEnum.unknown:
+                    error = string.Format(
+                        Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__,
+                        serverUri.AbsoluteUri);
+                    break;
+            }
+
+            return Error == null ? error : TextUtil.LineSeparate(error, base.GetErrorMessage());
+        }
+    }
+
+    public class UserState : GenericState<UserStateEnum>
+    {
+        public static UserState VALID = new UserState(UserStateEnum.valid, null, null);
+
+        public UserState(UserStateEnum state, string error, Uri uri) : base(state, error, uri)
+        {
+        }
+
+        public override bool IsValid()
+        {
+            return State == UserStateEnum.valid;
+        }
+
+        public string getErrorMessage(Uri serverUri)
+        {
+            var error = string.Empty;
+            switch (State)
+            {
+                case UserStateEnum.nonvalid:
+                    error = Resources
+                        .EditServerDlg_OkDialog_The_username_and_password_could_not_be_authenticated_with_the_panorama_server;
+                    break;
+                case UserStateEnum.unknown:
+                    error = string.Format(
+                        "There was an error validating user credentials on the server {0}.",
+                        serverUri.AbsoluteUri);
+                    break;
+            }
+
+            return Error == null ? error : TextUtil.LineSeparate(error, base.GetErrorMessage());
+        }
+    }
+
+    public enum ServerStateEnum { unknown, missing, available }
+    public enum PanoramaStateEnum { panorama, other, unknown }
+    public enum UserStateEnum { valid, nonvalid, unknown }
     public enum FolderState { valid, notpanorama, nopermission, notfound }
     public enum FolderOperationStatus{OK, notpanorama, nopermission, notfound, alreadyexists, error}
 
@@ -513,7 +642,7 @@ namespace pwiz.Skyline.Util
                 using (var webClient = new WebClient())
                 {
                     webClient.DownloadString(ServerUri);
-                    return ServerState.available;
+                    return ServerState.VALID;
                 }
             }
             catch (WebException ex)
@@ -521,17 +650,17 @@ namespace pwiz.Skyline.Util
                 // Invalid URL
                 if (ex.Status == WebExceptionStatus.NameResolutionFailure)
                 {
-                    return ServerState.missing;
+                    return new ServerState(ServerStateEnum.missing, ex.Message, ServerUri);
                 }
                 else if (tryNewProtocol)
                 {
-                    if (TryNewProtocol(() => TryGetServerState(false) == ServerState.available))
-                        return ServerState.available;
+                    if (TryNewProtocol(() => TryGetServerState(false).IsValid()))
+                        return ServerState.VALID;
 
-                    return ServerState.unknown;
+                    return new ServerState(ServerStateEnum.unknown, ex.Message, ServerUri);
                 }
             }
-            return ServerState.unknown;
+            return new ServerState(ServerStateEnum.unknown, null, ServerUri);
         }
 
         // This function must be true/false returning; no exceptions can be thrown
@@ -564,48 +693,55 @@ namespace pwiz.Skyline.Util
 
         private PanoramaState TryIsPanorama(bool tryNewProtocol = true)
         {
+            // Use the LabKey AdminController.HealthCheckAction instead of ProjectController.GetContainersAction which does not return the expected
+            // JSON key if the "Home" container on the LabKey Server is not public.
+            // (https://www.labkey.org/home/Developer/issues/Secure/issues-details.view?issueId=20686)
+            Uri uri = new Uri(ServerUri, @"admin/home/healthCheck.view");
+
             try
             {
-                // Use the LabKey AdminController.HealthCheckAction instead of ProjectController.GetContainersAction which does not return the expected
-                // JSON key if the "Home" container on the LabKey Server is not public.
-                // (https://www.labkey.org/home/Developer/issues/Secure/issues-details.view?issueId=20686)
-                Uri uri = new Uri(ServerUri, @"admin/home/healthCheck.view");
                 using (var webClient = new UTF8WebClient())
                 {
-                    JObject jsonResponse = webClient.Get(uri);
-                    var panoramaState = jsonResponse.ContainsKey(@"healthy")
-                        ? PanoramaState.panorama
-                        : PanoramaState.other;
-                    return panoramaState;
+                    JObject jsonResponse = null;
+                    if (webClient.TryGet(uri, ref jsonResponse))
+                    {
+                        return jsonResponse.ContainsKey(@"healthy")
+                            ? PanoramaState.VALID
+                            : new PanoramaState(PanoramaStateEnum.other, string.Format("Unexpected JSON response from server: {0}", jsonResponse), uri);
+                    }
+                    else
+                    {
+                        return new PanoramaState(PanoramaStateEnum.other, "Invalid JSON response from server.", uri);
+                    }
                 }
             }
-            catch (WebException ex)
+            catch (Exception e)
             {
-                HttpWebResponse response = ex.Response as HttpWebResponse;
-                // Labkey container page should be part of all Panorama servers. 
-                if (response != null && response.StatusCode == HttpStatusCode.NotFound)
+                WebException ex = e as WebException;
+                if (ex != null)
                 {
-                    return PanoramaState.other;
+                    HttpWebResponse response = ex.Response as HttpWebResponse;
+                    // LabKey AdminController.HealthCheckAction should be part of all Panorama servers. 
+                    if (response != null && response.StatusCode == HttpStatusCode.NotFound)
+                    {
+                        return new PanoramaState(PanoramaStateEnum.other, ex.Message, uri);
+                    }
+                    else if (tryNewProtocol)
+                    {
+                        if (TryNewProtocol(() => TryIsPanorama(false).IsValid()))
+                            return PanoramaState.VALID;
+                    }
                 }
-                else if(tryNewProtocol)
-                {
-                    if (TryNewProtocol(() => TryIsPanorama(false) == PanoramaState.panorama))
-                        return PanoramaState.panorama;
-                }
-            }
-            catch
-            {
-                return PanoramaState.unknown;
-            }
 
-            return PanoramaState.unknown;  
+                return new PanoramaState(PanoramaStateEnum.unknown, e.Message, uri);
+            }
         }
 
         public UserState IsValidUser(string username, string password)
         {
             var refServerUri = ServerUri;
             var userState = PanoramaUtil.ValidateServerAndUser(ref refServerUri, username, password);
-            if (userState == UserState.valid)
+            if (userState.IsValid())
             {
                 ServerUri = refServerUri;
             }
@@ -926,19 +1062,14 @@ namespace pwiz.Skyline.Util
         {
             var refServerUri = server.URI;
             UserState userState = PanoramaUtil.ValidateServerAndUser(ref refServerUri, server.Username, server.Password);
-            if (userState == UserState.valid)
+            if (userState.IsValid())
             {
                 server.URI = refServerUri;
-                return;
             }
-
-            switch (userState)
+            else
             {
-                case UserState.nonvalid:
-                    throw new PanoramaServerException(Resources.EditServerDlg_OkDialog_The_username_and_password_could_not_be_authenticated_with_the_panorama_server);
-                case UserState.unknown:
-                    throw new PanoramaServerException(string.Format(Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__, refServerUri.AbsoluteUri));
-            } 
+                throw new PanoramaServerException(userState.getErrorMessage(refServerUri));
+            }
         }
 
         public override JToken GetInfoForFolders(Server server, string folder)
@@ -1294,7 +1425,7 @@ namespace pwiz.Skyline.Util
     }
 
     public class PanoramaServerException : Exception
-    {
+    { 
         public PanoramaServerException(string message) : base(message)
         {
         }
@@ -1333,6 +1464,19 @@ namespace pwiz.Skyline.Util
         {
             var response = DownloadString(uri);
             return JObject.Parse(response);
+        }
+
+        public bool TryGet(Uri uri, ref JObject response)
+        {
+            try
+            {
+                response = Get(uri);
+                return true;
+            }
+            catch (JsonReaderException)
+            {
+                return false;
+            }
         }
     }
 

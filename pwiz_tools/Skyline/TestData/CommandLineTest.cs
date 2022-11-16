@@ -3018,7 +3018,7 @@ namespace pwiz.SkylineTestData
 
             // Error: Unknown server
             var serverUri = PanoramaUtil.ServerNameToUri("unknown.server-state.com");
-            var client = new TestPanoramaClient() { MyServerState = ServerState.unknown, ServerUri = serverUri };
+            var client = new TestPanoramaClient() { MyServerState = new ServerState(ServerStateEnum.unknown, null, null), ServerUri = serverUri };
             helper.ValidateServer(client, null, null);
             Assert.IsTrue(
                 buffer.ToString()
@@ -3031,7 +3031,7 @@ namespace pwiz.SkylineTestData
 
             // Error: Not a Panorama Server
             serverUri = PanoramaUtil.ServerNameToUri("www.google.com");
-            client = new TestPanoramaClient() {MyPanoramaState = PanoramaState.other, ServerUri = serverUri};
+            client = new TestPanoramaClient() {MyPanoramaState = new PanoramaState(PanoramaStateEnum.other, null, null), ServerUri = serverUri};
             helper.ValidateServer(client, null, null);
             Assert.IsTrue(
                 buffer.ToString()
@@ -3044,7 +3044,7 @@ namespace pwiz.SkylineTestData
 
             // Error: Invalid user
             serverUri = PanoramaUtil.ServerNameToUri(PanoramaUtil.PANORAMA_WEB);
-            client = new TestPanoramaClient() { MyUserState = UserState.nonvalid, ServerUri = serverUri };
+            client = new TestPanoramaClient() { MyUserState = new UserState(UserStateEnum.nonvalid, null, null), ServerUri = serverUri };
             helper.ValidateServer(client, "invalid", "user");
             Assert.IsTrue(
                 buffer.ToString()
@@ -3219,9 +3219,9 @@ namespace pwiz.SkylineTestData
 
             public TestPanoramaClient()
             {
-                MyServerState = ServerState.available;
-                MyPanoramaState = PanoramaState.panorama;
-                MyUserState = UserState.valid;
+                MyServerState = ServerState.VALID;
+                MyPanoramaState = PanoramaState.VALID;
+                MyUserState = UserState.VALID;
                 MyFolderState = FolderState.valid;
             }
 
