@@ -15092,6 +15092,24 @@ namespace pwiz.Skyline.Properties {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Error: {0}.
+        /// </summary>
+        public static string GenericState_AppendErrorAndUri_Error___0_ {
+            get {
+                return ResourceManager.GetString("GenericState_AppendErrorAndUri_Error___0_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to URL: {0}.
+        /// </summary>
+        public static string GenericState_AppendErrorAndUri_URL___0_ {
+            get {
+                return ResourceManager.GetString("GenericState_AppendErrorAndUri_URL___0_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to No optimization data available..
         /// </summary>
         public static string GraphChromatogram_DisplayOptimizationTotals_No_optimization_data_available {
@@ -21677,6 +21695,34 @@ namespace pwiz.Skyline.Properties {
         public static string PanoramaPublishHelper_PublishDocToPanorama_Uploading_document_to_Panorama {
             get {
                 return ResourceManager.GetString("PanoramaPublishHelper_PublishDocToPanorama_Uploading_document_to_Panorama", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Could not authenticate user. Response received from server: {0} {1}..
+        /// </summary>
+        public static string PanoramaUtil_EnsureLogin_Could_not_authenticate_user__Response_received_from_server___0___1__ {
+            get {
+                return ResourceManager.GetString("PanoramaUtil_EnsureLogin_Could_not_authenticate_user__Response_received_from_serv" +
+                        "er___0___1__", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Server did not return a valid JSON response..
+        /// </summary>
+        public static string PanoramaUtil_EnsureLogin_Server_did_not_return_a_valid_JSON_response_ {
+            get {
+                return ResourceManager.GetString("PanoramaUtil_EnsureLogin_Server_did_not_return_a_valid_JSON_response_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Unexpected JSON response from the server: {0}.
+        /// </summary>
+        public static string PanoramaUtil_EnsureLogin_Unexpected_JSON_response_from_the_server___0_ {
+            get {
+                return ResourceManager.GetString("PanoramaUtil_EnsureLogin_Unexpected_JSON_response_from_the_server___0_", resourceCulture);
             }
         }
         
@@ -34855,6 +34901,16 @@ namespace pwiz.Skyline.Properties {
         public static string UpgradeManager_updateCheck_Complete_Upgrading__0_ {
             get {
                 return ResourceManager.GetString("UpgradeManager_updateCheck_Complete_Upgrading__0_", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to There was an error authenticating user credentials on the server {0}..
+        /// </summary>
+        public static string UserState_getErrorMessage_There_was_an_error_authenticating_user_credentials_on_the_server__0__ {
+            get {
+                return ResourceManager.GetString("UserState_getErrorMessage_There_was_an_error_authenticating_user_credentials_on_t" +
+                        "he_server__0__", resourceCulture);
             }
         }
         

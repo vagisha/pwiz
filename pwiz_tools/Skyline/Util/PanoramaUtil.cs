@@ -146,7 +146,7 @@ namespace pwiz.Skyline.Util
                     if (response.StatusCode != HttpStatusCode.OK)
                     {
                         return new UserState(UserStateEnum.nonvalid,
-                            string.Format("Could not validate user. Response received from server: {0} {1}.",
+                            string.Format(Resources.PanoramaUtil_EnsureLogin_Could_not_authenticate_user__Response_received_from_server___0___1__,
                                 response.StatusCode, response.StatusDescription),
                             requestUri);
                     }
@@ -159,7 +159,7 @@ namespace pwiz.Skyline.Util
                     else if (jsonResponse == null)
                     {
                         return new UserState(UserStateEnum.unknown,
-                            "Server did not return a valid JSON response.",
+                            Resources.PanoramaUtil_EnsureLogin_Server_did_not_return_a_valid_JSON_response_,
                             requestUri);
                     }
                     else
@@ -167,7 +167,7 @@ namespace pwiz.Skyline.Util
                         var jsonText = jsonResponse.ToString(Formatting.None);
                         jsonText = jsonText.Replace(@"{", @"{{"); // escape curly braces
                         return new UserState(UserStateEnum.unknown,
-                            string.Format("Unexpected JSON response from the server: {0}", jsonText),
+                            string.Format(Resources.PanoramaUtil_EnsureLogin_Unexpected_JSON_response_from_the_server___0_, jsonText),
                             requestUri);
                     }
                 }
@@ -543,12 +543,12 @@ namespace pwiz.Skyline.Util
 
                 if (Error != null)
                 {
-                    sb.AppendLine(string.Format("Error: {0}", Error));
+                    sb.AppendLine(string.Format(Resources.GenericState_AppendErrorAndUri_Error___0_, Error));
                 }
 
                 if (Uri != null)
                 {
-                    sb.AppendLine(string.Format("URL: {0}", Uri));
+                    sb.AppendLine(string.Format(Resources.GenericState_AppendErrorAndUri_URL___0_, Uri));
                 }
 
                 message = TextUtil.LineSeparate(message, string.Empty, sb.ToString());
@@ -624,7 +624,7 @@ namespace pwiz.Skyline.Util
                     break;
                 case UserStateEnum.unknown:
                     stateError = string.Format(
-                        "There was an error validating user credentials on the server {0}.",
+                        Resources.UserState_getErrorMessage_There_was_an_error_authenticating_user_credentials_on_the_server__0__,
                         serverUri.AbsoluteUri);
                     break;
             }
@@ -1449,19 +1449,6 @@ namespace pwiz.Skyline.Util
         {
             var response = DownloadString(uri);
             return JObject.Parse(response);
-        }
-
-        public bool TryGet(Uri uri, ref JObject response)
-        {
-            try
-            {
-                response = Get(uri);
-                return true;
-            }
-            catch (JsonReaderException)
-            {
-                return false;
-            }
         }
     }
 

@@ -128,7 +128,7 @@ namespace pwiz.Skyline.FileUI
                     if (ex is WebException || ex is PanoramaServerException)
                     {
                         var error = ex.Message;
-                        if (error.Contains(Resources
+                        if (error != null && error.Contains(Resources
                             .EditServerDlg_OkDialog_The_username_and_password_could_not_be_authenticated_with_the_panorama_server))
                         {
                             error = TextUtil.LineSeparate(error, Resources
