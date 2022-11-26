@@ -11865,4 +11865,22 @@ If you do not have the original file, you may build the library with embedded sp
   <data name="CommandLine_ImportSkyr_Error__Reports_could_not_be_imported_from__0_" xml:space="preserve">
       <value>Error: Reports could not be imported from {0}</value>
   </data>
+  <data name="PanoramaUtil_EnsureLogin_Could_not_authenticate_user__Response_received_from_server___0___1__" xml:space="preserve">
+	  <value>Could not authenticate user. Response received from server: {0} {1}.</value>
+  </data>
+  <data name="PanoramaUtil_EnsureLogin_Server_did_not_return_a_valid_JSON_response_" xml:space="preserve">
+	  <value>Server did not return a valid JSON response.</value>
+  </data>
+  <data name="PanoramaUtil_EnsureLogin_Unexpected_JSON_response_from_the_server___0_" xml:space="preserve">
+	  <value>Unexpected JSON response from the server: {0}</value>
+  </data>
+  <data name="GenericState_AppendErrorAndUri_Error___0_" xml:space="preserve">
+	  <value>Error: {0}</value>
+  </data>
+  <data name="GenericState_AppendErrorAndUri_URL___0_" xml:space="preserve">
+	  <value>URL: {0}</value>
+  </data>
+  <data name="UserState_getErrorMessage_There_was_an_error_authenticating_user_credentials_on_the_server__0__" xml:space="preserve">
+	  <value>There was an error authenticating user credentials on the server {0}.</value>
+  </data>
 </root>
