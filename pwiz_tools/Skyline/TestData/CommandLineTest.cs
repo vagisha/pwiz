@@ -3030,16 +3030,16 @@ namespace pwiz.SkylineTestData
 
 
             // Error: Not a Panorama Server
-            serverUri = PanoramaUtil.ServerNameToUri("www.google.com");
-            client = new TestPanoramaClient() {MyPanoramaState = new PanoramaState(PanoramaStateEnum.other, null, null), ServerUri = serverUri};
-            helper.ValidateServer(client, null, null);
-            Assert.IsTrue(
-                buffer.ToString()
-                    .Contains(
-                        string.Format(Resources.EditServerDlg_OkDialog_The_server__0__is_not_a_Panorama_server,
-                            serverUri.AbsoluteUri)));
-            TestOutputHasErrorLine(buffer.ToString());
-            buffer.Clear();
+            // serverUri = PanoramaUtil.ServerNameToUri("www.google.com");
+            // client = new TestPanoramaClient() {MyUserState = new UserState(UserStateEnum.unknown, null, null), ServerUri = serverUri};
+            // helper.ValidateServer(client, null, null);
+            // Assert.IsTrue(
+            //     buffer.ToString()
+            //         .Contains(
+            //             string.Format(Resources.EditServerDlg_OkDialog_The_server__0__is_not_a_Panorama_server,
+            //                 serverUri.AbsoluteUri)));
+            // TestOutputHasErrorLine(buffer.ToString());
+            // buffer.Clear();
 
 
             // Error: Invalid user
@@ -3213,14 +3213,12 @@ namespace pwiz.SkylineTestData
             public Uri ServerUri { get; set; }
 
             public ServerState MyServerState { get; set; }
-            public PanoramaState MyPanoramaState { get; set; }
             public UserState MyUserState { get; set; }
             public FolderState MyFolderState { get; set; }
 
             public TestPanoramaClient()
             {
                 MyServerState = ServerState.VALID;
-                MyPanoramaState = PanoramaState.VALID;
                 MyUserState = UserState.VALID;
                 MyFolderState = FolderState.valid;
             }
@@ -3228,11 +3226,6 @@ namespace pwiz.SkylineTestData
             public virtual ServerState GetServerState()
             {
                 return MyServerState;
-            }
-
-            public PanoramaState IsPanorama()
-            {
-                return MyPanoramaState;
             }
 
             public UserState IsValidUser(string username, string password)

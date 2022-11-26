@@ -80,6 +80,9 @@ namespace pwiz.Skyline.ToolsUI
             if (!helper.ValidateNameTextBox(textServerURL, out serverName))
                 return;
 
+            if (!(helper.ValidateNameTextBox(textUsername, out _) && helper.ValidateNameTextBox(textPassword, out _)))
+                return;
+
             Uri uriServer = PanoramaUtil.ServerNameToUri(serverName);
             if (uriServer == null)
             {

@@ -41,6 +41,7 @@ using pwiz.Skyline.Model.Results;
 using pwiz.Skyline.Model.Serialization;
 using pwiz.Skyline.Properties;
 using pwiz.Skyline.Util.Extensions;
+using Formatting = Newtonsoft.Json.Formatting;
 
 namespace pwiz.Skyline.Util
 {
@@ -94,13 +95,6 @@ namespace pwiz.Skyline.Util
             {
                 throw new PanoramaServerException(userState.getErrorMessage(uriServer));
             }
-            
-
-            var panoramaState = panoramaClient.IsPanorama();
-            if (!panoramaState.IsValid())
-            {
-                throw new PanoramaServerException(panoramaState.getErrorMessage(uriServer));
-            }
         }
 
         public static UserState ValidateServerAndUser(ref Uri serverUri, string username, string password)
@@ -149,12 +143,33 @@ namespace pwiz.Skyline.Util
             {
                 using (var response = (HttpWebResponse) request.GetResponse())
                 {
-                    return response.StatusCode == HttpStatusCode.OK
-                        ? UserState.VALID
-                        : new UserState(UserStateEnum.nonvalid,
+                    if (response.StatusCode != HttpStatusCode.OK)
+                    {
+                        return new UserState(UserStateEnum.nonvalid,
                             string.Format("Could not validate user. Response received from server: {0} {1}.",
                                 response.StatusCode, response.StatusDescription),
                             requestUri);
+                    }
+
+                    JObject jsonResponse = null;
+                    if (TryGetJsonResponse(response, ref jsonResponse) && IsValidEnsureLoginResponse(jsonResponse, pServer.Username))
+                    {
+                        return UserState.VALID;
+                    }
+                    else if (jsonResponse == null)
+                    {
+                        return new UserState(UserStateEnum.unknown,
+                            "Server did not return a valid JSON response.",
+                            requestUri);
+                    }
+                    else
+                    {
+                        var jsonText = jsonResponse.ToString(Formatting.None);
+                        jsonText = jsonText.Replace(@"{", @"{{"); // escape curly braces
+                        return new UserState(UserStateEnum.unknown,
+                            string.Format("Unexpected JSON response from the server: {0}", jsonText),
+                            requestUri);
+                    }
                 }
             }
             catch (WebException ex)
@@ -179,6 +194,56 @@ namespace pwiz.Skyline.Util
 
                 throw;
             }
+        }
+
+        private static bool TryGetJsonResponse(HttpWebResponse response, ref JObject jsonResponse)
+        {
+            using (var stream = response.GetResponseStream())
+            {
+                if (stream != null)
+                {
+                    using (var reader = new StreamReader(stream, Encoding.UTF8))
+                    {
+                        var responseText = reader.ReadToEnd();
+                        try
+                        {
+                            jsonResponse = JObject.Parse(responseText);
+                            return true;
+                        }
+                        catch (JsonReaderException) {}
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsValidEnsureLoginResponse(JObject jsonResponse, string expectedEmail)
+        {
+            // Example JSON response:
+            /*
+             * {
+                  "currentUser" : {
+                    "canUpdateOwn" : "false",
+                    "canUpdate" : "false",
+                    "canDeleteOwn" : "false",
+                    "canInsert" : "false",
+                    "displayName" : "test_user",
+                    "canDelete" : "false",
+                    "id" : 1166,
+                    "isAdmin" : "false",
+                    "email" : "test_user@uw.edu"
+                  }
+                }
+             */
+            jsonResponse.TryGetValue(@"currentUser", out JToken currentUser);
+            if (currentUser != null)
+            {
+                var email = currentUser.Value<string>(@"email");
+                return email != null && email.Equals(expectedEmail);
+            }
+
+            return false;
         }
 
         private static Uri GetEnsureLoginUri(PanoramaServer pServer)
@@ -468,21 +533,29 @@ namespace pwiz.Skyline.Util
 
         public abstract bool IsValid();
 
-        public virtual string GetErrorMessage()
+        protected string AppendErrorAndUri(string stateErrorMessage)
         {
-            var sb = new StringBuilder();
+            var message = stateErrorMessage;
 
-            if (Uri != null)
+            if (Error != null || Uri != null)
             {
-                sb.AppendLine(string.Format("URL: {0}", Uri));
+                var sb = new StringBuilder();
+
+                if (Error != null)
+                {
+                    sb.AppendLine(string.Format("Error: {0}", Error));
+                }
+
+                if (Uri != null)
+                {
+                    sb.AppendLine(string.Format("URL: {0}", Uri));
+                }
+
+                message = TextUtil.LineSeparate(message, string.Empty, sb.ToString());
             }
 
-            if (Error != null)
-            {
-                sb.AppendLine(string.Format("Error: {0}", Error));
-            }
 
-            return sb.ToString();
+            return message;
         }
 
         public GenericState(T state, string error, Uri uri)
@@ -508,57 +581,22 @@ namespace pwiz.Skyline.Util
 
         public string GetErrorMessage(Uri serverUri)
         {
-            var error = string.Empty;
+            var stateError = string.Empty;
             switch (State)
             {
                 case ServerStateEnum.missing:
-                    error = string.Format(
+                    stateError = string.Format(
                         Resources.EditServerDlg_VerifyServerInformation_The_server__0__does_not_exist,
                         serverUri.AbsoluteUri);
                     break;
                 case ServerStateEnum.unknown:
-                    error = string.Format(
+                    stateError = string.Format(
                         Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__,
                         serverUri.AbsoluteUri);
                     break;
             }
 
-            return Error == null ? error : TextUtil.LineSeparate(error, base.GetErrorMessage());
-        }
-    }
-
-    public class PanoramaState : GenericState<PanoramaStateEnum>
-    {
-
-        public static PanoramaState VALID = new PanoramaState(PanoramaStateEnum.panorama, null, null);
-
-        public PanoramaState(PanoramaStateEnum state, string error, Uri uri) : base(state, error, uri)
-        {
-        }
-
-        public override bool IsValid()
-        {
-            return State == PanoramaStateEnum.panorama;
-        }
-
-        public string getErrorMessage(Uri serverUri)
-        {
-            var error = string.Empty;
-            switch (State)
-            {
-                case PanoramaStateEnum.other:
-                    error = string.Format(
-                        Resources.EditServerDlg_OkDialog_The_server__0__is_not_a_Panorama_server,
-                        serverUri.AbsoluteUri);
-                    break;
-                case PanoramaStateEnum.unknown:
-                    error = string.Format(
-                        Resources.EditServerDlg_OkDialog_Unknown_error_connecting_to_the_server__0__,
-                        serverUri.AbsoluteUri);
-                    break;
-            }
-
-            return Error == null ? error : TextUtil.LineSeparate(error, base.GetErrorMessage());
+            return AppendErrorAndUri(stateError);
         }
     }
 
@@ -577,26 +615,25 @@ namespace pwiz.Skyline.Util
 
         public string getErrorMessage(Uri serverUri)
         {
-            var error = string.Empty;
+            var stateError = string.Empty;
             switch (State)
             {
                 case UserStateEnum.nonvalid:
-                    error = Resources
+                    stateError = Resources
                         .EditServerDlg_OkDialog_The_username_and_password_could_not_be_authenticated_with_the_panorama_server;
                     break;
                 case UserStateEnum.unknown:
-                    error = string.Format(
+                    stateError = string.Format(
                         "There was an error validating user credentials on the server {0}.",
                         serverUri.AbsoluteUri);
                     break;
             }
 
-            return Error == null ? error : TextUtil.LineSeparate(error, base.GetErrorMessage());
+            return AppendErrorAndUri(stateError);
         }
     }
 
     public enum ServerStateEnum { unknown, missing, available }
-    public enum PanoramaStateEnum { panorama, other, unknown }
     public enum UserStateEnum { valid, nonvalid, unknown }
     public enum FolderState { valid, notpanorama, nopermission, notfound }
     public enum FolderOperationStatus{OK, notpanorama, nopermission, notfound, alreadyexists, error}
@@ -605,7 +642,6 @@ namespace pwiz.Skyline.Util
     {
         Uri ServerUri { get; }
         ServerState GetServerState();
-        PanoramaState IsPanorama();
         UserState IsValidUser(string username, string password);
         FolderState IsValidFolder(string folderPath, string username, string password);
 
@@ -684,57 +720,6 @@ namespace pwiz.Skyline.Util
 
             ServerUri = currentUri;
             return false;
-        }
-
-        public PanoramaState IsPanorama()
-        {
-            return TryIsPanorama();
-        }
-
-        private PanoramaState TryIsPanorama(bool tryNewProtocol = true)
-        {
-            // Use the LabKey AdminController.HealthCheckAction instead of ProjectController.GetContainersAction which does not return the expected
-            // JSON key if the "Home" container on the LabKey Server is not public.
-            // (https://www.labkey.org/home/Developer/issues/Secure/issues-details.view?issueId=20686)
-            Uri uri = new Uri(ServerUri, @"admin/home/healthCheck.view");
-
-            try
-            {
-                using (var webClient = new UTF8WebClient())
-                {
-                    JObject jsonResponse = null;
-                    if (webClient.TryGet(uri, ref jsonResponse))
-                    {
-                        return jsonResponse.ContainsKey(@"healthy")
-                            ? PanoramaState.VALID
-                            : new PanoramaState(PanoramaStateEnum.other, string.Format("Unexpected JSON response from server: {0}", jsonResponse), uri);
-                    }
-                    else
-                    {
-                        return new PanoramaState(PanoramaStateEnum.other, "Invalid JSON response from server.", uri);
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                WebException ex = e as WebException;
-                if (ex != null)
-                {
-                    HttpWebResponse response = ex.Response as HttpWebResponse;
-                    // LabKey AdminController.HealthCheckAction should be part of all Panorama servers. 
-                    if (response != null && response.StatusCode == HttpStatusCode.NotFound)
-                    {
-                        return new PanoramaState(PanoramaStateEnum.other, ex.Message, uri);
-                    }
-                    else if (tryNewProtocol)
-                    {
-                        if (TryNewProtocol(() => TryIsPanorama(false).IsValid()))
-                            return PanoramaState.VALID;
-                    }
-                }
-
-                return new PanoramaState(PanoramaStateEnum.unknown, e.Message, uri);
-            }
         }
 
         public UserState IsValidUser(string username, string password)

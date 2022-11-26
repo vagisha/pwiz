@@ -98,7 +98,7 @@ namespace pwiz.SkylineTestFunctional
             Server = VALID_NON_PANORAMA_SERVER;
             CheckServerInfoFailure(1);
 
-            // We assume that the first component of the path element is the contex path where LabKey Server is deployed.
+            // We assume that the first component of the path element is the context path where LabKey Server is deployed.
             // Both VALID_PANORAMA_Server and VALID_PANORAMA_SERVER/libkey will be saved as two different servers.
             Server = VALID_PANORAMA_SERVER + "/libkey";
             CheckServerInfoSuccess(2);
@@ -363,20 +363,17 @@ namespace pwiz.SkylineTestFunctional
                 return new ServerState(ServerStateEnum.missing, "Test WebException - NameResolutionFailure", ServerUri);
             }
 
-            public PanoramaState IsPanorama()
-            {
-                if (Server.Contains(VALID_PANORAMA_SERVER))
-                    return PanoramaState.VALID;
-                return new PanoramaState(PanoramaStateEnum.other, "Test WebException", ServerUri);
-            }
-
             public UserState IsValidUser(string username, string password)
             {
-                if (string.Equals(username, VALID_USER_NAME) &&
-                    string.Equals(password, VALID_PASSWORD))
+                if (Server.Contains(VALID_PANORAMA_SERVER))
                 {
-                    return UserState.VALID;
+                    if (string.Equals(username, VALID_USER_NAME) &&
+                        string.Equals(password, VALID_PASSWORD))
+                    {
+                        return UserState.VALID;
+                    }
                 }
+
                 return new UserState(UserStateEnum.nonvalid, "Test WebException", ServerUri);
             }
 
