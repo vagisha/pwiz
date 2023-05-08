@@ -537,38 +537,19 @@ namespace pwiz.SkylineTestFunctional
         }
     }
 
-    class AllValidPanoramaClient : IPanoramaClient
+    class AllValidPanoramaClient : AbstractPanoramaClient
     {
-        public Uri ServerUri { get { return null; } }
+        public override PanoramaServer PanoramaServer => null;
+        public override Uri ServerUri => null;
 
-        public ServerState GetServerState()
+        public override ServerState GetServerState()
         {
            return ServerState.VALID;
         }
 
-        public UserState IsValidUser(string username, string password)
+        public override UserState IsValidUser()
         {
             return UserState.VALID;
-        }
-
-        public FolderState IsValidFolder(string folderPath, string username, string password)
-        {
-            throw new NotImplementedException();
-        }
-
-        public FolderOperationStatus CreateFolder(string parentPath, string folderName, string username, string password)
-        {
-            throw new NotImplementedException();
-        }
-
-        public FolderOperationStatus DeleteFolder(string folderPath, string username, string password)
-        {
-            throw new NotImplementedException();
-        }
-
-        public JToken GetInfoForFolders(PanoramaServer server, string folder)
-        {
-            throw new NotImplementedException();
         }
     }
 }

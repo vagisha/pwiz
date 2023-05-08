@@ -339,9 +339,10 @@ namespace pwiz.SkylineTestFunctional
             Assert.IsFalse(pServer.Redirect("http:/another.server/" + PanoramaUtil.ENSURE_LOGIN_PATH, PanoramaUtil.ENSURE_LOGIN_PATH)); // Not the same host
         }
 
-        public class TestPanoramaClient : IPanoramaClient
+        public sealed class TestPanoramaClient : AbstractPanoramaClient
         {
-            public Uri ServerUri { get; set; }
+            public override PanoramaServer PanoramaServer { get; }
+            public override Uri ServerUri { get; }
 
             public string Server { get; }
             public string Username { get; }
@@ -359,9 +360,11 @@ namespace pwiz.SkylineTestFunctional
                 {
                     // ignored
                 }
+
+                PanoramaServer = new PanoramaServer(ServerUri, username, password);
             }
 
-            public ServerState GetServerState()
+            public override ServerState GetServerState()
             {
                 if (Server.Contains(VALID_PANORAMA_SERVER) ||
                     string.Equals(Server, VALID_NON_PANORAMA_SERVER))
@@ -373,12 +376,12 @@ namespace pwiz.SkylineTestFunctional
                 return new ServerState(ServerStateEnum.unknown, "Test WebException - unknown failure", ServerUri);
             }
 
-            public UserState IsValidUser(string username, string password)
+            public override UserState IsValidUser()
             {
                 if (Server.Contains(VALID_PANORAMA_SERVER))
                 {
-                    if (string.Equals(username, VALID_USER_NAME) &&
-                        string.Equals(password, VALID_PASSWORD))
+                    if (string.Equals(Username, VALID_USER_NAME) &&
+                        string.Equals(Password, VALID_PASSWORD))
                     {
                         return UserState.VALID;
                     }
@@ -387,24 +390,9 @@ namespace pwiz.SkylineTestFunctional
                 return new UserState(UserStateEnum.nonvalid, "Test WebException", ServerUri);
             }
 
-            public FolderState IsValidFolder(string folderPath, string username, string password)
+            public override FolderState IsValidFolder(string folderPath)
             {
                 return FolderState.valid;
-            }
-
-            public FolderOperationStatus CreateFolder(string parentPath, string folderName, string username, string password)
-            {
-                throw new NotImplementedException();
-            }
-
-            public FolderOperationStatus DeleteFolder(string folderPath, string username, string password)
-            {
-                throw new NotImplementedException();
-            }
-
-            public JToken GetInfoForFolders(PanoramaServer server, string folder)
-            {
-                throw new NotImplementedException();
             }
         }
 

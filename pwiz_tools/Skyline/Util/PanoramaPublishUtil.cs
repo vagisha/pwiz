@@ -376,7 +376,7 @@ namespace pwiz.Skyline.Util
 
         public override JToken GetInfoForFolders(PanoramaServer server, string folder)
         {
-            return new WebPanoramaClient(server.URI).GetInfoForFolders(server, folder);
+            return new WebPanoramaClient(server).GetInfoForFolders(folder);
         }
 
         public override Uri  SendZipFile(PanoramaServer server, string folderPath, string zipFilePath, IProgressMonitor progressMonitor)

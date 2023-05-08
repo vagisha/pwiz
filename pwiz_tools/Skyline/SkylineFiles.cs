@@ -910,7 +910,7 @@ namespace pwiz.Skyline
         /// <param name="fileJson"></param>
         public void OpenFromPanorama(string server, string user, string pass, JToken folderJson, JToken fileJson = null)
         {
-            var panoramaClient = new WebPanoramaClient(new Uri(server));
+            var panoramaClient = new WebPanoramaClient(new PanoramaServer(new Uri(server), user, pass));
             using var dlg = new FilePicker();
             dlg.InitializeTestDialog(new Uri(server), user, pass, folderJson, fileJson);
             if (dlg.ShowDialog() != DialogResult.Cancel)
@@ -986,7 +986,7 @@ namespace pwiz.Skyline
                         folderPath = Settings.Default.LastFolderPath;
                     }
                     var curServer = dlg.ActiveServer;
-                    var panoramaClient = new WebPanoramaClient(curServer.URI);
+                    var panoramaClient = new WebPanoramaClient(curServer);
 
                     string downloadPath;
                     using (var saveAsDlg = new SaveFileDialog
@@ -1011,34 +1011,41 @@ namespace pwiz.Skyline
                         var fileSaver = new FileSaver(dlg.FileName);
                         fileSaver.Commit();
                         fileSaver.Dispose();
+
                         using (var longWaitDlg = new LongWaitDlg
                                {
                                    Text = "Downloading selected file",
                                })
                         {
                             
-                            longWaitDlg.PerformWork(this, 800,
-                                progressMonitor => panoramaClient.DownloadFile(downloadPath, curServer, dlg.FileUrl, progressMonitor, size, dlg.FileName));
-                            if (!panoramaClient.Success)
+                            var progressStatus = longWaitDlg.PerformWork(this, 800,
+                                progressMonitor => panoramaClient.DownloadFile(downloadPath, curServer, dlg.FileUrl, progressMonitor, 
+                                    new ProgressStatus("Downloading..."), size, dlg.FileName));
+                            if (!progressStatus.IsComplete)
                             {
-                                FileEx.SafeDelete(panoramaClient.DownloadPath, true);
+                                FileEx.SafeDelete(downloadPath, true);
                             }
                             if (longWaitDlg.IsCanceled)
                                 return;
+                            if (progressStatus.IsError)
+                            {
+                                // TODO: Show the error message
+                                return;
+                            }
                         }
-                        if (panoramaClient.Success && dlg.FileName.EndsWith(SrmDocumentSharing.EXT) && !string.IsNullOrEmpty(downloadPath))
+                        if (dlg.FileName.EndsWith(SrmDocumentSharing.EXT) && !string.IsNullOrEmpty(downloadPath))
                         {
-                            OpenSharedFile(panoramaClient.DownloadPath);
+                            OpenSharedFile(downloadPath);
                         }
                         else if (dlg.FileName.EndsWith(SrmDocument.EXT) && !string.IsNullOrEmpty(downloadPath))
                         {
-                            OpenFile(panoramaClient.DownloadPath);
+                            OpenFile(downloadPath);
                         }
                     }
-                    if (!string.IsNullOrEmpty(panoramaClient.SelectedPath))
-                    {
-                        Settings.Default.LastFolderPath = panoramaClient.SelectedPath;
-                    }
+                    // if (!string.IsNullOrEmpty(panoramaClient.SelectedPath))
+                    // {
+                    //     Settings.Default.LastFolderPath = panoramaClient.SelectedPath;
+                    // }
                 }
                 Settings.Default.FileExpansion = dlg.TreeState;
                 Settings.Default.PanoramaSkyFiles = dlg.ShowingSky;

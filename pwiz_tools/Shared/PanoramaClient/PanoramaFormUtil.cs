@@ -20,8 +20,8 @@ namespace pwiz.PanoramaClient
 
         public void InitializeTreeView(PanoramaServer server, List<KeyValuePair<PanoramaServer, JToken>> listServers)
         {
-            IPanoramaClient panoramaClient = new WebPanoramaClient(server.URI);
-            listServers.Add(new KeyValuePair<PanoramaServer, JToken>(server, panoramaClient.GetInfoForFolders(server, null)));
+            IPanoramaClient panoramaClient = new WebPanoramaClient(server);
+            listServers.Add(new KeyValuePair<PanoramaServer, JToken>(server, panoramaClient.GetInfoForFolders(null)));
         }
 
         public void InitializeFolder(TreeView treeViewFolders, bool requireUploadPerms, bool showFiles, JToken folder, PanoramaServer server)

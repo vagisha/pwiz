@@ -3034,8 +3034,8 @@ namespace pwiz.SkylineTestData
 
             // Error: Unknown server
             var serverUri = PanoramaUtil.ServerNameToUri("unknown.server-state.com");
-            var client = new TestPanoramaClient() { MyServerState = new ServerState(ServerStateEnum.unknown, null, null), ServerUri = serverUri };
-            helper.ValidateServer(client, null, null);
+            var client = new TestPanoramaClient(new PanoramaServer(serverUri)) { MyServerState = new ServerState(ServerStateEnum.unknown, null, null) };
+            helper.ValidateServer(client);
             Assert.IsTrue(
                 buffer.ToString()
                     .Contains(
@@ -3047,8 +3047,8 @@ namespace pwiz.SkylineTestData
 
             // Error: Not a Panorama Server
             serverUri = PanoramaUtil.ServerNameToUri("www.google.com");
-            client = new TestPanoramaClient() {MyUserState = new UserState(UserStateEnum.unknown, null, null), ServerUri = serverUri};
-            helper.ValidateServer(client, null, null);
+            client = new TestPanoramaClient(new PanoramaServer(serverUri)) {MyUserState = new UserState(UserStateEnum.unknown, null, null)};
+            helper.ValidateServer(client);
             Assert.IsTrue(
                 buffer.ToString()
                     .Contains(
@@ -3060,8 +3060,8 @@ namespace pwiz.SkylineTestData
 
             // Error: Invalid user
             serverUri = PanoramaUtil.ServerNameToUri(PanoramaUtil.PANORAMA_WEB);
-            client = new TestPanoramaClient() { MyUserState = new UserState(UserStateEnum.nonvalid, null, null), ServerUri = serverUri };
-            helper.ValidateServer(client, "invalid", "user");
+            client = new TestPanoramaClient(new PanoramaServer(serverUri, "invalid", "user")) { MyUserState = new UserState(UserStateEnum.nonvalid, null, null) };
+            helper.ValidateServer(client);
             Assert.IsTrue(
                 buffer.ToString()
                     .Contains(
@@ -3072,8 +3072,8 @@ namespace pwiz.SkylineTestData
 
 
             // Error: unknown exception
-            client = new TestPanoramaClientThrowsException();
-            helper.ValidateServer(client, null, null);
+            client = new TestPanoramaClientThrowsException(new PanoramaServer(serverUri));
+            helper.ValidateServer(client);
             Assert.IsTrue(
                 buffer.ToString()
                     .Contains(
@@ -3083,8 +3083,8 @@ namespace pwiz.SkylineTestData
 
             
             // Error: folder does not exist
-            client = new TestPanoramaClient() { MyFolderState = FolderState.notfound, ServerUri = serverUri };
-            var server = helper.ValidateServer(client, "user", "password");
+            client = new TestPanoramaClient(new PanoramaServer(serverUri, "user", "password")) { MyFolderState = FolderState.notfound };
+            var server = helper.ValidateServer(client);
             var folder = "folder/not/found";
             helper.ValidateFolder(client, server, folder);
             Assert.IsTrue(
@@ -3098,7 +3098,7 @@ namespace pwiz.SkylineTestData
 
 
             // Error: no permissions on folder
-            client = new TestPanoramaClient() { MyFolderState = FolderState.nopermission, ServerUri = serverUri };
+            client = new TestPanoramaClient(new PanoramaServer(serverUri)) { MyFolderState = FolderState.nopermission };
             folder = "no/permissions";
             helper.ValidateFolder(client, server, folder);
             Assert.IsTrue(
@@ -3112,7 +3112,7 @@ namespace pwiz.SkylineTestData
 
 
             // Error: not a Panorama folder
-            client = new TestPanoramaClient() { MyFolderState = FolderState.notpanorama, ServerUri = serverUri };
+            client = new TestPanoramaClient(new PanoramaServer(serverUri)) { MyFolderState = FolderState.notpanorama };
             folder = "not/panorama";
             helper.ValidateFolder(client, server, folder);
             Assert.IsTrue(
@@ -3224,58 +3224,64 @@ namespace pwiz.SkylineTestData
                 string.Format("Expected RunCommand result message containing \n\"{0}\",\ngot\n\"{1}\"\ninstead.", expectedMessage, actualMessage));
         }
 
-        private class TestPanoramaClient : IPanoramaClient
+        private class TestPanoramaClient : AbstractPanoramaClient
         {
-            public Uri ServerUri { get; set; }
-
+            private PanoramaServer testServer;
             public ServerState MyServerState { get; set; }
             public UserState MyUserState { get; set; }
             public FolderState MyFolderState { get; set; }
 
-            public TestPanoramaClient()
+            public TestPanoramaClient(PanoramaServer server)
             {
                 MyServerState = ServerState.VALID;
                 MyUserState = UserState.VALID;
                 MyFolderState = FolderState.valid;
+                testServer = server;
             }
 
-            public virtual ServerState GetServerState()
+            public override PanoramaServer PanoramaServer
+            {
+                get { return testServer; }
+            }
+
+            public override Uri ServerUri { get; }
+
+            public override ServerState GetServerState()
             {
                 return MyServerState;
             }
 
-            public UserState IsValidUser(string username, string password)
+            public override UserState IsValidUser()
             {
                 return MyUserState;
             }
 
-            public FolderState IsValidFolder(string folderPath, string username, string password)
+            public override FolderState IsValidFolder(string folderPath)
             {
                 return MyFolderState;
             }
 
-            public FolderOperationStatus CreateFolder(string parentPath, string folderName, string username, string password)
+            public override FolderOperationStatus CreateFolder(string parentPath, string folderName)
             {
                 return FolderOperationStatus.OK;
             }
 
-            public FolderOperationStatus DeleteFolder(string folderPath, string username, string password)
+            public override FolderOperationStatus DeleteFolder(string folderPath)
             {
                 return FolderOperationStatus.OK;
-            }
-
-            public JToken GetInfoForFolders(PanoramaServer server, string folder)
-            {
-                throw new NotImplementedException();
             }
         }
 
         private class TestPanoramaClientThrowsException : TestPanoramaClient
         {
+            public TestPanoramaClientThrowsException(PanoramaServer server) : base(server)
+            {
+            }
+
             public override ServerState GetServerState()
             {
                 throw new Exception("GetServerState threw an exception");
-            }    
+            }
         }
     }
 }
