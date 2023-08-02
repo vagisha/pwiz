@@ -34,6 +34,7 @@ using log4net.Repository.Hierarchy;
 using SharedBatch;
 using Resources = AutoQC.Properties.Resources;
 using Settings = AutoQC.Properties.Settings;
+using System.Runtime.InteropServices;
 
 namespace AutoQC
 {
@@ -84,10 +85,13 @@ namespace AutoQC
             {
                 if (!mutex.WaitOne(TimeSpan.Zero))
                 {
-                    MessageBox.Show(
-                        string.Format(Resources.Program_Main_Another_instance_of__0__is_already_running_, AppName),
-                        AppName, MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
+                    if (!ShowRunningInstance(System.Diagnostics.Process.GetCurrentProcess().ProcessName))
+                    {
+                        MessageBox.Show(
+                            string.Format(Resources.Program_Main_Another_instance_of__0__is_already_running_, AppName),
+                            AppName, MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }
                     return;
                 }
 
@@ -196,6 +200,61 @@ namespace AutoQC
                 // user.config somehow got corrupted. We will restart with a fresh user.config.
                 Application.Restart();
             }
+        }
+
+        [DllImport("User32.dll")]
+        private static extern bool ShowWindow(IntPtr handle, int nCmdShow);
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr WindowHandle);
+        [DllImport("User32.dll")]
+        private static extern bool IsIconic(IntPtr handle);
+        public const int SW_RESTORE = 9;
+
+        private static bool ShowRunningInstance(string procName)
+        {
+            var currentProc = Process.GetCurrentProcess();
+            var autoQcProcs  = Process.GetProcessesByName(procName);
+            if (autoQcProcs.Length < 2)
+            {
+                return false;
+            }
+
+            try
+            {
+                Process autoQcProc = null;
+                foreach (var proc in autoQcProcs)
+                {
+                    if (proc.Id != currentProc.Id)
+                    {
+                        autoQcProc = proc;
+                        break;
+                    }
+                }
+
+                if (autoQcProc == null) return false;
+
+                var handle = autoQcProc.MainWindowHandle;
+                if (handle != IntPtr.Zero)
+                {
+                    // https://stackoverflow.com/questions/2636721/bring-another-processes-window-to-foreground-when-it-has-showintaskbar-false
+                    if (IsIconic(handle))
+                    {
+                        ShowWindow(handle, SW_RESTORE); // Restore it if it was minimized
+                    }
+                    SetForegroundWindow(handle);
+                    return true;
+                }
+
+                // The window may be minimized to the system tray. Don't know how to un-minimize the window. 
+                // TODO: follow the code here to send a message to the running instance to show itself
+                // https://www.codeproject.com/Articles/32908/C-Single-Instance-App-With-the-Ability-To-Restore
+            }
+            catch (Exception)
+            {
+                // ignored
+            }
+
+            return false;
         }
 
         private static void UpgradeSettingsIfRequired()
