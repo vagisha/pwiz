@@ -60,7 +60,9 @@ namespace AutoQC
         private DateTime _lastUploadAt = DateTime.MinValue;
 
         public DateTime LastAcquiredFileDate;
-        public DateTime LastArchivalDate; 
+        public DateTime LastArchivalDate;
+
+        private const int IMPORT_BATCH_SIZE = 5;
 
         public ConfigRunner(AutoQcConfig config, Logger logger, IMainUiControl uiControl = null)
         {
@@ -815,6 +817,7 @@ namespace AutoQC
             LastArchivalDate = currentDate;
 
             // Archive file will be written in the same directory as the Skyline file.
+            // TODO: Add upload to Panorama args
             return string.Format("--share-zip={0}", archiveFileName);
         }
 
@@ -992,10 +995,10 @@ namespace AutoQC
 
         private string PanoramaArgs(ImportContext importContext, bool toPrint = false)
         {
-            if (!Config.PanoramaSettings.PublishToPanorama || importContext.ImportExisting && !importContext.ImportingLast())
+            if (!Config.PanoramaSettings.PublishToPanorama || (importContext.ImportExisting && !importContext.BatchImportDone(IMPORT_BATCH_SIZE)))
             {
-                // Do not upload to Panorama if we are importing existing documents and this is not the 
-                // last file being imported.
+                // Do not upload to Panorama if we are importing existing documents and we have not yet imported 
+                // IMPORT_BATCH_SIZE number of files, or this is not the last file being imported.
                 return string.Empty;
             }
 

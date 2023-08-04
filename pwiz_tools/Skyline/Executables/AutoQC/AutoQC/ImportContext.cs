@@ -72,6 +72,11 @@ namespace AutoQC
             return _currentIndex >= _resultsFileList.Count - 1;
         }
 
+        public bool BatchImportDone(int batchSize)
+        {
+            return ImportCount % batchSize == 0 || ImportingLast();
+        }
+
         public virtual DateTime GetOldestImportedFileDate(DateTime lastAcqDate)
         {
             // Results files are sorted by LastWriteTime;
