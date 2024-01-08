@@ -298,7 +298,8 @@ namespace AutoQC
             {
                 _panoramaClient.PingPanorama(_panoramaSettings.PanoramaFolder,
                     _panoramaSettings.PanoramaUserEmail,
-                    _panoramaSettings.PanoramaPassword
+                    _panoramaSettings.PanoramaPassword,
+                    Program.Version()
                      );
 
                 if (_status != 1)
